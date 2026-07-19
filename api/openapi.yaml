@@ -1,0 +1,335 @@
+openapi: 3.0.3
+info:
+  title: Evoke Registry API
+  description: >-
+    The hosted registry for Evoke artifacts — accounts, Google-federated auth,
+    and push/pull/list of immutable `.evoke` document versions. Prompts are
+    compiled artifacts; this service distributes the source `.evoke` files.
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: health
+  - name: auth
+  - name: account
+  - name: artifacts
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      operationId: health
+      summary: Liveness check
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /v1/tokens/google:
+    post:
+      tags: [auth]
+      operationId: loginWithGoogle
+      summary: Exchange a Google ID token for the registry's own token pair
+      description: >-
+        The client obtains a Google ID token via its own browser/PKCE (CLI) or
+        Google Identity Services (web) flow and posts it here. The server
+        verifies it, create-or-links the account, and returns our access/refresh
+        tokens. Every other endpoint authenticates with our access token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoogleLoginRequest"
+      responses:
+        "200":
+          description: Authenticated; token pair issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/account:
+    get:
+      tags: [account]
+      operationId: getAccount
+      summary: Get the authenticated account
+      responses:
+        "200":
+          description: The authenticated account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [account]
+      operationId: updateAccount
+      summary: Update the authenticated account's username
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAccountRequest"
+      responses:
+        "200":
+          description: Updated account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [account]
+      operationId: deleteAccount
+      summary: Delete the authenticated account
+      description: Removes the account and cascades to its identities and artifacts.
+      responses:
+        "204":
+          description: Account deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/{namespace}/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Namespace"
+      - $ref: "#/components/parameters/Name"
+    put:
+      tags: [artifacts]
+      operationId: pushVersion
+      summary: Push a new immutable version
+      description: >-
+        Uploads the raw `.evoke` document as a new immutable version of
+        {namespace}/{name}, creating the artifact (owned by the caller) on first
+        push and assigning the next version number.
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+              description: The raw .evoke document.
+      responses:
+        "201":
+          description: Version created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Version"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    get:
+      tags: [artifacts]
+      operationId: listVersions
+      summary: List the versions of an artifact
+      security: []
+      responses:
+        "200":
+          description: The artifact's versions, oldest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/{namespace}/{name}/{version}:
+    parameters:
+      - $ref: "#/components/parameters/Namespace"
+      - $ref: "#/components/parameters/Name"
+      - $ref: "#/components/parameters/VersionParam"
+    get:
+      tags: [artifacts]
+      operationId: getVersion
+      summary: Pull the raw bytes of a specific version
+      security: []
+      responses:
+        "200":
+          description: The raw .evoke document
+          headers:
+            X-Evoke-SHA256:
+              description: Hex sha256 digest of the body, for verification.
+              schema:
+                type: string
+          content:
+            text/plain:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: The registry access token issued by /v1/tokens/google.
+
+  parameters:
+    Namespace:
+      name: namespace
+      in: path
+      required: true
+      schema:
+        type: string
+    Name:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    VersionParam:
+      name: version
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Conflicts with existing state
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    Message:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+
+    GoogleLoginRequest:
+      type: object
+      properties:
+        id_token:
+          type: string
+          description: A Google-issued OIDC ID token.
+      required: [id_token]
+
+    UpdateAccountRequest:
+      type: object
+      properties:
+        username:
+          type: string
+      required: [username]
+
+    Account:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        avatar_url:
+          type: string
+      required: [id, username, email]
+
+    TokenResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/Account"
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+      required: [user, access_token, refresh_token]
+
+    Version:
+      type: object
+      properties:
+        version:
+          type: integer
+        sha256:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [version, sha256, created_at]
+
+    VersionList:
+      type: object
+      properties:
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Version"
+      required: [versions]
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+        details:
+          type: string
+      required: [message]
+
+    ErrorResponse:
+      type: object
+      properties:
+        requestID:
+          type: string
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/Error"
+      required: [errors]
+
+security:
+  - bearerAuth: []

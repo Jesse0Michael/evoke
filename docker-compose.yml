@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: evoke
+      POSTGRES_PASSWORD: evoke
+      POSTGRES_DB: evoke
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evoke"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  registry:
+    build:
+      context: .
+      args:
+        GO_COMMAND: ./cmd/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      AUTH_SECRET_KEY: dev-secret-change-me
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: evoke
+      POSTGRES_PASSWORD: evoke
+      POSTGRES_DB: evoke
+      POSTGRES_SSLMODE: disable
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:

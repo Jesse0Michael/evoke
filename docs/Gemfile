@@ -1,0 +1,10 @@
+# Optional: only needed to preview the docs site locally.
+# GitHub Pages builds and serves the site without any of this.
+#
+#   cd docs && bundle install && bundle exec jekyll serve
+#
+source "https://rubygems.org"
+
+gem "github-pages", group: :jekyll_plugins
+gem "jekyll-remote-theme"
+gem "webrick" # required for local serving on Ruby 3+
