@@ -4,6 +4,8 @@
 // channel and "?" for default contributions.
 package schema
 
+import "strings"
+
 // MergeMode determines how multiple contributions to the same declaration
 // combine during resolution.
 type MergeMode string
@@ -32,6 +34,8 @@ type Definition struct {
 	// Order is the canonical render order, ascending. Renderers may override it,
 	// but it provides a deterministic default.
 	Order int
+	// SelectorAliases are short CLI aliases for declaration-faceted selection.
+	SelectorAliases []string
 }
 
 // builtins is the MVP declaration set, listed in canonical render order. Scene
@@ -39,14 +43,14 @@ type Definition struct {
 // declaration is intentionally deferred.
 var builtins = []Definition{
 	{Name: "NAME", Merge: MergeSingular, Order: 10},
-	{Name: "IDENTITY", Merge: MergeAccumulating, Order: 20},
+	{Name: "CHARACTER", Merge: MergeAccumulating, Order: 20, SelectorAliases: []string{"c"}},
 	{Name: "PERSONALITY", Merge: MergeAccumulating, Negative: true, Default: true, Order: 30},
 	{Name: "BACKSTORY", Merge: MergeAccumulating, Order: 40},
-	{Name: "APPEARANCE", Merge: MergeAccumulating, Negative: true, Default: true, Order: 50},
-	{Name: "APPAREL", Merge: MergeAccumulating, Negative: true, Default: true, Order: 60},
-	{Name: "ENVIRONMENT", Merge: MergeAccumulating, Negative: true, Default: true, Order: 70},
+	{Name: "APPEARANCE", Merge: MergeAccumulating, Negative: true, Default: true, Order: 50, SelectorAliases: []string{"ap"}},
+	{Name: "APPAREL", Merge: MergeAccumulating, Negative: true, Default: true, Order: 60, SelectorAliases: []string{"a"}},
+	{Name: "ENVIRONMENT", Merge: MergeAccumulating, Negative: true, Default: true, Order: 70, SelectorAliases: []string{"e"}},
 	{Name: "SCENARIO", Merge: MergeSingular, Default: true, Order: 80},
-	{Name: "PROMPT", Merge: MergeAccumulating, Negative: true, Default: true, Order: 90},
+	{Name: "PROMPT", Merge: MergeAccumulating, Negative: true, Default: true, Order: 90, SelectorAliases: []string{"p"}},
 }
 
 var byName = func() map[string]Definition {
@@ -57,11 +61,43 @@ var byName = func() map[string]Definition {
 	return m
 }()
 
+// byAlias maps short selector aliases to their canonical declaration name.
+var byAlias = func() map[string]string {
+	m := make(map[string]string)
+	for _, d := range builtins {
+		for _, alias := range d.SelectorAliases {
+			m[alias] = d.Name
+		}
+		// The full lowercase name is also a valid facet.
+		m[strings.ToLower(d.Name)] = d.Name
+	}
+	return m
+}()
+
+// migrationAliases maps deprecated declaration names to their canonical
+// replacement. The parser uses this for backward compatibility.
+var migrationAliases = map[string]string{
+	"IDENTITY": "CHARACTER",
+}
+
 // Lookup returns the definition for a canonical (uppercase) declaration name and
 // reports whether it is a known built-in.
 func Lookup(name string) (Definition, bool) {
 	d, ok := byName[name]
 	return d, ok
+}
+
+// MigrationAlias returns the canonical name for a deprecated declaration alias,
+// or empty string if none exists.
+func MigrationAlias(name string) string {
+	return migrationAliases[name]
+}
+
+// ResolveFacet maps a selector facet (short alias or full name, case-insensitive)
+// to the canonical declaration name. Returns the name and true if found.
+func ResolveFacet(facet string) (string, bool) {
+	name, ok := byAlias[strings.ToLower(facet)]
+	return name, ok
 }
 
 // All returns a copy of the built-in declarations in canonical render order.

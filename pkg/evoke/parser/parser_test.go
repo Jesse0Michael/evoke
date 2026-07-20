@@ -3,8 +3,8 @@ package parser_test
 import (
 	"testing"
 
-	"github.com/jesse0michael/evoke/internal/evoke/ast"
-	"github.com/jesse0michael/evoke/internal/evoke/parser"
+	"github.com/jesse0michael/evoke/pkg/evoke/ast"
+	"github.com/jesse0michael/evoke/pkg/evoke/parser"
 	"github.com/stretchr/testify/require"
 )
 
@@ -155,6 +155,14 @@ func TestParse(t *testing.T) {
 			src:      "",
 			expected: nil,
 		},
+		{
+			name: "IDENTITY is migrated to CHARACTER",
+			src: "IDENTITY\n" +
+				"    a nurse\n",
+			expected: []*ast.Declaration{
+				{Name: "CHARACTER", RawName: "IDENTITY", Line: 1, Values: []string{"a nurse"}},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -163,6 +171,88 @@ func TestParse(t *testing.T) {
 			require.Equal(t, tt.wantError, err != nil, "error mismatch: %v", err)
 			if !tt.wantError {
 				require.Equal(t, tt.expected, doc.Declarations)
+			}
+		})
+	}
+}
+
+func TestParse_Tags(t *testing.T) {
+	tests := []struct {
+		name      string
+		src       string
+		wantTags  []string
+		wantError bool
+	}{
+		{
+			name: "basic tags",
+			src: "TAGS\n" +
+				"    nurse\n" +
+				"    medical\n" +
+				"    contemporary\n",
+			wantTags: []string{"nurse", "medical", "contemporary"},
+		},
+		{
+			name: "tags are normalized to lowercase",
+			src: "TAGS\n" +
+				"    Nurse\n" +
+				"    MEDICAL\n",
+			wantTags: []string{"nurse", "medical"},
+		},
+		{
+			name: "duplicate tags are removed",
+			src: "TAGS\n" +
+				"    nurse\n" +
+				"    nurse\n" +
+				"    medical\n",
+			wantTags: []string{"nurse", "medical"},
+		},
+		{
+			name: "hyphenated tags are valid",
+			src: "TAGS\n" +
+				"    emergency-room\n" +
+				"    warm-comedy\n",
+			wantTags: []string{"emergency-room", "warm-comedy"},
+		},
+		{
+			name: "tags with spaces are invalid",
+			src: "TAGS\n" +
+				"    nurse outfit\n",
+			wantError: true,
+		},
+		{
+			name: "tags with + are invalid",
+			src: "TAGS\n" +
+				"    nurse+medical\n",
+			wantError: true,
+		},
+		{
+			name: "tags with : are invalid",
+			src: "TAGS\n" +
+				"    apparel:nurse\n",
+			wantError: true,
+		},
+		{
+			name: "TAGS does not appear in declarations",
+			src: "TAGS\n" +
+				"    nurse\n" +
+				"\n" +
+				"NAME\n" +
+				"    Gwen\n",
+			wantTags: []string{"nurse"},
+		},
+		{
+			name:      "TAGS does not support prefixes",
+			src:       "?TAGS\n    nurse\n",
+			wantError: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc, err := parser.Parse([]byte(tt.src))
+
+			require.Equal(t, tt.wantError, err != nil, "error mismatch: %v", err)
+			if !tt.wantError {
+				require.Equal(t, tt.wantTags, doc.Metadata.Tags)
 			}
 		})
 	}

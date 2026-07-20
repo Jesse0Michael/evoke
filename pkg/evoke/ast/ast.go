@@ -36,5 +36,13 @@ type Declaration struct {
 // Order is preserved because accumulating declarations render their values in
 // source order.
 type Document struct {
+	// Metadata holds document-level metadata parsed from source (e.g. TAGS).
+	Metadata     Metadata
 	Declarations []*Declaration
+}
+
+// Metadata holds document-level information that is not a mergeable declaration.
+type Metadata struct {
+	// Tags are normalized (lowercase, trimmed) discovery tags from the TAGS block.
+	Tags []string
 }

@@ -25,6 +25,8 @@ func run(args []string) int {
 	switch cmd {
 	case "login":
 		return cli.Login(rest)
+	case "generate":
+		return cli.Generate(rest)
 	case "-h", "--help", "help":
 		usage()
 		return 0
@@ -39,7 +41,8 @@ func usage() {
 	fmt.Fprint(os.Stderr, `evoke - declarative composition for AI characters and generative assets
 
 Usage:
-    evoke login   Sign in to the registry with Google
+    evoke login      Sign in to the registry with Google
+    evoke generate   Select .evoke files by tag-based selectors
 
 `)
 }

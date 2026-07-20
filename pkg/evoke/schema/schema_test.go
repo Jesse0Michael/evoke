@@ -3,7 +3,7 @@ package schema_test
 import (
 	"testing"
 
-	"github.com/jesse0michael/evoke/internal/evoke/schema"
+	"github.com/jesse0michael/evoke/pkg/evoke/schema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,8 +38,8 @@ func TestLookup(t *testing.T) {
 			wantDefault: true,
 		},
 		{
-			name:        "IDENTITY accumulates, positive only",
-			declaration: "IDENTITY",
+			name:        "CHARACTER accumulates, positive only",
+			declaration: "CHARACTER",
 			wantFound:   true,
 			wantMerge:   schema.MergeAccumulating,
 		},
@@ -73,4 +73,35 @@ func TestAll(t *testing.T) {
 	for i := 1; i < len(all); i++ {
 		require.Greater(t, all[i].Order, all[i-1].Order, "declarations must be ordered by Order")
 	}
+}
+
+func TestResolveFacet(t *testing.T) {
+	tests := []struct {
+		name      string
+		facet     string
+		wantName  string
+		wantFound bool
+	}{
+		{name: "short alias c", facet: "c", wantName: "CHARACTER", wantFound: true},
+		{name: "short alias a", facet: "a", wantName: "APPAREL", wantFound: true},
+		{name: "short alias e", facet: "e", wantName: "ENVIRONMENT", wantFound: true},
+		{name: "short alias ap", facet: "ap", wantName: "APPEARANCE", wantFound: true},
+		{name: "short alias p", facet: "p", wantName: "PROMPT", wantFound: true},
+		{name: "full name lowercase", facet: "character", wantName: "CHARACTER", wantFound: true},
+		{name: "full name mixed case", facet: "Character", wantName: "CHARACTER", wantFound: true},
+		{name: "unknown alias", facet: "x", wantName: "", wantFound: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name, ok := schema.ResolveFacet(tt.facet)
+
+			require.Equal(t, tt.wantFound, ok)
+			require.Equal(t, tt.wantName, name)
+		})
+	}
+}
+
+func TestMigrationAlias(t *testing.T) {
+	require.Equal(t, "CHARACTER", schema.MigrationAlias("IDENTITY"))
+	require.Equal(t, "", schema.MigrationAlias("NAME"))
 }

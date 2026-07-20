@@ -19,7 +19,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/jesse0michael/evoke/internal/evoke/ast"
+	"github.com/jesse0michael/evoke/pkg/evoke/ast"
+	"github.com/jesse0michael/evoke/pkg/evoke/schema"
 )
 
 // Error is a syntax error on a specific source line.
@@ -47,6 +48,7 @@ type parser struct {
 	doc     *ast.Document
 	errs    []error
 	current *ast.Declaration // declaration currently accepting value lines
+	isTags  bool             // true when current is the TAGS metadata block
 }
 
 func (p *parser) errorf(line int, format string, args ...any) {
@@ -117,13 +119,36 @@ func (p *parser) header(lineNo int, text string) {
 		return
 	}
 
+	canonical := strings.ToUpper(name)
+
+	// TAGS is document metadata, not a mergeable declaration.
+	if canonical == "TAGS" {
+		if isDefault || negative {
+			p.errorf(lineNo, "TAGS does not support prefixes")
+			return
+		}
+		p.current = &ast.Declaration{
+			Name:    "TAGS",
+			RawName: name,
+			Line:    lineNo,
+		}
+		p.isTags = true
+		return
+	}
+
+	// Migration alias: IDENTITY → CHARACTER.
+	if alias := schema.MigrationAlias(canonical); alias != "" {
+		canonical = alias
+	}
+
 	p.current = &ast.Declaration{
-		Name:     strings.ToUpper(name),
+		Name:     canonical,
 		RawName:  name,
 		Negative: negative,
 		Default:  isDefault,
 		Line:     lineNo,
 	}
+	p.isTags = false
 }
 
 // value attaches an indented line to the current declaration.
@@ -143,10 +168,32 @@ func (p *parser) finish() {
 	}
 	if len(p.current.Values) == 0 {
 		p.errorf(p.current.Line, "declaration %q has no values", p.current.RawName)
+	} else if p.isTags {
+		p.finishTags()
 	} else {
 		p.doc.Declarations = append(p.doc.Declarations, p.current)
 	}
 	p.current = nil
+	p.isTags = false
+}
+
+// finishTags normalizes and validates tag values, storing them as document metadata.
+func (p *parser) finishTags() {
+	seen := make(map[string]bool)
+	for _, raw := range p.current.Values {
+		tag := strings.ToLower(strings.TrimSpace(raw))
+		if tag == "" {
+			continue
+		}
+		if strings.ContainsAny(tag, " \t:+") {
+			p.errorf(p.current.Line, "invalid tag %q: tags must not contain spaces, '+', or ':'", raw)
+			continue
+		}
+		if !seen[tag] {
+			seen[tag] = true
+			p.doc.Metadata.Tags = append(p.doc.Metadata.Tags, tag)
+		}
+	}
 }
 
 // splitIndent separates leading whitespace (spaces and/or tabs) from the rest

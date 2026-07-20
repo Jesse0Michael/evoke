@@ -12,8 +12,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jesse0michael/evoke/internal/evoke/ast"
-	"github.com/jesse0michael/evoke/internal/evoke/schema"
+	"github.com/jesse0michael/evoke/pkg/evoke/ast"
+	"github.com/jesse0michael/evoke/pkg/evoke/schema"
 )
 
 // Error is a semantic error on a specific declaration's line.

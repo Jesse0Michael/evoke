@@ -3,8 +3,8 @@ package validate_test
 import (
 	"testing"
 
-	"github.com/jesse0michael/evoke/internal/evoke/parser"
-	"github.com/jesse0michael/evoke/internal/evoke/validate"
+	"github.com/jesse0michael/evoke/pkg/evoke/parser"
+	"github.com/jesse0michael/evoke/pkg/evoke/validate"
 	"github.com/stretchr/testify/require"
 )
 
@@ -55,8 +55,8 @@ func TestDocument(t *testing.T) {
 			wantError: true,
 		},
 		{
-			name:      "negative on IDENTITY is invalid",
-			src:       "!IDENTITY\n    a nurse\n",
+			name:      "negative on CHARACTER is invalid",
+			src:       "!CHARACTER\n    a nurse\n",
 			wantError: true,
 		},
 		{
