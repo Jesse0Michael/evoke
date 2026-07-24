@@ -60,6 +60,30 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /v1/tokens/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshTokens
+      summary: Exchange a refresh token for a new access/refresh token pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: New token pair issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /v1/account:
     get:
       tags: [account]
@@ -257,6 +281,14 @@ components:
           description: A Google-issued OIDC ID token.
       required: [id_token]
 
+    RefreshRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+          description: A previously issued refresh token.
+      required: [refresh_token]
+
     UpdateAccountRequest:
       type: object
       properties:
@@ -282,13 +314,13 @@ components:
     TokenResponse:
       type: object
       properties:
-        user:
-          $ref: "#/components/schemas/Account"
+        subject:
+          type: string
         access_token:
           type: string
         refresh_token:
           type: string
-      required: [user, access_token, refresh_token]
+      required: [subject, access_token, refresh_token]
 
     Version:
       type: object

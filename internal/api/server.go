@@ -6,13 +6,11 @@
 package api
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
 
-	"github.com/jesse0michael/evoke/internal/auth/oidc"
-	"github.com/jesse0michael/evoke/internal/evoke/store"
+	"github.com/jesse0michael/evoke/internal/store"
 	"github.com/jesse0michael/pkg/auth"
+	"github.com/jesse0michael/pkg/auth/oidc"
 	"github.com/jesse0michael/pkg/http/handlers"
 	"github.com/jesse0michael/pkg/http/middleware"
 )
@@ -38,41 +36,18 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.Handle("GET /health", handlers.HandleHealth())
 
 	// Auth: exchange a verified provider ID token for our token pair.
-	mux.HandleFunc("POST /v1/tokens/google", s.loginWithGoogle)
+	mux.Handle("POST /v1/tokens/google", handlers.HandleOIDCLogin(s.verifier, s.auth, s.resolveOIDC))
+	mux.Handle("POST /v1/tokens/refresh", handlers.HandleRefreshTokens(s.auth))
 
 	// Account (self-service, authenticated as the token subject).
-	mux.Handle("GET /v1/account", s.authed(s.getAccount))
-	mux.Handle("PATCH /v1/account", s.authed(s.updateAccount))
-	mux.Handle("DELETE /v1/account", s.authed(s.deleteAccount))
+	mux.Handle("GET /v1/account", handlers.HandleWithMiddleware(s.getAccount(), middleware.Default, middleware.Auth(s.auth)))
+	mux.Handle("PATCH /v1/account", handlers.HandleWithMiddleware(s.updateAccount(), middleware.Default, middleware.Auth(s.auth)))
+	mux.Handle("DELETE /v1/account", handlers.HandleWithMiddleware(s.deleteAccount(), middleware.Default, middleware.Auth(s.auth)))
 
 	// Artifact push requires an authenticated publisher; pull and list are open.
-	mux.Handle("PUT /v1/{namespace}/{name}", s.authed(s.push))
+	mux.Handle("PUT /v1/{namespace}/{name}", handlers.HandleWithMiddleware(s.push(), middleware.Default, middleware.Auth(s.auth)))
 	mux.HandleFunc("GET /v1/{namespace}/{name}", s.listVersions)
 	mux.HandleFunc("GET /v1/{namespace}/{name}/{version}", s.pull)
 
 	return mux
-}
-
-// authed wraps a handler with the JWT access-token middleware.
-func (s *Server) authed(h http.HandlerFunc) http.Handler {
-	return handlers.HandleWithMiddleware(h, middleware.Default, middleware.Auth(s.auth))
-}
-
-// writeJSON encodes v as a JSON response with the given status code.
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if v != nil {
-		_ = json.NewEncoder(w).Encode(v)
-	}
-}
-
-// decodeJSON reads and unmarshals a JSON request body, rejecting unknown fields.
-func decodeJSON(r *http.Request, v any) error {
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(v); err != nil {
-		return fmt.Errorf("failed to decode request: %w", err)
-	}
-	return nil
 }

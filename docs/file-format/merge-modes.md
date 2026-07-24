@@ -15,10 +15,7 @@ nav_order: 4
 
 ---
 
-When several files (or several blocks) contribute to the same declaration, the declaration's **merge mode** decides how those contributions combine. Each channel — positive and negative — is resolved independently. Two modes are implemented today; a third, structured merging, is part of the design.
-
-{: .note }
-> Merging happens during composition — the planned `evoke compile` command. Today's `evoke validate` checks one file at a time and does not merge. This page describes the resolution semantics the compiler is being built to.
+When several files (or several blocks) contribute to the same declaration, the declaration's **merge mode** decides how those contributions combine. Each channel — positive and negative — is resolved independently.
 
 ## Singular
 
@@ -77,23 +74,7 @@ green eyes
 
 Exact duplicates are removed after trimming surrounding whitespace. Deduplication is purely textual — `violet skin` and `  violet skin  ` collapse to one, but no *semantic* deduplication is attempted. `violet skin` and `purple skin` are kept as two distinct values; the compiler never tries to decide that two different phrasings mean the same thing.
 
-Most declarations are accumulating: `IDENTITY`, `PERSONALITY`, `BACKSTORY`, `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, and `PROMPT`.
-
-## Structured
-{: .d-inline-block }
-
-Planned
-{: .label .label-yellow }
-
-Structured declarations would merge at the **field** level: values with different fields merge together, while conflicting values for the same singular field produce a conflict — the same conflict rule as singular declarations, applied per field.
-
-```text
-IDENTITY
-    name "Sumi"
-    occupation "student"
-```
-
-The MVP represents such data as accumulating lists or text blocks rather than typed fields, but the architecture deliberately avoids assuming every declaration is a flat string, so structured merging can be added without reworking the pipeline.
+Most declarations are accumulating: `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, and `PROMPT`.
 
 ## The resolution order, in one place
 
@@ -101,11 +82,10 @@ For each declaration and channel, resolution:
 
 1. collects explicit contributions,
 2. collects default contributions,
-3. checks the declaration actually supports that channel / default,
-4. if any explicit contribution exists, ignores the defaults,
-5. otherwise resolves the defaults,
-6. applies the merge mode above,
-7. deduplicates exact normalized values where appropriate, and
-8. reports singular or structured conflicts.
+3. if any explicit contribution exists, ignores all defaults,
+4. otherwise uses the defaults,
+5. applies the merge mode above,
+6. deduplicates exact normalized values where appropriate, and
+7. reports singular conflicts (warns, uses first).
 
-The neutral result of all this is the *resolved document* described in the [Design](../design/resolution) section.
+The result is the `Composition` described in the [Design](../design/resolution) section.

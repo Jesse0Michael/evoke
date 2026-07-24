@@ -28,7 +28,7 @@ func TestExchangeIDToken(t *testing.T) {
 				require.Equal(t, "google-id-token", body.IdToken)
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(client.TokenResponse{
-					User:         client.Account{Id: "u1", Username: "test-user", Email: "t@example.com"},
+					Subject:      "test-user",
 					AccessToken:  "our-access",
 					RefreshToken: "our-refresh",
 				})

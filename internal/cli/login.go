@@ -1,4 +1,4 @@
-// Package cli implements the evoke commands. cmd/cli owns dispatch and usage;
+// Package cli implements the evoke commands. cmd/evoke owns dispatch and usage;
 // each command's implementation lives here so it is testable as a normal
 // package (mirroring how cmd/app delegates to internal/*).
 package cli
@@ -37,7 +37,7 @@ type loginConfig struct {
 const loginTimeout = 3 * time.Minute
 
 // Login runs the Google loopback + PKCE sign-in and stores the registry tokens.
-func Login(args []string) int {
+func Login(args []string, _ bool) int {
 	fs := flag.NewFlagSet("login", flag.ContinueOnError)
 	registryFlag := fs.String("registry", "", "registry base URL (overrides $EVOKE_REGISTRY_URL)")
 	if err := fs.Parse(args); err != nil {
@@ -134,7 +134,7 @@ func exchangeIDToken(ctx context.Context, registryURL, idToken string) (*Credent
 	tok := resp.JSON200
 	return &Credentials{
 		Registry:     registryURL,
-		Username:     tok.User.Username,
+		Username:     tok.Subject,
 		AccessToken:  tok.AccessToken,
 		RefreshToken: tok.RefreshToken,
 	}, nil

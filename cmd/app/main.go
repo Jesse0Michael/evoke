@@ -14,10 +14,10 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jesse0michael/evoke/internal/api"
-	"github.com/jesse0michael/evoke/internal/auth/oidc"
 	"github.com/jesse0michael/evoke/internal/ent"
-	"github.com/jesse0michael/evoke/internal/evoke/store"
+	"github.com/jesse0michael/evoke/internal/store"
 	"github.com/jesse0michael/pkg/auth"
+	"github.com/jesse0michael/pkg/auth/oidc"
 	"github.com/jesse0michael/pkg/boot"
 	"github.com/jesse0michael/pkg/config"
 	httpserver "github.com/jesse0michael/pkg/http/server"
@@ -31,16 +31,9 @@ import (
 type Config struct {
 	App      config.AppConfig
 	Auth     auth.Config
-	Google   GoogleConfig
+	Google   oidc.GoogleAuthConfig
 	Postgres config.PostgresConfig
 	Server   httpserver.Config
-}
-
-// GoogleConfig holds the Google OAuth clients whose ID tokens are accepted.
-// Comma-separate multiple (e.g. the Desktop client for the CLI and the Web
-// client for the site): GOOGLE_CLIENT_ID=desktop-id,web-id.
-type GoogleConfig struct {
-	ClientIDs []string `envconfig:"GOOGLE_CLIENT_ID"`
 }
 
 func main() {
@@ -75,7 +68,7 @@ func (r *registry) Run(ctx context.Context, cfg Config) error {
 
 	// The verifier performs OIDC discovery against Google, so it needs network
 	// at startup.
-	verifier, err := oidc.NewGoogle(ctx, cfg.Google.ClientIDs)
+	verifier, err := oidc.NewGoogleAuth(ctx, cfg.Google)
 	if err != nil {
 		return fmt.Errorf("failed to build google verifier: %w", err)
 	}

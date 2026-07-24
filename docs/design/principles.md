@@ -23,7 +23,7 @@ An Evoke file must never be required to identify itself as a character, apparel,
 
 A file's purpose **emerges** from the declarations it contains:
 
-- a file with identity, personality, and appearance declarations happens to represent a character;
+- a file with character, personality, and appearance declarations happens to represent a character;
 - a file with only apparel declarations happens to represent an outfit;
 - a file with environment declarations happens to represent a setting.
 
@@ -37,7 +37,7 @@ A file may mix any supported declarations. The compiler doesn't care what catego
 Evoke files do not import or reference one another. There is no `FROM`, `IMPORT`, or `USE` declaration. The **caller** selects the files to compose:
 
 ```console
-$ evoke compile sumi.evoke winter-coat.evoke pine-forest.evoke
+$ evoke generate character winter forest
 ```
 
 File selection order must not silently determine behavior unless the specification explicitly defines a reason for order to matter. Two conflicting singular values are a [conflict](../file-format/merge-modes#singular), not a last-one-wins race.
@@ -77,12 +77,3 @@ Sumi is small and round, with violet skin and glowing speckles.
 ```
 
 So the merger operates on structured declarations, never on final prompt strings. Flattening is a rendering concern that happens last.
-
-{: .warning }
-> Never assume declarations are flat strings anywhere in the pipeline. Early concatenation is the mistake this principle exists to prevent.
-
-## No provenance in the MVP
-
-The [full brief](resolution) describes a `SourceLocation` model where every resolved value remembers which file and line it came from, powering an `explain` view. That provenance model is **deliberately out of scope for the MVP.**
-
-Today, values are plain strings; the AST does not track which file or line a value came from. Only diagnostics keep a bare line number, to point at mistakes. Per-value source tracking should not be reintroduced until the resolver milestone calls for it.

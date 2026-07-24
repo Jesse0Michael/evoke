@@ -15,7 +15,7 @@ nav_order: 1
 
 ---
 
-Evoke syntax is line-oriented and block-structured. The parser scans the source line by line — there is no separate token stream — and enforces only syntax. Whether a declaration actually *exists* and whether its prefix is *allowed* are separate, declaration-level checks handled during [validation](../cli/validate).
+Evoke syntax is line-oriented and block-structured. The parser scans the source line by line — there is no separate token stream — and enforces only syntax. Whether a declaration actually *exists* and whether its prefix is *allowed* are separate, declaration-level checks handled during validation.
 
 ## Anatomy of a block
 
@@ -103,4 +103,4 @@ The parser accumulates every error it finds rather than stopping at the first, a
 | `declaration "..." has no values` | A header with no indented values (an empty block). |
 
 {: .note }
-> These are **syntax** errors. Errors like *unknown declaration* or *unsupported prefix* come from the [validation](../cli/validate) stage, which runs after a file parses cleanly.
+> These are **syntax** errors. Errors like *unknown declaration* or *unsupported prefix* come from the validation stage, which runs after a file parses cleanly.

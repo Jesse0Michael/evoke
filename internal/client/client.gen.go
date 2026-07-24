@@ -49,11 +49,17 @@ type Message struct {
 	Message string `json:"message"`
 }
 
+// RefreshRequest defines model for RefreshRequest.
+type RefreshRequest struct {
+	// RefreshToken A previously issued refresh token.
+	RefreshToken string `json:"refresh_token"`
+}
+
 // TokenResponse defines model for TokenResponse.
 type TokenResponse struct {
-	AccessToken  string  `json:"access_token"`
-	RefreshToken string  `json:"refresh_token"`
-	User         Account `json:"user"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	Subject      string `json:"subject"`
 }
 
 // UpdateAccountRequest defines model for UpdateAccountRequest.
@@ -102,6 +108,9 @@ type UpdateAccountJSONRequestBody = UpdateAccountRequest
 
 // LoginWithGoogleJSONRequestBody defines body for LoginWithGoogle for application/json ContentType.
 type LoginWithGoogleJSONRequestBody = GoogleLoginRequest
+
+// RefreshTokensJSONRequestBody defines body for RefreshTokens for application/json ContentType.
+type RefreshTokensJSONRequestBody = RefreshRequest
 
 // PushVersionTextRequestBody defines body for PushVersion for text/plain ContentType.
 type PushVersionTextRequestBody = PushVersionTextBody
@@ -228,6 +237,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/tokens/google (the `LoginWithGoogle` operationId).
 	LoginWithGoogle(ctx context.Context, body LoginWithGoogleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RefreshTokensWithBody Exchange a refresh token for a new access/refresh token pair
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/tokens/refresh (the `RefreshTokens` operationId).
+	RefreshTokensWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RefreshTokens Exchange a refresh token for a new access/refresh token pair
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/tokens/refresh (the `RefreshTokens` operationId).
+	RefreshTokens(ctx context.Context, body RefreshTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListVersions List the versions of an artifact
 	//
@@ -367,6 +390,40 @@ func (c *Client) LoginWithGoogleWithBody(ctx context.Context, contentType string
 // Corresponds with POST /v1/tokens/google (the `LoginWithGoogle` operationId).
 func (c *Client) LoginWithGoogle(ctx context.Context, body LoginWithGoogleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewLoginWithGoogleRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RefreshTokensWithBody Exchange a refresh token for a new access/refresh token pair
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/tokens/refresh (the `RefreshTokens` operationId).
+func (c *Client) RefreshTokensWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRefreshTokensRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RefreshTokens Exchange a refresh token for a new access/refresh token pair
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/tokens/refresh (the `RefreshTokens` operationId).
+func (c *Client) RefreshTokens(ctx context.Context, body RefreshTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRefreshTokensRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -587,6 +644,46 @@ func NewLoginWithGoogleRequestWithBody(server string, contentType string, body i
 	}
 
 	operationPath := fmt.Sprintf("/v1/tokens/google")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRefreshTokensRequest calls the generic RefreshTokens builder with application/json body
+func NewRefreshTokensRequest(server string, body RefreshTokensJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRefreshTokensRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewRefreshTokensRequestWithBody constructs an http.Request for the RefreshTokens method, with any body, and a specified content type
+func NewRefreshTokensRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/tokens/refresh")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -847,6 +944,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /v1/tokens/google (the `LoginWithGoogle` operationId).
 	LoginWithGoogleWithResponse(ctx context.Context, body LoginWithGoogleJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginWithGoogleResponse, error)
+
+	// RefreshTokensWithBodyWithResponse Exchange a refresh token for a new access/refresh token pair
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/tokens/refresh (the `RefreshTokens` operationId).
+	RefreshTokensWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RefreshTokensResponse, error)
+
+	// RefreshTokensWithResponse Exchange a refresh token for a new access/refresh token pair
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/tokens/refresh (the `RefreshTokens` operationId).
+	RefreshTokensWithResponse(ctx context.Context, body RefreshTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*RefreshTokensResponse, error)
 
 	// ListVersionsWithResponse List the versions of an artifact
 	//
@@ -1149,6 +1260,61 @@ func (r LoginWithGoogleResponse) ContentType() string {
 	return ""
 }
 
+type RefreshTokensResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TokenResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *BadRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RefreshTokensResponse) GetJSON200() *TokenResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RefreshTokensResponse) GetJSON400() *BadRequest {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RefreshTokensResponse) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r RefreshTokensResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RefreshTokensResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RefreshTokensResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RefreshTokensResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListVersionsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -1404,6 +1570,32 @@ func (c *ClientWithResponses) LoginWithGoogleWithResponse(ctx context.Context, b
 	return ParseLoginWithGoogleResponse(rsp)
 }
 
+// RefreshTokensWithBodyWithResponse Exchange a refresh token for a new access/refresh token pair
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/tokens/refresh (the `RefreshTokens` operationId).
+func (c *ClientWithResponses) RefreshTokensWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RefreshTokensResponse, error) {
+	rsp, err := c.RefreshTokensWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRefreshTokensResponse(rsp)
+}
+
+// RefreshTokensWithResponse Exchange a refresh token for a new access/refresh token pair
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/tokens/refresh (the `RefreshTokens` operationId).
+func (c *ClientWithResponses) RefreshTokensWithResponse(ctx context.Context, body RefreshTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*RefreshTokensResponse, error) {
+	rsp, err := c.RefreshTokens(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRefreshTokensResponse(rsp)
+}
+
 // ListVersionsWithResponse List the versions of an artifact
 //
 // Returns a wrapper object for the known response body format(s).
@@ -1625,6 +1817,46 @@ func ParseLoginWithGoogleResponse(rsp *http.Response) (*LoginWithGoogleResponse,
 	}
 
 	response := &LoginWithGoogleResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TokenResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRefreshTokensResponse parses an HTTP response from a RefreshTokensWithResponse call
+func ParseRefreshTokensResponse(rsp *http.Response) (*RefreshTokensResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RefreshTokensResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

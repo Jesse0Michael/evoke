@@ -16,13 +16,13 @@ type Credentials struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-// credentialsPath returns ~/.evoke/credentials.json.
+// credentialsPath returns ~/.evoke/credentials.json (or $EVOKE_HOME/credentials.json).
 func credentialsPath() (string, error) {
-	home, err := os.UserHomeDir()
+	dir, err := home()
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve home directory: %w", err)
+		return "", err
 	}
-	return filepath.Join(home, ".evoke", "credentials.json"), nil
+	return filepath.Join(dir, "credentials.json"), nil
 }
 
 // saveCredentials writes the tokens with owner-only permissions.
@@ -31,9 +31,7 @@ func saveCredentials(c *Credentials) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
+
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to encode credentials: %w", err)

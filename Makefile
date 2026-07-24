@@ -6,7 +6,11 @@ build: build-cli build-registry # Build all binaries into bin/.
 
 .PHONY: build-cli
 build-cli: # Build the evoke CLI.
-	go build -o bin/evoke ./cmd/cli
+	go build -o bin/evoke ./cmd/evoke
+
+.PHONY: install
+install: # Install the evoke CLI to GOPATH/bin.
+	go install ./cmd/evoke
 
 .PHONY: build-registry
 build-registry: # Build the registry API server.
@@ -52,8 +56,8 @@ tidy: # Sync go.mod / go.sum.
 .PHONY: lint
 lint: # Run the linter and vulnerability checker.
 	go mod tidy
-	golangci-lint run ./...
-	govulncheck ./...
+	go tool golangci-lint run ./...
+	go tool govulncheck ./...
 
 .PHONY: test
 test: # Run the tests.

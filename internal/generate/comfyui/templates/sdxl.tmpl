@@ -1,0 +1,640 @@
+{
+  "ckpt": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "{{ .Prompt.Checkpoint }}"
+    }
+  },
+
+  {{- /* ================= LoRA CHAIN ================= */ -}}
+  {{- $prev := "ckpt" -}}
+  {{- range $i, $l := .Prompt.Loras }}
+  "lora_{{ $i }}": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "lora_name": "{{ $l.Name }}",
+      "strength_model": {{ $l.Strength }},
+      "strength_clip": {{ $l.Clip }},
+      "model": ["{{ $prev }}", 0],
+      "clip": ["{{ $prev }}", 1]
+    }
+  },
+  {{- $prev = printf "lora_%d" $i -}}
+  {{- end }}
+
+  {{- /* ================= CLIP SKIP ================= */ -}}
+  "clip_skip": {
+    "class_type": "CLIPSetLastLayer",
+    "inputs": {
+      "stop_at_clip_layer": -2,
+      "clip": ["{{ $prev }}", 1]
+    }
+  },
+
+  {{- /* ================= LATENT ================= */ -}}
+  "latent": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": {{ .Prompt.Sampler.Width }},
+      "height": {{ .Prompt.Sampler.Height }},
+      "batch_size": 1
+    }
+  },
+
+  {{- /* ================= PROMPTS ================= */ -}}
+  "prompt_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Positive }}, {{ .Prompt.Apparel.Positive }}, {{ .Prompt.Environment.Positive }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  "prompt_neg": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Negative }}, {{ .Prompt.Apparel.Negative }}, {{ .Prompt.Environment.Negative }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  {{- /* ================= SAMPLER ================= */ -}}
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": {{ RandomSeed }},
+      "steps": {{ .Prompt.Sampler.Steps }},
+      "cfg": {{ .Prompt.Sampler.CFG }},
+      "sampler_name": "{{ .Prompt.Sampler.SamplerName }}",
+      "scheduler": "{{ .Prompt.Sampler.Scheduler }}",
+      "denoise": {{ .Prompt.Sampler.Denoise }},
+      "model": ["{{ $prev }}", 0],
+      "positive": ["prompt_pos", 0],
+      "negative": ["prompt_neg", 0],
+      "latent_image": ["latent", 0]
+    }
+  },
+
+  {{- /* ================= DECODE ================= */ -}}
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler", 0],
+      "vae": ["ckpt", 2]
+    }
+  },
+
+  {{- /* ================= UPSCALE ================= */ -}}
+  {{- if not .Prompt.Upscale.Disabled }}
+  {{- if .Prompt.Upscale.Positive }}
+  "upscale_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Upscale.Positive }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+  {{- end }}
+  {{- if .Prompt.Upscale.Negative }}
+  "upscale_neg": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Upscale.Negative }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+  {{- end }}
+  "upscale_model_loader": {
+    "class_type": "UpscaleModelLoader",
+    "inputs": {
+      "model_name": "{{ .Prompt.Upscale.Model }}"
+    }
+  },
+
+  "upscale": {
+    "class_type": "UltimateSDUpscale",
+    "inputs": {
+      "image": ["decode", 0],
+      "model": ["{{ $prev }}", 0],
+      "positive": ["{{ if .Prompt.Upscale.Positive }}upscale_pos{{ else }}prompt_pos{{ end }}", 0],
+      "negative": ["{{ if .Prompt.Upscale.Negative }}upscale_neg{{ else }}prompt_neg{{ end }}", 0],
+      "vae": ["ckpt", 2],
+      "upscale_model": ["upscale_model_loader", 0],
+      "upscale_by": {{ .Prompt.Upscale.Factor }},
+      "seed": {{ RandomSeed }},
+      "steps": {{ .Prompt.Upscale.Steps }},
+      "cfg": {{ .Prompt.Upscale.CFG }},
+      "sampler_name": "{{ .Prompt.Upscale.SamplerName }}",
+      "scheduler": "{{ .Prompt.Upscale.Scheduler }}",
+      "denoise": {{ .Prompt.Upscale.Denoise }},
+      "mode_type": "Chess",
+      "tile_width": {{ .Prompt.Upscale.TileWidth }},
+      "tile_height": {{ .Prompt.Upscale.TileHeight }},
+      "mask_blur": 8,
+      "tile_padding": 32,
+      "seam_fix_mode": "Half Tile",
+      "seam_fix_denoise": 0.08,
+      "seam_fix_width": 8,
+      "seam_fix_mask_blur": 8,
+      "seam_fix_padding": 32,
+      "force_uniform_tiles": true,
+      "tiled_decode": false,
+      "batch_size": 1
+    }
+  },
+  {{- end }}
+
+  {{- /* ================= FACE DETAILER ================= */ -}}
+  {{- if not .Prompt.Face.Disabled }}
+  "face_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Face.Positive }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  "face_neg": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Face.Negative }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  "face_detector": {
+    "class_type": "UltralyticsDetectorProvider",
+    "inputs": {
+      "model_name": "{{ .Prompt.Face.Detector }}"
+    }
+  },
+
+  "face_segs": {
+    "class_type": "BboxDetectorSEGS",
+    "inputs": {
+      "bbox_detector": ["face_detector", 0],
+      "image": ["{{ if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "threshold": {{ .Prompt.Face.BBoxThreshold }},
+      "dilation": {{ .Prompt.Face.BBoxDialation }},
+      "crop_factor": {{ .Prompt.Face.BBoxCropFactor }},
+      "drop_size": {{ if .Prompt.Face.DropSize }}{{ .Prompt.Face.DropSize }}{{ else }}50{{ end }},
+      "labels": "all"
+    }
+  },
+
+  {{- if .Prompt.Face.MaxDetections }}
+  "face_filter": {
+    "class_type": "ImpactSEGSOrderedFilter",
+    "inputs": {
+      "segs": ["face_segs", 0],
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": {{ .Prompt.Face.MaxDetections }}
+    }
+  },
+  {{- end }}
+
+  "face_detail": {
+    "class_type": "DetailerForEach",
+    "inputs": {
+      "image": ["{{ if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "segs": ["{{ if .Prompt.Face.MaxDetections }}face_filter{{ else }}face_segs{{ end }}", 0],
+      "model": ["{{ $prev }}", 0],
+      "clip": ["clip_skip", 0],
+      "vae": ["ckpt", 2],
+      "positive": ["face_pos", 0],
+      "negative": ["face_neg", 0],
+
+      "guide_size": {{ .Prompt.Face.GuideSize }},
+      "guide_size_for": true,
+      "max_size": {{ .Prompt.Face.MaxSize }},
+
+      "seed": {{ RandomSeed }},
+      "steps": {{ .Prompt.Face.Steps }},
+      "cfg": {{ .Prompt.Face.CFG }},
+      "sampler_name": "{{ .Prompt.Face.SamplerName }}",
+      "scheduler": "{{ .Prompt.Face.Scheduler }}",
+      "denoise": {{ .Prompt.Face.Denoise }},
+
+      "feather": {{ .Prompt.Face.Feather }},
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+
+      "noise_mask_feather": {{ .Prompt.Face.NoiseMaskFeather }}
+    }
+  },
+  {{- end }}
+
+  {{- /* ================= EYE DETAILER ================= */ -}}
+  {{- if not .Prompt.Eye.Disabled }}
+  "eye_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Eye.Positive }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  "eye_neg": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Eye.Negative }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  "eye_detector": {
+    "class_type": "UltralyticsDetectorProvider",
+    "inputs": {
+      "model_name": "{{ .Prompt.Eye.Detector }}"
+    }
+  },
+
+  "eye_segs": {
+    "class_type": "BboxDetectorSEGS",
+    "inputs": {
+      "bbox_detector": ["eye_detector", 0],
+      "image": ["{{ if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "threshold": {{ .Prompt.Eye.BBoxThreshold }},
+      "dilation": {{ .Prompt.Eye.BBoxDialation }},
+      "crop_factor": {{ .Prompt.Eye.BBoxCropFactor }},
+      "drop_size": {{ if .Prompt.Eye.DropSize }}{{ .Prompt.Eye.DropSize }}{{ else }}50{{ end }},
+      "labels": "all"
+    }
+  },
+
+  {{- if .Prompt.Eye.MaxDetections }}
+  "eye_filter": {
+    "class_type": "ImpactSEGSOrderedFilter",
+    "inputs": {
+      "segs": ["eye_segs", 0],
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": {{ .Prompt.Eye.MaxDetections }}
+    }
+  },
+  {{- end }}
+
+  "eye_detail": {
+    "class_type": "DetailerForEach",
+    "inputs": {
+      "image": ["{{ if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "segs": ["{{ if .Prompt.Eye.MaxDetections }}eye_filter{{ else }}eye_segs{{ end }}", 0],
+      "model": ["{{ $prev }}", 0],
+      "clip": ["clip_skip", 0],
+      "vae": ["ckpt", 2],
+      "positive": ["eye_pos", 0],
+      "negative": ["eye_neg", 0],
+
+      "guide_size": {{ .Prompt.Eye.GuideSize }},
+      "guide_size_for": true,
+      "max_size": {{ .Prompt.Eye.MaxSize }},
+
+      "seed": {{ RandomSeed }},
+      "steps": {{ .Prompt.Eye.Steps }},
+      "cfg": {{ .Prompt.Eye.CFG }},
+      "sampler_name": "{{ .Prompt.Eye.SamplerName }}",
+      "scheduler": "{{ .Prompt.Eye.Scheduler }}",
+      "denoise": {{ .Prompt.Eye.Denoise }},
+
+      "feather": {{ .Prompt.Eye.Feather }},
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+
+      "noise_mask_feather": {{ .Prompt.Eye.NoiseMaskFeather }}
+    }
+  },
+  {{- end }}
+
+  {{- /* ================= UPPER BODY DETAILER ================= */ -}}
+  {{- if not .Prompt.UpperBody.Disabled }}
+  "upper_body_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.UpperBody.Positive }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  "upper_body_neg": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.UpperBody.Negative }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  "upper_body_detector": {
+    "class_type": "UltralyticsDetectorProvider",
+    "inputs": {
+      "model_name": "{{ .Prompt.UpperBody.Detector }}"
+    }
+  },
+
+  "upper_body_segs": {
+    "class_type": "BboxDetectorSEGS",
+    "inputs": {
+      "bbox_detector": ["upper_body_detector", 0],
+      "image": ["{{ if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "threshold": {{ .Prompt.UpperBody.BBoxThreshold }},
+      "dilation": {{ .Prompt.UpperBody.BBoxDialation }},
+      "crop_factor": {{ .Prompt.UpperBody.BBoxCropFactor }},
+      "drop_size": {{ if .Prompt.UpperBody.DropSize }}{{ .Prompt.UpperBody.DropSize }}{{ else }}50{{ end }},
+      "labels": "all"
+    }
+  },
+
+  {{- if .Prompt.UpperBody.MaxDetections }}
+  "upper_body_filter": {
+    "class_type": "ImpactSEGSOrderedFilter",
+    "inputs": {
+      "segs": ["upper_body_segs", 0],
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": {{ .Prompt.UpperBody.MaxDetections }}
+    }
+  },
+  {{- end }}
+
+  "upper_body_detail": {
+    "class_type": "DetailerForEach",
+    "inputs": {
+      "image": ["{{ if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "segs": ["{{ if .Prompt.UpperBody.MaxDetections }}upper_body_filter{{ else }}upper_body_segs{{ end }}", 0],
+      "model": ["{{ $prev }}", 0],
+      "clip": ["clip_skip", 0],
+      "vae": ["ckpt", 2],
+      "positive": ["upper_body_pos", 0],
+      "negative": ["upper_body_neg", 0],
+
+      "guide_size": {{ .Prompt.UpperBody.GuideSize }},
+      "guide_size_for": true,
+      "max_size": {{ .Prompt.UpperBody.MaxSize }},
+
+      "seed": {{ RandomSeed }},
+      "steps": {{ .Prompt.UpperBody.Steps }},
+      "cfg": {{ .Prompt.UpperBody.CFG }},
+      "sampler_name": "{{ .Prompt.UpperBody.SamplerName }}",
+      "scheduler": "{{ .Prompt.UpperBody.Scheduler }}",
+      "denoise": {{ .Prompt.UpperBody.Denoise }},
+
+      "feather": {{ .Prompt.UpperBody.Feather }},
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+
+      "noise_mask_feather": {{ .Prompt.UpperBody.NoiseMaskFeather }}
+    }
+  },
+  {{- end }}
+
+  {{- /* ================= LOWER BODY DETAILER ================= */ -}}
+  {{- if not .Prompt.LowerBody.Disabled }}
+  "lower_body_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.LowerBody.Positive }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  "lower_body_neg": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.LowerBody.Negative }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  "lower_body_detector": {
+    "class_type": "UltralyticsDetectorProvider",
+    "inputs": {
+      "model_name": "{{ .Prompt.LowerBody.Detector }}"
+    }
+  },
+
+  "lower_body_segs": {
+    "class_type": "BboxDetectorSEGS",
+    "inputs": {
+      "bbox_detector": ["lower_body_detector", 0],
+      "image": ["{{ if not .Prompt.UpperBody.Disabled }}upper_body_detail{{ else if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "threshold": {{ .Prompt.LowerBody.BBoxThreshold }},
+      "dilation": {{ .Prompt.LowerBody.BBoxDialation }},
+      "crop_factor": {{ .Prompt.LowerBody.BBoxCropFactor }},
+      "drop_size": {{ if .Prompt.LowerBody.DropSize }}{{ .Prompt.LowerBody.DropSize }}{{ else }}50{{ end }},
+      "labels": "all"
+    }
+  },
+
+  {{- if .Prompt.LowerBody.MaxDetections }}
+  "lower_body_filter": {
+    "class_type": "ImpactSEGSOrderedFilter",
+    "inputs": {
+      "segs": ["lower_body_segs", 0],
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": {{ .Prompt.LowerBody.MaxDetections }}
+    }
+  },
+  {{- end }}
+
+  "lower_body_detail": {
+    "class_type": "DetailerForEach",
+    "inputs": {
+      "image": ["{{ if not .Prompt.UpperBody.Disabled }}upper_body_detail{{ else if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "segs": ["{{ if .Prompt.LowerBody.MaxDetections }}lower_body_filter{{ else }}lower_body_segs{{ end }}", 0],
+      "model": ["{{ $prev }}", 0],
+      "clip": ["clip_skip", 0],
+      "vae": ["ckpt", 2],
+      "positive": ["lower_body_pos", 0],
+      "negative": ["lower_body_neg", 0],
+
+      "guide_size": {{ .Prompt.LowerBody.GuideSize }},
+      "guide_size_for": true,
+      "max_size": {{ .Prompt.LowerBody.MaxSize }},
+
+      "seed": {{ RandomSeed }},
+      "steps": {{ .Prompt.LowerBody.Steps }},
+      "cfg": {{ .Prompt.LowerBody.CFG }},
+      "sampler_name": "{{ .Prompt.LowerBody.SamplerName }}",
+      "scheduler": "{{ .Prompt.LowerBody.Scheduler }}",
+      "denoise": {{ .Prompt.LowerBody.Denoise }},
+
+      "feather": {{ .Prompt.LowerBody.Feather }},
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+
+      "noise_mask_feather": {{ .Prompt.LowerBody.NoiseMaskFeather }}
+    }
+  },
+  {{- end }}
+
+  {{- /* ================= HAND DETAILER ================= */ -}}
+  {{- if not .Prompt.Hand.Disabled }}
+  "hand_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Hand.Positive }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  "hand_neg": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Hand.Negative }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  "hand_detector": {
+    "class_type": "UltralyticsDetectorProvider",
+    "inputs": {
+      "model_name": "{{ .Prompt.Hand.Detector }}"
+    }
+  },
+
+  "hand_segs": {
+    "class_type": "BboxDetectorSEGS",
+    "inputs": {
+      "bbox_detector": ["hand_detector", 0],
+      "image": ["{{ if not .Prompt.LowerBody.Disabled }}lower_body_detail{{ else if not .Prompt.UpperBody.Disabled }}upper_body_detail{{ else if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "threshold": {{ .Prompt.Hand.BBoxThreshold }},
+      "dilation": {{ .Prompt.Hand.BBoxDialation }},
+      "crop_factor": {{ .Prompt.Hand.BBoxCropFactor }},
+      "drop_size": {{ if .Prompt.Hand.DropSize }}{{ .Prompt.Hand.DropSize }}{{ else }}50{{ end }},
+      "labels": "all"
+    }
+  },
+
+  {{- if .Prompt.Hand.MaxDetections }}
+  "hand_filter": {
+    "class_type": "ImpactSEGSOrderedFilter",
+    "inputs": {
+      "segs": ["hand_segs", 0],
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": {{ .Prompt.Hand.MaxDetections }}
+    }
+  },
+  {{- end }}
+
+  "hand_detail": {
+    "class_type": "DetailerForEach",
+    "inputs": {
+      "image": ["{{ if not .Prompt.LowerBody.Disabled }}lower_body_detail{{ else if not .Prompt.UpperBody.Disabled }}upper_body_detail{{ else if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "segs": ["{{ if .Prompt.Hand.MaxDetections }}hand_filter{{ else }}hand_segs{{ end }}", 0],
+      "model": ["{{ $prev }}", 0],
+      "clip": ["clip_skip", 0],
+      "vae": ["ckpt", 2],
+      "positive": ["hand_pos", 0],
+      "negative": ["hand_neg", 0],
+
+      "guide_size": {{ .Prompt.Hand.GuideSize }},
+      "guide_size_for": true,
+      "max_size": {{ .Prompt.Hand.MaxSize }},
+
+      "seed": {{ RandomSeed }},
+      "steps": {{ .Prompt.Hand.Steps }},
+      "cfg": {{ .Prompt.Hand.CFG }},
+      "sampler_name": "{{ .Prompt.Hand.SamplerName }}",
+      "scheduler": "{{ .Prompt.Hand.Scheduler }}",
+      "denoise": {{ .Prompt.Hand.Denoise }},
+
+      "feather": {{ .Prompt.Hand.Feather }},
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+
+      "noise_mask_feather": {{ .Prompt.Hand.NoiseMaskFeather }}
+    }
+  },
+  {{- end }}
+
+  {{- /* ================= DEBUG ================= */ -}}
+  {{- if .Debug }}
+  "debug_base": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_1_base",
+      "images": ["decode", 0]
+    }
+  },
+  {{- if not .Prompt.Upscale.Disabled }}
+  "debug_upscale": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_2_upscale",
+      "images": ["upscale", 0]
+    }
+  },
+  {{- end }}
+  {{- if not .Prompt.Face.Disabled }}
+  "debug_face": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_3_face",
+      "images": ["face_detail", 0]
+    }
+  },
+  {{- end }}
+  {{- if not .Prompt.Eye.Disabled }}
+  "debug_eye": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_4_eye",
+      "images": ["eye_detail", 0]
+    }
+  },
+  {{- end }}
+  {{- if not .Prompt.UpperBody.Disabled }}
+  "debug_upper_body": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_5_upper_body",
+      "images": ["upper_body_detail", 0]
+    }
+  },
+  {{- end }}
+  {{- if not .Prompt.LowerBody.Disabled }}
+  "debug_lower_body": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_6_lower_body",
+      "images": ["lower_body_detail", 0]
+    }
+  },
+  {{- end }}
+  {{- if not .Prompt.Hand.Disabled }}
+  "debug_hand": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_7_hand",
+      "images": ["hand_detail", 0]
+    }
+  },
+  {{- end }}
+  {{- end }}
+
+  {{- /* ================= SAVE ================= */ -}}
+  "save": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/{{ .Workflow }}/{{ .Name }}",
+      "images": ["{{ if not .Prompt.Hand.Disabled }}hand_detail{{ else if not .Prompt.LowerBody.Disabled }}lower_body_detail{{ else if not .Prompt.UpperBody.Disabled }}upper_body_detail{{ else if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0]
+    }
+  }
+}

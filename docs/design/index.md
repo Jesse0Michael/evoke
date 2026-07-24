@@ -6,10 +6,7 @@ has_children: true
 
 # Design
 
-This section is the Evoke project brief — the reasoning, vocabulary, and long-range plan behind the format. It's the design source of truth. Where the [File Format](../file-format) and [CLI](../cli) sections document what exists today, this section documents the whole idea, including the parts not yet built.
-
-{: .note }
-> Much of what follows describes intended behavior and future milestones. The MVP implements the [parser](../file-format/syntax), the [nine-declaration schema](../file-format/declarations), and [per-file validation](../cli/validate). The resolver, the rendering targets, and the registry are designed here but not yet implemented.
+This section documents the reasoning, vocabulary, and architecture behind Evoke.
 
 ## Overview
 
@@ -17,47 +14,36 @@ Evoke is an experimental declarative file format, CLI, and registry for defining
 
 The core idea: **prompts should be treated as compiled output rather than primary source material.**
 
-Instead of maintaining one large image prompt, system prompt, or character card, you write small reusable `.evoke` files containing structured declarations — character identity, appearance, personality, backstory, apparel, environment, scenario, behavioral instructions, positive and negative prompt fragments, example dialogue, greetings.
+Instead of maintaining one large image prompt or character card, you write small reusable `.evoke` files containing structured declarations — character traits, appearance, personality, backstory, apparel, environment, scenario, and prompt fragments. You declare `TAGS` blocks for discovery.
 
-A tool selects any number of Evoke files, merges their declarations according to declaration-specific rules, produces a neutral resolved representation, and renders that representation into a target format. Possible targets include:
-
-- image-generation positive and negative prompts
-- LLM system prompts
-- complete LLM request payloads
-- character-card JSON (including Character Card V2 / V3)
-- application-specific configuration
-- human-readable resolved documents
-
-Evoke isn't trying to replace YAML, JSON, Character Cards, or workflow formats. Its value should come from **defined composition semantics, reusable components, validation, provenance, and target-specific compilation.**
+The CLI selects files by tag-based selectors, local paths, or registry references, merges their declarations according to declaration-specific rules (singular vs accumulating, defaults vs explicit, positive vs negative channels), and submits the resolved composition to a generation backend (currently ComfyUI for image generation).
 
 ## The pipeline
 
-The compiler is a staged pipeline. Each stage is one package under `internal/`:
+The format logic lives in `pkg/evoke/`:
 
 ```text
-parse (ast)  →  schema lookup  →  validate  →  resolve  →  render(target)
+parse  →  schema lookup  →  validate  →  merge  →  generate
 ```
 
-| Stage | Package | Status |
-|:------|:--------|:-------|
-| Parse `.evoke` into an AST | `internal/parser`, `internal/ast` | ✅ Implemented |
-| Look up declaration definitions | `internal/schema` | ✅ Implemented |
-| Per-file semantic validation | `internal/validate` | ✅ Implemented |
-| Resolve channels, conflicts, defaults | `internal/resolve` | Planned |
-| Render to a target | `internal/render` | Planned |
-| Registry reference resolution | `internal/registry` | Planned |
+| Stage | Package | Description |
+|:------|:--------|:------------|
+| Parse `.evoke` into a Document | `pkg/evoke/parse.go` | Lexer + parser for `.evoke` syntax |
+| Look up declaration definitions | `pkg/evoke/schema.go` | Built-in declaration registry, aliases |
+| Per-file semantic validation | `pkg/evoke/validate.go` | Unknown declarations, unsupported prefix checks |
+| Merge/resolve documents | `pkg/evoke/merge.go` | Channels, conflicts, defaults, accumulation, dedup → `Composition` |
+| Select by tag | `pkg/evoke/selector.go` | Facet/tag matching, random selection |
+| Generate output | `internal/generate/comfyui` | Convert composition to ComfyUI workflow |
 
 ## In this section
 
-- **[Principles](principles)** — the non-obvious invariants: typeless files, external composition, no early concatenation, no provenance in the MVP.
-- **[Resolution Model](resolution)** — the neutral resolved representation and the resolution algorithm.
-- **[Targets](targets)** — the rendering targets the resolver feeds: `prompt`, `system-prompt`, `agent-json`, `resolved-json`, `explain`.
-- **[CLI Vision](cli-vision)** — the full command surface, including `compile`, `explain`, and `fmt`.
-- **[Registry & Roadmap](registry)** — the future distribution system, out-of-scope areas, and the milestone plan.
+- **[Principles](principles)** — the non-obvious invariants: typeless files, external composition, no early concatenation.
+- **[Resolution Model](resolution)** — the merge algorithm: singular vs accumulating, default suppression, conflict handling.
+- **[Registry](registry)** — the hosted registry API for publishing and pulling `.evoke` artifacts.
 
 ## Framing
 
-> A declarative, composable source format and compiler for AI characters, scenes, prompts, and agent configurations.
+> A declarative, composable source format and CLI for AI characters, scenes, prompts, and generative assets.
 
 Or, more simply:
 
@@ -66,5 +52,3 @@ Or, more simply:
 The broader question it explores:
 
 > Can generative AI assets be managed like source code — modular, composable, versioned, inspectable, shareable, and compiled into target-specific outputs?
-
-The initial goal is not to prove a custom syntax beats YAML or JSON. It's to explore whether a domain-specific composition model is useful enough to justify a dedicated source format and toolchain.

@@ -24,7 +24,7 @@ A declaration name may carry a prefix that selects a **channel** or marks a valu
 | `?` | default | Used only when no explicit contribution exists for the same declaration and channel. |
 | `?!` | default negative | A default contribution into the negative channel. Reserved; deferred until a real use case appears. |
 
-Only declarations whose [definition](declarations) supports a given prefix may use it. Using an unsupported prefix is a [validation](../cli/validate) error.
+Only declarations whose [definition](declarations) supports a given prefix may use it. Using an unsupported prefix is a validation error.
 
 ## No prefix — positive contribution
 
