@@ -470,7 +470,7 @@ func parseAndIndex(rootPath string, df discoveredFile) indexedFile {
 
 	// Add filename (without extension) as an implicit tag.
 	baseName := strings.ToLower(strings.TrimSuffix(df.Name, ".evoke"))
-	if baseName != "" && !containsString(indexed.Tags, baseName) {
+	if baseName != "" && !containsTag(indexed.Tags, baseName) {
 		indexed.Tags = append(indexed.Tags, baseName)
 	}
 
@@ -557,13 +557,4 @@ func (idx *sqliteIndex) findByName(ctx context.Context, name string) (string, er
 		return "", fmt.Errorf("no indexed file named %q", name)
 	}
 	return path, nil
-}
-
-func containsString(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

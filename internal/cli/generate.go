@@ -420,26 +420,20 @@ func pullFromRegistry(ctx context.Context, registryURL, namespace, name, libPath
 }
 
 // resolveSelector resolves a tag/declaration selector through the index and cwd.
-// affinityTags, if non-empty, are used to prefer candidates that share tags with
-// previously resolved selectors.
 func resolveSelector(ctx context.Context, raw string, idx *sqliteIndex, roots []sourceRoot, affinityTags []string) (*evoke.Document, string, error) {
 	sel, err := evoke.ParseSelector(raw)
 	if err != nil {
 		return nil, "", err
 	}
 
-	// Collect candidates from cwd (in-memory) and the persistent index.
-	cwdCandidates, err := findInCwd(sel)
-	if err != nil {
-		return nil, "", fmt.Errorf("cwd lookup failed: %w", err)
-	}
-
-	indexCandidates, err := idx.find(ctx, roots, sel.Tags)
+	candidates, err := idx.find(ctx, roots, sel.Tags)
 	if err != nil {
 		return nil, "", fmt.Errorf("index lookup failed: %w", err)
 	}
 
-	candidates := deduplicateCandidates(append(cwdCandidates, indexCandidates...))
+	// Also check .evoke files in the immediate working directory.
+	candidates = append(candidates, findInCwd(sel)...)
+	candidates = deduplicateCandidates(candidates)
 
 	if len(candidates) == 0 {
 		// Refresh and retry once.
@@ -448,11 +442,10 @@ func resolveSelector(ctx context.Context, raw string, idx *sqliteIndex, roots []
 				fmt.Fprintf(os.Stderr, "warning: failed to refresh %s: %v\n", root.Path, refreshErr)
 			}
 		}
-		indexCandidates, err = idx.find(ctx, roots, sel.Tags)
+		candidates, err = idx.find(ctx, roots, sel.Tags)
 		if err != nil {
 			return nil, "", fmt.Errorf("index lookup failed after refresh: %w", err)
 		}
-		candidates = deduplicateCandidates(append(cwdCandidates, indexCandidates...))
 		if len(candidates) == 0 {
 			return nil, "", fmt.Errorf("no files match selector %q", raw)
 		}
@@ -489,17 +482,8 @@ func pickCandidate(candidates []indexCandidate, sel evoke.Selector, raw string, 
 
 	// Add filename (without extension) as an implicit tag, matching what the indexer does.
 	baseName := strings.ToLower(strings.TrimSuffix(chosen.Name, ".evoke"))
-	if baseName != "" {
-		hasTag := false
-		for _, t := range doc.Metadata.Tags {
-			if t == baseName {
-				hasTag = true
-				break
-			}
-		}
-		if !hasTag {
-			doc.Metadata.Tags = append(doc.Metadata.Tags, baseName)
-		}
+	if baseName != "" && !containsTag(doc.Metadata.Tags, baseName) {
+		doc.Metadata.Tags = append(doc.Metadata.Tags, baseName)
 	}
 
 	if !evoke.MatchSelector(doc, sel) {
@@ -538,23 +522,23 @@ func pickByAffinity(ctx context.Context, candidates []indexCandidate, affinityTa
 	return candidates[rand.IntN(len(candidates))]
 }
 
-// findInCwd walks the current working directory and returns candidates matching the selector.
-// This is done in-memory without persisting to the index DB.
-func findInCwd(sel evoke.Selector) ([]indexCandidate, error) {
+// findInCwd checks .evoke files in the immediate working directory against a selector.
+func findInCwd(sel evoke.Selector) []indexCandidate {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get working directory: %w", err)
+		return nil
 	}
-
-	homeDir, _ := home()
-	discovered, err := walkRoot(cwd, homeDir)
+	entries, err := os.ReadDir(cwd)
 	if err != nil {
-		return nil, err
+		return nil
 	}
-
 	var candidates []indexCandidate
-	for _, df := range discovered {
-		data, err := os.ReadFile(df.Path)
+	for _, e := range entries {
+		if e.IsDir() || !e.Type().IsRegular() || filepath.Ext(e.Name()) != ".evoke" {
+			continue
+		}
+		path := filepath.Join(cwd, e.Name())
+		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
@@ -562,31 +546,30 @@ func findInCwd(sel evoke.Selector) ([]indexCandidate, error) {
 		if err != nil {
 			continue
 		}
-		// Add filename (without extension) as an implicit tag for matching.
-		baseName := strings.ToLower(strings.TrimSuffix(df.Name, ".evoke"))
-		if baseName != "" {
-			hasTag := false
-			for _, t := range doc.Metadata.Tags {
-				if t == baseName {
-					hasTag = true
-					break
-				}
-			}
-			if !hasTag {
-				doc.Metadata.Tags = append(doc.Metadata.Tags, baseName)
-			}
+		baseName := strings.ToLower(strings.TrimSuffix(e.Name(), ".evoke"))
+		if baseName != "" && !containsTag(doc.Metadata.Tags, baseName) {
+			doc.Metadata.Tags = append(doc.Metadata.Tags, baseName)
 		}
 		if !evoke.MatchSelector(doc, sel) {
 			continue
 		}
 		candidates = append(candidates, indexCandidate{
-			Path:         df.Path,
-			RelativePath: df.RelativePath,
-			Name:         df.Name,
+			Path:         path,
+			RelativePath: e.Name(),
+			Name:         e.Name(),
 			RootPath:     cwd,
 		})
 	}
-	return candidates, nil
+	return candidates
+}
+
+func containsTag(tags []string, tag string) bool {
+	for _, t := range tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
 }
 
 // deduplicateCandidates removes duplicate candidates by file path.
