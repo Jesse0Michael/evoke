@@ -13,6 +13,8 @@ import (
 	"io"
 	"math/rand/v2"
 	"net/http"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -133,7 +135,7 @@ func (c *Client) Generate(ctx context.Context, doc *evoke.Composition) (*generat
 	evokeData := renderPromptData(doc)
 	applyDefaults(&evokeData)
 
-	payload, err := renderTemplate(evokeData, c.Verbose)
+	payload, err := renderTemplate(evokeData, doc.Name, doc.Sources, c.Verbose)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render template: %w", err)
 	}
@@ -452,7 +454,7 @@ func applyDefaults(data *promptData) {
 	}
 }
 
-func renderTemplate(data promptData, debug bool) ([]byte, error) {
+func renderTemplate(data promptData, compositionName string, sources []string, debug bool) ([]byte, error) {
 	raw, err := templates.ReadFile("templates/" + defaultTemplate + ".tmpl")
 	if err != nil {
 		return nil, fmt.Errorf("template %q not found: %w", defaultTemplate, err)
@@ -460,13 +462,22 @@ func renderTemplate(data promptData, debug bool) ([]byte, error) {
 
 	data = escapePromptData(data)
 
+	// Use the composition NAME as the output directory, falling back to "evoke".
+	dir := "evoke"
+	if compositionName != "" {
+		dir = toSnakeCase(compositionName)
+	}
+
+	// Build the filename prefix from source file basenames joined with underscores.
+	name := buildFilePrefix(sources)
+
 	td := templateData{
-		Workflow: defaultTemplate,
+		Workflow: dir,
 		Prompt:   data,
 		Time:     time.Now().Unix(),
 		Index:    0,
 		Debug:    debug,
-		Name:     "evoke",
+		Name:     name,
 	}
 
 	tmpl, err := template.New("workflow").Funcs(templateFuncs()).Parse(string(raw))
@@ -494,6 +505,30 @@ func stripExt(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+var nonAlphanumeric = regexp.MustCompile(`[^a-z0-9]+`)
+
+// toSnakeCase converts a string to lowercase with non-alphanumeric runs replaced by underscores.
+func toSnakeCase(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = nonAlphanumeric.ReplaceAllString(s, "_")
+	return strings.Trim(s, "_")
+}
+
+// buildFilePrefix constructs a filename prefix from source file basenames,
+// stripped of extensions, lowercased, and joined with underscores.
+func buildFilePrefix(sources []string) string {
+	if len(sources) == 0 {
+		return "evoke"
+	}
+	parts := make([]string, 0, len(sources))
+	for _, src := range sources {
+		base := filepath.Base(src)
+		base = stripExt(base)
+		parts = append(parts, toSnakeCase(base))
+	}
+	return strings.Join(parts, "_")
 }
 
 func jsonEscape(s string) string {

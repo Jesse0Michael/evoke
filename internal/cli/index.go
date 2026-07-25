@@ -2,17 +2,12 @@ package cli
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 )
 
-// IndexCmd rebuilds the local file index and prints stats.
-func IndexCmd(args []string, _ bool) int {
-	fs := flag.NewFlagSet("evoke index", flag.ContinueOnError)
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
+// IndexCmd refreshes the local file index and prints stats.
+func IndexCmd(args []string, verbose bool) int {
 
 	ctx := context.Background()
 
@@ -35,8 +30,8 @@ func IndexCmd(args []string, _ bool) int {
 	}
 	defer func() { _ = idx.Close() }()
 
-	if err := idx.rebuild(ctx, roots); err != nil {
-		fmt.Fprintf(os.Stderr, "evoke index: rebuild failed: %v\n", err)
+	if err := idx.pruneRoots(ctx, roots); err != nil {
+		fmt.Fprintf(os.Stderr, "evoke index: %v\n", err)
 		return 1
 	}
 
@@ -66,6 +61,17 @@ func IndexCmd(args []string, _ bool) int {
 	}
 	if totalErrors > 0 {
 		fmt.Printf("\ntotal: %d roots, %d files, %d errors\n", len(stats), total, totalErrors)
+		if verbose {
+			fmt.Println()
+			errs, err := idx.fileErrors(ctx)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "evoke index: %v\n", err)
+				return 1
+			}
+			for _, fe := range errs {
+				fmt.Printf("%s\n  %s\n", fe.Path, fe.ParseError)
+			}
+		}
 	} else {
 		fmt.Printf("\ntotal: %d roots, %d files\n", len(stats), total)
 	}

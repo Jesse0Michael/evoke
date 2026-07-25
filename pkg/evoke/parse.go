@@ -139,7 +139,12 @@ func (p *evokeParser) finish() {
 		return
 	}
 	if len(p.current.Values) == 0 {
-		p.errorf(p.current.Line, "declaration %q has no values", p.current.RawName)
+		def, ok := LookupDeclaration(p.current.Name)
+		if !ok || !def.Default {
+			p.errorf(p.current.Line, "declaration %q has no values", p.current.RawName)
+		} else {
+			p.doc.Declarations = append(p.doc.Declarations, p.current)
+		}
 	} else if p.isTags {
 		p.finishTags()
 	} else {

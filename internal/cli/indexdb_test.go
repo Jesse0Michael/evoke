@@ -209,28 +209,6 @@ NAME
 	require.Empty(t, candidates)
 }
 
-func TestRebuild(t *testing.T) {
-	idx := newTestIndex(t)
-	dir := t.TempDir()
-	t.Setenv("EVOKE_HOME", t.TempDir())
-
-	createEvokeFile(t, dir, "keep.evoke", `TAGS
-    keeper
-
-NAME
-    Kept
-`)
-
-	root := sourceRoot{Path: dir, Kind: sourceKindCurrent}
-	require.NoError(t, idx.ensureRoot(t.Context(), root))
-
-	require.NoError(t, idx.rebuild(t.Context(), []sourceRoot{root}))
-
-	candidates, err := idx.find(t.Context(), []sourceRoot{root}, []string{"keeper"})
-	require.NoError(t, err)
-	require.Len(t, candidates, 1)
-}
-
 func TestRootStats(t *testing.T) {
 	idx := newTestIndex(t)
 	dir := t.TempDir()

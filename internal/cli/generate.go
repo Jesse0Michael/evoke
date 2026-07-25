@@ -140,7 +140,12 @@ func Generate(args []string, verbose bool) int {
 
 		case inputLiteral:
 			doc := &evoke.Document{
-				Declarations: []*evoke.Declaration{{Name: "PROMPT", Values: []string{ci.Raw}}},
+				Declarations: []*evoke.Declaration{
+					{Name: "PROMPT", Values: []string{ci.Raw}},
+					{Name: "APPAREL"},
+					{Name: "ENVIRONMENT"},
+					{Name: "SCENARIO"},
+				},
 			}
 			fmt.Printf("%s\n  added as literal prompt\n", ci.Raw)
 			staticDocs = append(staticDocs, doc)

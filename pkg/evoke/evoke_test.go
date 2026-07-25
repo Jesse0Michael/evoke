@@ -50,9 +50,17 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
-			name:      "empty declaration block is invalid",
+			name:      "empty declaration block is invalid for non-default declarations",
 			src:       "NAME\n\nAPPEARANCE\n    violet skin\n",
 			wantError: true,
+		},
+		{
+			name: "empty declaration is valid for default-supporting declarations",
+			src:  "APPAREL\n\nAPPEARANCE\n    violet skin\n",
+			expected: []*evoke.Declaration{
+				{Name: "APPAREL", RawName: "APPAREL", Line: 1},
+				{Name: "APPEARANCE", RawName: "APPEARANCE", Line: 3, Values: []string{"violet skin"}},
+			},
 		},
 		{
 			name:     "empty document is valid",
@@ -195,6 +203,14 @@ func TestMerge(t *testing.T) {
 				{Declarations: []*evoke.Declaration{{Name: "APPAREL", Values: []string{"scrubs"}}}},
 			},
 			want: evoke.Composition{Apparel: evoke.Prompt{Positive: []string{"scrubs"}}},
+		},
+		{
+			name: "empty explicit suppresses default",
+			docs: []*evoke.Document{
+				{Declarations: []*evoke.Declaration{{Name: "APPAREL", Default: true, Values: []string{"casual"}}}},
+				{Declarations: []*evoke.Declaration{{Name: "APPAREL"}}},
+			},
+			want: evoke.Composition{},
 		},
 		{
 			name: "negative channel",

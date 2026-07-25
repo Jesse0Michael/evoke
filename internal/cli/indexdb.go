@@ -378,17 +378,35 @@ func (idx *sqliteIndex) removeRoot(ctx context.Context, rootPath string) error {
 	return nil
 }
 
-func (idx *sqliteIndex) rebuild(ctx context.Context, roots []sourceRoot) error {
-	// Drop all data.
-	for _, table := range []string{"tags", "declarations", "files", "source_roots"} {
-		if _, err := idx.db.ExecContext(ctx, "DELETE FROM "+table); err != nil {
-			return fmt.Errorf("failed to clear %s: %w", table, err)
-		}
+// pruneRoots removes indexed roots that are no longer in the active root set.
+func (idx *sqliteIndex) pruneRoots(ctx context.Context, roots []sourceRoot) error {
+	active := make(map[string]bool, len(roots))
+	for _, r := range roots {
+		active[r.Path] = true
 	}
 
-	// Re-index all roots.
-	for _, root := range roots {
-		if err := idx.ensureRoot(ctx, root); err != nil {
+	rows, err := idx.db.QueryContext(ctx, "SELECT path FROM source_roots")
+	if err != nil {
+		return fmt.Errorf("failed to query roots: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var stale []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return fmt.Errorf("failed to scan root: %w", err)
+		}
+		if !active[path] {
+			stale = append(stale, path)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to iterate roots: %w", err)
+	}
+
+	for _, path := range stale {
+		if err := idx.removeRoot(ctx, path); err != nil {
 			return err
 		}
 	}
@@ -419,6 +437,33 @@ func (idx *sqliteIndex) rootStats(ctx context.Context) ([]indexRootStat, error) 
 		stats = append(stats, s)
 	}
 	return stats, rows.Err()
+}
+
+// indexFileError holds a file path and its parse error.
+type indexFileError struct {
+	Path       string
+	ParseError string
+}
+
+// fileErrors returns all indexed files that have parse errors.
+func (idx *sqliteIndex) fileErrors(ctx context.Context) ([]indexFileError, error) {
+	rows, err := idx.db.QueryContext(ctx,
+		"SELECT path, parse_error FROM files WHERE parse_error IS NOT NULL ORDER BY path",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query file errors: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var errs []indexFileError
+	for rows.Next() {
+		var fe indexFileError
+		if err := rows.Scan(&fe.Path, &fe.ParseError); err != nil {
+			return nil, fmt.Errorf("failed to scan file error: %w", err)
+		}
+		errs = append(errs, fe)
+	}
+	return errs, rows.Err()
 }
 
 // scanRoot walks the root directory and indexes all discovered .evoke files.
