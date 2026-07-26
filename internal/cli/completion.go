@@ -14,7 +14,7 @@ func Complete(args []string) int {
 	// Shell scripts pass: evoke __complete generate <words...> <current>
 	if len(args) < 2 {
 		// Complete subcommands.
-		for _, cmd := range []string{"login", "generate", "queue", "clear", "history", "view", "settings", "index", "completion"} {
+		for _, cmd := range []string{"login", "generate", "chat", "queue", "clear", "history", "view", "settings", "index", "completion"} {
 			fmt.Println(cmd)
 		}
 		return 0
@@ -24,16 +24,21 @@ func Complete(args []string) int {
 	// current is the word being completed (may be empty).
 	current := args[len(args)-1]
 
+	// generate and chat take the same inputs (selectors, paths, registry refs);
+	// they differ only in flags.
 	switch subcmd {
 	case "generate":
-		return completeGenerate(current)
+		return completeInputs(current, []string{"-b", "-v", "--verbose"})
+	case "chat":
+		return completeInputs(current, []string{"--explain", "--no-stream", "-v", "--verbose"})
 	default:
 		return 0
 	}
 }
 
-// completeGenerate outputs completion candidates for `evoke generate`.
-func completeGenerate(current string) int {
+// completeInputs outputs completion candidates for commands that compose .evoke
+// inputs: registry references, local paths, the given flags, or index tags.
+func completeInputs(current string, flags []string) int {
 	// Registry references.
 	if strings.HasPrefix(current, "@") {
 		return completeRegistryRefs(current)
@@ -46,7 +51,7 @@ func completeGenerate(current string) int {
 
 	// Flags.
 	if strings.HasPrefix(current, "-") {
-		for _, f := range []string{"-b", "-v", "--verbose"} {
+		for _, f := range flags {
 			if strings.HasPrefix(f, current) {
 				fmt.Println(f)
 			}
@@ -54,7 +59,7 @@ func completeGenerate(current string) int {
 		return 0
 	}
 
-	// Default: complete tags from the index.
+	// Default: complete tags and file names from the index.
 	return completeTags(current)
 }
 

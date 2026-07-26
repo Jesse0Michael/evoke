@@ -17,6 +17,7 @@ $ go install ./cmd/evoke
 | Command | Description |
 |:--------|:------------|
 | [`evoke generate`](generate) | Compose files by selector, path, or registry reference and submit to a generation pipeline. |
+| [`evoke chat`](chat) | Compose files into a character and start an interactive chat with a local LLM backend. |
 | [`evoke login`](login) | Sign in to the registry via Google OAuth. |
 | [`evoke settings`](settings) | Manage user settings (source paths, registry URL). |
 | [`evoke index`](index) | Refresh the local SQLite file index. |

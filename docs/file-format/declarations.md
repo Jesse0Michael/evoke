@@ -15,7 +15,7 @@ nav_order: 2
 
 ---
 
-Every declaration has a registered definition that fixes its **merge mode**, whether it supports the **`!` negative channel**, whether it supports the **`?` default**, and its canonical **render order**. The twelve declarations below are the implemented set.
+Every declaration has a registered definition that fixes its **merge mode**, whether it supports the **`!` negative channel**, whether it supports the **`?` default**, and its canonical **render order**. The thirteen declarations below are the implemented set.
 
 ## The built-in declarations
 
@@ -33,6 +33,7 @@ Every declaration has a registered definition that fixes its **merge mode**, whe
 | `IMAGE`       | singular      | ✓ | ✓ | optional | 100 |
 | `LORA`        | singular      | — | ✓ | required | 110 |
 | `DETAILER`    | singular      | ✓ | ✓ | required | 120 |
+| `CHAT`        | singular      | — | ✓ | — | 130 |
 
 - **Merge** — how repeated contributions combine. See [Merge Modes](merge-modes).
 - **`!` negative** — whether values may be routed to the exclusion channel. See [Prefixes & Channels](prefixes).
@@ -217,6 +218,26 @@ Inpainting detailer configuration. **Singular** (per argument); supports the neg
 
 **Settings:** `detector`, `guide_size`, `max_size`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `feather`, `bbox_threshold`, `bbox_dilation`, `bbox_crop_factor`, `noise_mask_feather`, `drop_size`, `max_detection`.
 
+### CHAT
+{: .no_toc }
+
+Interactive-chat configuration consumed by [`evoke chat`](../cli/chat). **Singular** with field-level default overlay (like `IMAGE`/`LORA`): a general file may supply `?CHAT` defaults that a more specific file overrides field by field. Values are a mix of `key = value` settings and free-text lines; the free text becomes extra chat-specific system instructions. It does not affect image generation.
+
+```text
+?CHAT
+    backend = llama.cpp
+    model = MN-Violet-Lotus-12B.Q4_K_M.gguf
+    context_window = 8192
+    gpu_layers = 99
+    temperature = 0.85
+    max_output_tokens = 512
+    Stay in character at all times.
+```
+
+**Settings:** `backend` (`llama.cpp`), `model`, `context_window`, `gpu_layers`, `max_output_tokens`, `safety_margin`, `min_recent_turns`, `temperature`, `top_p`, `repeat_penalty`, `seed`, `stop`.
+
+`model` is a GGUF **file name** — like a `checkpoint` in `IMAGE` — resolved against the model directories in trusted local settings, so a `.evoke` file names the model, not a machine path, and stays portable. Evoke launches and manages the `llama-server` backend for the session. See [`evoke chat`](../cli/chat) for how it resolves and how the backend is managed.
+
 ## What isn't here
 
-The twelve declarations above are the complete set. Using any other name is an *unknown declaration* validation error. Namespaced/dotted extension names (`FOO.BAR`) are also rejected.
+The thirteen declarations above are the complete set. Using any other name is an *unknown declaration* validation error. Namespaced/dotted extension names (`FOO.BAR`) are also rejected.

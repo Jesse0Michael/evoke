@@ -42,6 +42,8 @@ func run(args []string) int {
 		return cli.Login(rest, verbose)
 	case "generate":
 		return cli.Generate(rest, verbose)
+	case "chat":
+		return cli.Chat(rest, verbose)
 	case "settings":
 		return cli.SettingsCmd(rest, verbose)
 	case "index":
@@ -74,6 +76,7 @@ func usage() {
 Usage:
     evoke login       Sign in to the registry
     evoke generate    Compose evoke files together by tag or reference and send it through a configured pipeline
+    evoke chat        Compose evoke files into a character and start an interactive chat with a local LLM backend
     evoke queue       View the current generation queue
     evoke clear       Clear the generation queue
     evoke history     View recent generation history and outputs

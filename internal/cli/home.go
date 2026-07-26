@@ -43,8 +43,28 @@ func library() (string, error) {
 
 // Settings holds user-editable persistent configuration.
 type Settings struct {
-	Registry string   `json:"registry,omitempty"`
-	Paths    []string `json:"paths,omitempty"`
+	Registry string        `json:"registry,omitempty"`
+	Paths    []string      `json:"paths,omitempty"`
+	Chat     *ChatSettings `json:"chat,omitzero"`
+}
+
+// ChatSettings holds trusted local configuration for the chat command. It is
+// machine-specific and must never be embedded in portable .evoke files: a
+// portable declaration names a model file (like an IMAGE checkpoint), and this
+// says where such files live and which backend executable to launch.
+type ChatSettings struct {
+	// Executable is the llama-server binary (name on PATH or absolute path).
+	Executable string `json:"executable,omitempty"`
+	// Host and Port are the loopback endpoint the managed backend binds to.
+	Host string `json:"host,omitempty"`
+	Port int    `json:"port,omitempty"`
+	// ModelPaths are directories searched (recursively) for the GGUF file named
+	// in a CHAT declaration.
+	ModelPaths []string `json:"model_paths,omitempty"`
+	// Color forces ANSI styling of interactive chat output on (true) or off
+	// (false). When unset, styling is auto-detected from the terminal (honoring
+	// NO_COLOR).
+	Color *bool `json:"color,omitempty"`
 }
 
 // settings reads settings.json from the Evoke home directory.

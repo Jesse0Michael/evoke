@@ -32,6 +32,7 @@ var builtins = []Definition{
 	{Name: "IMAGE", Merge: MergeSingular, Negative: true, Default: true, AcceptsArgument: true, Structured: true, MixedContent: true, Order: 100},
 	{Name: "LORA", Merge: MergeSingular, Default: true, AcceptsArgument: true, RequiresArgument: true, Structured: true, Order: 110},
 	{Name: "DETAILER", Merge: MergeSingular, Negative: true, Default: true, AcceptsArgument: true, RequiresArgument: true, Structured: true, MixedContent: true, Order: 120},
+	{Name: "CHAT", Merge: MergeSingular, Default: true, Structured: true, MixedContent: true, Order: 130},
 }
 
 var byName = func() map[string]Definition {

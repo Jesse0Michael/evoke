@@ -67,92 +67,16 @@ func Generate(args []string, verbose bool) int {
 		return 1
 	}
 
-	// Classify inputs.
-	classified := make([]classifiedInput, 0, len(inputArgs))
-	for _, raw := range inputArgs {
-		classified = append(classified, classifyInput(raw))
+	// Resolve inputs (local paths, registry refs, literals, selectors) through
+	// the shared resolution pipeline.
+	res, err := prepareResolution(ctx, inputArgs, settings, manifest)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
+		return 1
 	}
+	defer func() { _ = res.Close() }()
 
-	// Check if we need the index (only for selector inputs).
-	needsIndex := false
-	for _, ci := range classified {
-		if ci.Kind == inputSelector {
-			needsIndex = true
-			break
-		}
-	}
-
-	var idx *sqliteIndex
-	var roots []sourceRoot
-	if needsIndex {
-		roots, err = persistentRoots(settings)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
-			return 1
-		}
-
-		idx, err = openDefaultIndex()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
-			return 1
-		}
-		defer func() { _ = idx.Close() }()
-
-		// Ensure all roots are indexed.
-		for _, root := range roots {
-			if err := idx.ensureRoot(ctx, root); err != nil {
-				fmt.Fprintf(os.Stderr, "evoke generate: failed to index %s: %v\n", root.Path, err)
-				return 1
-			}
-		}
-	}
-
-	// Resolve static inputs (local paths, registry refs, literals) once.
-	var staticDocs []*evoke.Document
-	var selectorInputs []classifiedInput
-	manifestChanged := false
-
-	for _, ci := range classified {
-		switch ci.Kind {
-		case inputLocalPath:
-			doc, path, err := resolveLocalPathWithIndex(ctx, ci.Raw, idx)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
-				return 1
-			}
-			fmt.Printf("%s\n  selected: %s (local path)\n", ci.Raw, path)
-			staticDocs = append(staticDocs, doc)
-
-		case inputRegistryRef:
-			doc, changed, err := resolveRegistryRef(ctx, ci, manifest, settings)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
-				return 1
-			}
-			if changed {
-				manifestChanged = true
-			}
-			fmt.Printf("%s\n  selected: %s (registry)\n", ci.Raw, libraryPath("~/.evoke", ci.Namespace, ci.Name))
-			staticDocs = append(staticDocs, doc)
-
-		case inputSelector:
-			selectorInputs = append(selectorInputs, ci)
-
-		case inputLiteral:
-			doc := &evoke.Document{
-				Declarations: []*evoke.Declaration{
-					{Name: "PROMPT", Values: []string{ci.Raw}},
-					{Name: "APPAREL"},
-					{Name: "ENVIRONMENT"},
-					{Name: "SCENARIO"},
-				},
-			}
-			fmt.Printf("%s\n  added as literal prompt\n", ci.Raw)
-			staticDocs = append(staticDocs, doc)
-		}
-	}
-
-	if manifestChanged {
+	if res.manifestChanged {
 		if err := saveManifest(manifest); err != nil {
 			fmt.Fprintf(os.Stderr, "evoke generate: failed to save manifest: %v\n", err)
 			return 1
@@ -176,27 +100,11 @@ func Generate(args []string, verbose bool) int {
 			fmt.Printf("\n--- batch %d/%d ---\n", i+1, *batch)
 		}
 
-		// Resolve selectors in CLI order, accumulating affinity tags from each pick.
-		docs := make([]*evoke.Document, len(staticDocs), len(staticDocs)+len(selectorInputs))
-		copy(docs, staticDocs)
-
-		var affinityTags []string
-		for _, ci := range selectorInputs {
-			doc, path, err := resolveSelector(ctx, ci.Raw, idx, roots, affinityTags)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
-				return 1
-			}
-			fmt.Printf("%s\n  selected: %s (selector)\n", ci.Raw, path)
-			docs = append(docs, doc)
-
-			// Accumulate tags from the resolved file for affinity.
-			if idx != nil {
-				if tags, err := idx.tagsForFile(ctx, path); err == nil {
-					affinityTags = append(affinityTags, tags...)
-				}
-			}
-			affinityTags = append(affinityTags, doc.Metadata.Tags...)
+		// Resolve selectors in CLI order (re-rolled per batch for variety).
+		docs, err := res.documents(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
+			return 1
 		}
 
 		fmt.Println()

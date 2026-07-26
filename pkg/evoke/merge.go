@@ -36,6 +36,14 @@ type DetailerConfig struct {
 	Disabled bool
 }
 
+// ChatConfig holds the resolved configuration for the CHAT declaration:
+// the backend/model/sampling/history settings plus any free-text lines,
+// which are treated as extra chat-specific system instructions.
+type ChatConfig struct {
+	Settings     map[string]string
+	Instructions []string
+}
+
 type Composition struct {
 	Name        string
 	Character   []string
@@ -49,8 +57,9 @@ type Composition struct {
 	Images      []ImageStage
 	Loras       []LoraDefinition
 	Detailers   []DetailerConfig
-	Sources     []string // Source file paths of merged documents
-	Inputs      []string // Original CLI input arguments
+	Chat        *ChatConfig // Resolved CHAT configuration, nil when no CHAT declaration contributes
+	Sources     []string    // Source file paths of merged documents
+	Inputs      []string    // Original CLI input arguments
 }
 
 type channelKey struct {
@@ -114,8 +123,20 @@ func Merge(docs []*Document) *Composition {
 	comp.Images = resolveImageStages(contributions)
 	comp.Loras = resolveLoraDefinitions(contributions)
 	comp.Detailers = resolveDetailerConfigs(contributions)
+	comp.Chat = resolveChatConfig(contributions)
 
 	return comp
+}
+
+// resolveChatConfig resolves the singular CHAT declaration into a ChatConfig.
+// It returns nil when no CHAT declaration (explicit or default) contributes.
+func resolveChatConfig(contributions map[channelKey][]contribution) *ChatConfig {
+	contribs := contributions[channelKey{name: "CHAT"}]
+	if len(contribs) == 0 {
+		return nil
+	}
+	settings, _, text := resolveStructuredChannel(contribs)
+	return &ChatConfig{Settings: settings, Instructions: text}
 }
 
 // resolveImageStages resolves all IMAGE declarations into ImageStage values.

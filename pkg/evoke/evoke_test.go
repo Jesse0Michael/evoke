@@ -804,3 +804,111 @@ func TestComposition_Lookups(t *testing.T) {
 	require.NotNil(t, comp.DetailerByArgument("hand"))
 	require.Nil(t, comp.DetailerByArgument("eye"))
 }
+
+func TestMerge_ChatConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		docs []*evoke.Document
+		want *evoke.ChatConfig
+	}{
+		{
+			name: "no CHAT declaration",
+			docs: []*evoke.Document{{Declarations: []*evoke.Declaration{
+				{Name: "NAME", Values: []string{"Yasmin"}},
+			}}},
+			want: nil,
+		},
+		{
+			name: "explicit CHAT with settings and instructions",
+			docs: []*evoke.Document{{Declarations: []*evoke.Declaration{
+				{Name: "CHAT", Values: []string{
+					"connection = localai",
+					"model = roleplay-12b",
+					"temperature = 0.85",
+					"Stay in character at all times.",
+				}},
+			}}},
+			want: &evoke.ChatConfig{
+				Settings:     map[string]string{"connection": "localai", "model": "roleplay-12b", "temperature": "0.85"},
+				Instructions: []string{"Stay in character at all times."},
+			},
+		},
+		{
+			name: "default CHAT with explicit field overlay",
+			docs: []*evoke.Document{
+				{Declarations: []*evoke.Declaration{
+					{Name: "CHAT", Default: true, Values: []string{
+						"connection = localai",
+						"model = base-7b",
+						"temperature = 0.7",
+					}},
+				}},
+				{Declarations: []*evoke.Declaration{
+					{Name: "CHAT", Values: []string{
+						"model = roleplay-12b",
+						"temperature = 0.9",
+					}},
+				}},
+			},
+			want: &evoke.ChatConfig{
+				Settings: map[string]string{"connection": "localai", "model": "roleplay-12b", "temperature": "0.9"},
+			},
+		},
+		{
+			name: "explicit CHAT suppresses default entirely for text",
+			docs: []*evoke.Document{
+				{Declarations: []*evoke.Declaration{
+					{Name: "CHAT", Default: true, Values: []string{"Default instruction."}},
+				}},
+				{Declarations: []*evoke.Declaration{
+					{Name: "CHAT", Values: []string{"Explicit instruction."}},
+				}},
+			},
+			want: &evoke.ChatConfig{
+				Settings:     map[string]string{},
+				Instructions: []string{"Explicit instruction."},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := evoke.Merge(tt.docs)
+
+			require.Equal(t, tt.want, got.Chat)
+		})
+	}
+}
+
+func TestValidate_Chat(t *testing.T) {
+	tests := []struct {
+		name      string
+		src       string
+		wantError bool
+	}{
+		{
+			name:      "valid CHAT with settings and default prefix",
+			src:       "?CHAT\n    connection = localai\n    model = roleplay-12b\n",
+			wantError: false,
+		},
+		{
+			name:      "CHAT does not accept an argument",
+			src:       "CHAT beach\n    connection = localai\n",
+			wantError: true,
+		},
+		{
+			name:      "CHAT does not support the negative prefix",
+			src:       "!CHAT\n    connection = localai\n",
+			wantError: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc, err := evoke.Parse([]byte(tt.src))
+			require.NoError(t, err)
+
+			err = evoke.Validate(doc)
+
+			require.Equal(t, tt.wantError, err != nil)
+		})
+	}
+}

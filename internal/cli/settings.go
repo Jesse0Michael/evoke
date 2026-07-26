@@ -73,6 +73,22 @@ func settingsSet(args []string) int {
 			return 0
 		}
 		s.Paths = append(s.Paths, abs)
+	case "chat.color":
+		switch value {
+		case "on", "true":
+			b := true
+			ensureChat(s).Color = &b
+		case "off", "false":
+			b := false
+			ensureChat(s).Color = &b
+		case "auto":
+			if s.Chat != nil {
+				s.Chat.Color = nil
+			}
+		default:
+			fmt.Fprintln(os.Stderr, "evoke settings set: chat.color must be on, off, or auto")
+			return 2
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "evoke settings set: unknown key %q\n", key)
 		settingsUsage()
@@ -126,10 +142,19 @@ func settingsRemove(args []string) int {
 	return 0
 }
 
+// ensureChat returns the chat settings, allocating them if unset.
+func ensureChat(s *Settings) *ChatSettings {
+	if s.Chat == nil {
+		s.Chat = &ChatSettings{}
+	}
+	return s.Chat
+}
+
 func settingsUsage() {
 	fmt.Fprint(os.Stderr, `Usage:
     evoke settings                        Show current settings
     evoke settings set path <dir>         Add a source path
     evoke settings remove path <dir>      Remove a source path
+    evoke settings set chat.color <on|off|auto>   Style chat output
 `)
 }

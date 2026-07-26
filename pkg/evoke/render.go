@@ -2,6 +2,8 @@ package evoke
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -90,6 +92,17 @@ func Render(c *Composition) string {
 		if len(d.Text.Negative) > 0 {
 			fmt.Fprintf(&b, "!DETAILER %s\n", d.Argument)
 			fmt.Fprintf(&b, "    %s\n", strings.Join(d.Text.Negative, ", "))
+		}
+		b.WriteString("\n")
+	}
+
+	if c.Chat != nil {
+		b.WriteString("CHAT\n")
+		for _, k := range slices.Sorted(maps.Keys(c.Chat.Settings)) {
+			fmt.Fprintf(&b, "    %s = %s\n", k, c.Chat.Settings[k])
+		}
+		for _, line := range c.Chat.Instructions {
+			fmt.Fprintf(&b, "    %s\n", line)
 		}
 		b.WriteString("\n")
 	}
