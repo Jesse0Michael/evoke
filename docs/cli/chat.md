@@ -6,13 +6,13 @@ nav_order: 2
 
 # evoke chat
 
-Compose `.evoke` files into a character and start an interactive conversation with a local LLM backend. Chat is a second output target built from the same resolved Evoke data as [`generate`](generate): the parser, selectors, and merge semantics are identical — only the compilation target differs.
+Compose `.evoke` files into a character and start an interactive conversation with a local LLM backend. Chat is a second output target built from the same resolved Evoke data as [`image`](image): the parser, selectors, and merge semantics are identical — only the compilation target differs.
 
 ```console
 $ evoke chat <input>...
 ```
 
-Inputs are classified and resolved exactly as in [`evoke generate`](generate#input-types) (selectors, local paths, `@namespace/name` registry references, literal prompts). The merged composition's persistent character declarations become the system prompt; the `CHAT` declaration selects the model, sampling, and conversation policy.
+Inputs are classified and resolved exactly as in [`evoke image`](image#input-types) (selectors, local paths, `@namespace/name` registry references, literal prompts). The merged composition's persistent character declarations become the system prompt; the `CHAT` declaration selects the model, sampling, and conversation policy.
 
 The shipped [`examples/chat.evoke`](https://github.com/jesse0michael/evoke/blob/main/examples/chat.evoke) is a self-contained basic assistant — start there:
 
@@ -28,7 +28,7 @@ $ evoke chat roleplay yasmin beach
 
 - `roleplay` carries the `CHAT` declaration (model, context size, sampling).
 - `yasmin` supplies identity, personality, appearance, and backstory.
-- `beach` supplies the starting scenario and environment.
+- `beach` supplies the starting `SCENARIO` (its `ENVIRONMENT`/`APPAREL` are for image generation and are ignored by chat).
 
 ## Backend: managed llama.cpp
 
@@ -42,11 +42,11 @@ Only one backend driver is supported: `llama.cpp`. `llama-server` must be instal
 
 The compiler renders resolved declarations into a deterministic prompt, and separates permanent facts from the opening scene:
 
-- **System prompt (persistent):** `NAME`, `CHARACTER`, `PERSONALITY` (positive traits, plus a "traits to avoid" line from the `!` channel), `BACKSTORY`, `APPEARANCE`, and any free-text lines on the `CHAT` block.
-- **Starting situation (evolving):** `APPAREL`, `ENVIRONMENT`, and `SCENARIO`, labeled so the model can let the scene change during the conversation.
-- **Excluded:** image-only content (`PROMPT`, `IMAGE`, `LORA`, `DETAILER` and sampler settings) never enters the chat prompt.
+- **System prompt (persistent):** `NAME`, `CHARACTER`, `PERSONALITY` (positive traits, plus a "traits to avoid" line from the `!` channel), `BACKSTORY`, `APPEARANCE`, and any free-text lines on the `CHAT` block. This carries only what is true for the whole conversation, so re-sending it every turn never re-asserts a scene.
+- **Opening turn (seeded once):** `SCENARIO` is framed as the first user turn — the character responds to it — instead of living in the always-resent system prompt. The scene sets the stage, then ages out of the context window naturally rather than being repeated on every request.
+- **Excluded:** `APPAREL` and `ENVIRONMENT` are image-generation concerns and do not enter the chat prompt at all; likewise image-only content (`PROMPT`, `IMAGE`, `LORA`, `DETAILER` and sampler settings).
 
-The user sends the first message; there is no assistant greeting.
+When a `SCENARIO` is present the character speaks first (its response to the seeded scene); otherwise the user sends the first message.
 
 ## Configuration
 
@@ -84,22 +84,30 @@ The system prompt is always pinned and the newest user message is always kept. W
 
 Token counts are conservatively estimated (Evoke does not query the backend tokenizer), so `safety_margin` absorbs the slack.
 
+## Interface
+
+On an interactive terminal, chat runs as a full-screen UI: a scrolling transcript above a pinned `>` input line. While a reply is generating, a spinner marks where it will appear in the log and the input line stays put — you can compose your next message, but **Enter is ignored until the reply resolves**. This is the default (non-streaming) experience.
+
+Scroll the transcript with **PageUp/PageDown/↑/↓** (and the **mouse wheel** on terminals that translate it to arrow keys for full-screen apps); it follows new replies only when you're already at the bottom, so scrolling up to re-read isn't interrupted. The mouse is not captured, so **click-drag to select and copy** works exactly as in a normal terminal.
+
+The plain line-based interface is used automatically when output is piped or non-interactive, when `--stream` is set (streaming shows tokens as they arrive, which the full-screen UI does not), or when `--no-tui` is passed.
+
 ## Interactive commands
 
 | Command | Effect |
 |:--------|:-------|
 | `/exit`, `/quit` | End the session. |
-| `/reset` | Clear the conversation while keeping the compiled character and scenario. |
+| `/reset` | Clear the conversation and replay the opening scene (the compiled character is kept; the character re-opens from the `SCENARIO`). |
 | `/context` | Show retained turns, estimated input tokens, and the budget. |
 
-The session also exits cleanly on EOF (Ctrl-D) and on interrupt (Ctrl-C). Slash commands are handled locally and never sent to the model.
+Both interfaces exit cleanly on interrupt (Ctrl-C); the line interface also exits on EOF (Ctrl-D). Slash commands are handled locally and never sent to the model.
 
 ## Flags
 
 | Flag | Default | Description |
 |:-----|:--------|:------------|
-| `--explain` | `false` | Compile and print the plan — model, the exact launch command, sampling, and the full system prompt — **without** starting a backend. |
-| `--no-stream` | `false` | Request a single non-streamed response instead of streaming tokens. |
+| `--stream` | `false` | Stream the reply token-by-token as it generates, instead of showing it once complete. Uses the line interface (not the full-screen UI). Overrides the `chat.stream` setting for the session. |
+| `--no-tui` | `false` | Use the plain line-based interface instead of the full-screen UI. |
 | `-v`, `--verbose` | `false` | Print the merged composition before compiling. |
 
 ## Environment variables
@@ -113,6 +121,11 @@ The session also exits cleanly on EOF (Ctrl-D) and on interrupt (Ctrl-C). Slash 
 | `EVOKE_CHAT_STARTUP_TIMEOUT` | `180s` | How long to wait for the backend to become healthy before giving up. |
 
 Settings in `~/.evoke/settings.json` (`chat.executable`, `chat.host`, `chat.port`) override these.
+
+Two presentation settings control how replies are shown:
+
+- `chat.color` (`on` / `off` / `auto`, default `auto`) — ANSI styling of speaker labels and reply emphasis. `auto` enables it only when writing to a terminal (and honors `NO_COLOR`). Set with `evoke settings set chat.color <on|off|auto>`.
+- `chat.stream` (`on` / `off` / `auto`, default off) — stream the reply as it generates, versus rendering it once complete. The `--stream` flag overrides this per session. Set with `evoke settings set chat.stream <on|off|auto>`.
 
 ## Example session
 
@@ -138,6 +151,6 @@ Session ended.
 
 | Code | Meaning |
 |:----:|:--------|
-| `0` | Session ended cleanly (`/exit`, EOF, or interrupt), or `--explain` succeeded. |
+| `0` | Session ended cleanly (`/exit`, EOF, or interrupt). |
 | `1` | Resolution, compilation, backend startup, or backend crash error. |
 | `2` | Usage error (no inputs given). |

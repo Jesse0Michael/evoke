@@ -31,19 +31,8 @@ func QueueCmd(_ []string, _ bool) int {
 		return 0
 	}
 
-	if len(running) > 0 {
-		fmt.Printf("Running (%d):\n", len(running))
-		for _, item := range running {
-			fmt.Printf("  #%d  %s\n", item.Number, item.PromptID)
-		}
-	}
-
-	if len(pending) > 0 {
-		fmt.Printf("Pending (%d):\n", len(pending))
-		for _, item := range pending {
-			fmt.Printf("  #%d  %s\n", item.Number, item.PromptID)
-		}
-	}
+	fmt.Printf("▶ running => %d\n", len(running))
+	fmt.Printf("◦ pending => %d\n", len(pending))
 
 	return 0
 }

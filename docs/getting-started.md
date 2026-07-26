@@ -26,10 +26,10 @@ That installs `evoke` to your `GOPATH/bin`. Everything below assumes it's on you
 
 Commands available:
 
-- `evoke generate` — compose files by selector, path, or registry reference and send through a pipeline
+- `evoke image` — compose files by selector, path, or registry reference and generate images
+- `evoke chat` — compose files into a character and start an interactive chat
 - `evoke login` — sign in to the registry
 - `evoke settings` — manage user settings (source paths)
-- `evoke index` — refresh the local file index
 
 See the [CLI reference](cli) for details.
 
@@ -92,22 +92,21 @@ APPAREL
 
 The `!` prefix routes those values to the **negative** channel (things to exclude — for an image target, a negative prompt). See [Prefixes & Channels](file-format/prefixes).
 
-## Generate
+## Generate an image
 
 Set up source paths so the index knows where your files are:
 
 ```console
 $ evoke settings set path ~/my-evoke-files
-$ evoke index
 ```
 
 Then compose and generate:
 
 ```console
-$ evoke generate character winter
+$ evoke image character winter
 ```
 
-The `generate` command resolves each argument as a selector (matching files by tag), a local file path, or a registry reference (`@namespace/name`). It merges the matched documents — applying default suppression, conflict detection, and dedup — and submits the composition to ComfyUI.
+The `image` command resolves each argument as a selector (matching files by tag), a local file path, or a registry reference (`@namespace/name`). It merges the matched documents — applying default suppression, conflict detection, and dedup — and submits the composition to ComfyUI.
 
 In the example above, `character` matches `sumi.evoke` (it has the `character` tag) and `winter` matches `winter-coat.evoke`. The explicit `APPAREL` from the winter coat suppresses the default `?APPAREL` from the character file.
 

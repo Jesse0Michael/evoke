@@ -16,6 +16,7 @@ import (
 	"github.com/jesse0michael/evoke/internal/chat"
 	evoke "github.com/jesse0michael/evoke/pkg/evoke"
 	"github.com/kelseyhightower/envconfig"
+	"golang.org/x/term"
 )
 
 type chatConfig struct {
@@ -34,8 +35,8 @@ func Chat(args []string, verbose bool) int {
 	fs := flag.NewFlagSet("chat", flag.ContinueOnError)
 	fs.BoolVar(&verbose, "v", verbose, "verbose output")
 	fs.BoolVar(&verbose, "verbose", verbose, "verbose output")
-	explain := fs.Bool("explain", false, "compile and print the chat plan without starting a backend")
-	noStream := fs.Bool("no-stream", false, "disable streaming output")
+	streamFlag := fs.Bool("stream", false, "stream tokens as they generate (default: reply shown once complete)")
+	noTUI := fs.Bool("no-tui", false, "use the plain line-based interface instead of the full-screen UI")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -69,7 +70,7 @@ func Chat(args []string, verbose bool) int {
 		return 1
 	}
 
-	res, err := prepareResolution(ctx, inputArgs, settings, manifest)
+	res, err := prepareResolution(ctx, inputArgs, settings, manifest, verbose)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "evoke chat: %v\n", err)
 		return 1
@@ -104,12 +105,6 @@ func Chat(args []string, verbose bool) int {
 		return 1
 	}
 
-	// Dry-run: inspect the compiled prompt and launch command without starting.
-	if *explain {
-		fmt.Print(plan.Explain())
-		return 0
-	}
-
 	fmt.Printf("Starting %s backend (%s) ...\n", plan.Backend, plan.Display.Model)
 	lease, err := chat.StartManaged(ctx, plan, cfg.StartupTimeout)
 	if err != nil {
@@ -140,11 +135,36 @@ func Chat(args []string, verbose bool) int {
 	}
 	st := newChatStyle(os.Stdout, colorPref)
 
-	if err := runChatLoop(ctx, plan, client, !*noStream, verbose, os.Stdin, os.Stdout, lease.Done(), lease.Err, backendLog, st); err != nil {
-		fmt.Fprintf(os.Stderr, "evoke chat: %v\n", err)
+	// Streaming defaults off (reply is rendered once complete); a persisted
+	// setting sets the default, and an explicit --stream flag overrides it.
+	stream := false
+	if settings != nil && settings.Chat != nil && settings.Chat.Stream != nil {
+		stream = *settings.Chat.Stream
+	}
+	if flagPassed(fs, "stream") {
+		stream = *streamFlag
+	}
+
+	// The full-screen UI needs an interactive terminal, and its spinner-then-block
+	// presentation only fits the non-streaming path; streaming or a non-TTY (pipe,
+	// test) falls back to the line-based loop.
+	var runErr error
+	if !*noTUI && !stream && isInteractive() {
+		runErr = runChatTUI(ctx, plan, client, st, verbose, lease.Done(), lease.Err)
+	} else {
+		runErr = runChatLoop(ctx, plan, client, stream, verbose, os.Stdin, os.Stdout, lease.Done(), lease.Err, backendLog, st)
+	}
+	if runErr != nil {
+		fmt.Fprintf(os.Stderr, "evoke chat: %v\n", runErr)
 		return 1
 	}
 	return 0
+}
+
+// isInteractive reports whether both stdin and stdout are terminals, so the
+// full-screen UI can take over the screen and read keystrokes.
+func isInteractive() bool {
+	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 }
 
 // buildTrustedChatConfig assembles the trusted chat configuration from local
@@ -198,6 +218,59 @@ func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, strea
 	sess := chat.NewSession(plan)
 	printStartupSummary(out, plan, st)
 
+	// respond generates, prints, and records one assistant reply for the pending
+	// user turn already added to the session. It returns done=true if the session
+	// should end (context cancelled mid-generation); other failures are reported
+	// and the pending turn dropped so a half turn is never left behind.
+	respond := func() (done bool) {
+		req, err := sess.Request()
+		if err != nil {
+			// The message cannot fit the budget; drop it rather than keep a turn
+			// that will keep failing.
+			sess.DropPendingUser()
+			fmt.Fprintf(out, "%s %v\n", st.errorText("error:"), err)
+			return false
+		}
+		fmt.Fprintf(out, "\n%s: ", st.character(plan.Display.CharacterName))
+		reply, usage, err := sendReply(ctx, client, req, stream, out, st)
+		fmt.Fprintln(out)
+		if err != nil {
+			if ctx.Err() != nil {
+				fmt.Fprintln(out, "Session ended.")
+				return true
+			}
+			// The response failed; do not record half a turn.
+			sess.DropPendingUser()
+			fmt.Fprintf(out, "%s %v\n", st.errorText("error:"), err)
+			if verbose {
+				printBackendLog(out, backendLog)
+			}
+			return false
+		}
+		sess.AddAssistant(reply)
+		if verbose {
+			printTurnDiagnostics(out, sess, plan, usage, backendLog, st)
+		}
+		return false
+	}
+
+	// seedOpening plays the opening scene: the scenario is added as one turn and
+	// the character responds to it. It runs at startup and again after /reset, so
+	// the scene is set once (never re-sent in the system prompt) and a reset
+	// returns to the opening rather than an empty stage. The seed message itself
+	// is not echoed. No-op when there is no scenario.
+	seedOpening := func() (done bool) {
+		if plan.Opening == "" {
+			return false
+		}
+		sess.AddUser(plan.Opening)
+		return respond()
+	}
+
+	if seedOpening() {
+		return nil
+	}
+
 	// Read input on a goroutine so context cancellation (Ctrl-C) or a backend
 	// crash can interrupt a blocking read.
 	lines := make(chan string)
@@ -212,7 +285,7 @@ func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, strea
 	}()
 
 	for {
-		fmt.Fprintf(out, "\n%s> ", st.user("You"))
+		fmt.Fprintf(out, "\n%s: ", st.user("You"))
 
 		var msg string
 		select {
@@ -232,43 +305,22 @@ func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, strea
 		if msg == "" {
 			continue
 		}
-		if quit, handled := handleSlashCommand(out, sess, msg); handled {
+		if quit, reset, handled := handleSlashCommand(out, sess, msg); handled {
 			if quit {
 				fmt.Fprintln(out, "Session ended.")
+				return nil
+			}
+			// A reset clears the transcript, including the seeded scene; replay
+			// the opening so the character starts over rather than a blank stage.
+			if reset && seedOpening() {
 				return nil
 			}
 			continue
 		}
 
 		sess.AddUser(msg)
-		req, err := sess.Request()
-		if err != nil {
-			// The message cannot fit the budget; drop it rather than keep a turn
-			// that will keep failing.
-			sess.DropPendingUser()
-			fmt.Fprintf(out, "%s %v\n", st.errorText("error:"), err)
-			continue
-		}
-
-		fmt.Fprintf(out, "\n%s> ", st.character(plan.Display.CharacterName))
-		reply, usage, err := sendReply(ctx, client, req, stream, out)
-		fmt.Fprintln(out)
-		if err != nil {
-			if ctx.Err() != nil {
-				fmt.Fprintln(out, "Session ended.")
-				return nil
-			}
-			// The response failed; do not record half a turn.
-			sess.DropPendingUser()
-			fmt.Fprintf(out, "%s %v\n", st.errorText("error:"), err)
-			if verbose {
-				printBackendLog(out, backendLog)
-			}
-			continue
-		}
-		sess.AddAssistant(reply)
-		if verbose {
-			printTurnDiagnostics(out, sess, plan, usage, backendLog, st)
+		if respond() {
+			return nil
 		}
 	}
 }
@@ -282,19 +334,74 @@ func backendExitError(backendErr func() error) error {
 	return fmt.Errorf("backend exited")
 }
 
-// sendReply sends the request and returns the assistant reply and token usage,
-// streaming deltas to out when enabled.
-func sendReply(ctx context.Context, client chatBackend, req chat.CompletionRequest, stream bool, out io.Writer) (string, chat.Usage, error) {
+// sendReply sends the request and returns the assistant reply and token usage.
+// When streaming, deltas are written raw as they arrive. Otherwise a spinner
+// runs until the full reply is ready, which is then rendered (markdown emphasis)
+// in one write.
+func sendReply(ctx context.Context, client chatBackend, req chat.CompletionRequest, stream bool, out io.Writer, st chatStyle) (string, chat.Usage, error) {
 	if stream {
 		return client.Stream(ctx, req, func(delta string) {
 			fmt.Fprint(out, delta)
 		})
 	}
+	stop := startSpinner(out, st)
 	reply, usage, err := client.Complete(ctx, req)
+	stop()
 	if err == nil {
-		fmt.Fprint(out, reply)
+		fmt.Fprint(out, st.markdown(reply))
 	}
 	return reply, usage, err
+}
+
+// flagPassed reports whether a flag was explicitly set on the command line,
+// distinguishing an explicit value from its default.
+func flagPassed(fs *flag.FlagSet, name string) bool {
+	found := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
+}
+
+// startSpinner animates a "." / ".." / "..." / empty cycle at the cursor until
+// the returned stop function is called; stop blocks until the goroutine has
+// erased the animation. Frames differ in width, so each tick backspaces over the
+// previous frame and clears to end of line before drawing the next, leaving the
+// speaker label untouched. It is a no-op when styling is disabled (non-terminal
+// output), so piped or test output stays clean.
+func startSpinner(out io.Writer, st chatStyle) func() {
+	if !st.on {
+		return func() {}
+	}
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		frames := []string{".", "..", "...", ""}
+		ticker := time.NewTicker(300 * time.Millisecond)
+		defer ticker.Stop()
+		prev := 0
+		erase := func() {
+			if prev > 0 {
+				fmt.Fprintf(out, "%s\033[K", strings.Repeat("\b", prev))
+			}
+		}
+		for i := 0; ; i++ {
+			select {
+			case <-done:
+				erase()
+				return
+			case <-ticker.C:
+				erase()
+				f := frames[i%len(frames)]
+				fmt.Fprint(out, f)
+				prev = len(f) // frames are ASCII dots: byte length == column width
+			}
+		}
+	}()
+	return func() { close(done); <-stopped }
 }
 
 // printTurnDiagnostics prints token accounting and any new backend log output
@@ -330,27 +437,28 @@ func printBackendLog(out io.Writer, backendLog func() string) {
 }
 
 // handleSlashCommand executes local commands. Slash commands are never sent to
-// the model. It returns (quit, handled).
-func handleSlashCommand(out io.Writer, sess *chat.Session, msg string) (quit, handled bool) {
+// the model. It returns (quit, reset, handled); reset is true when the caller
+// should replay the opening scene.
+func handleSlashCommand(out io.Writer, sess *chat.Session, msg string) (quit, reset, handled bool) {
 	switch msg {
 	case "/exit", "/quit":
-		return true, true
+		return true, false, true
 	case "/reset":
 		sess.Reset()
 		fmt.Fprintln(out, "(conversation reset)")
-		return false, true
+		return false, true, true
 	case "/context":
 		info := sess.Context()
 		fmt.Fprintf(out, "retained turns: %d\n", info.RetainedTurns)
 		fmt.Fprintf(out, "estimated input tokens: %d / %d available (context %d, reserve %d, margin %d)\n",
 			info.EstimatedTokens, info.InputBudget, info.ContextWindow, info.OutputReserve, info.SafetyMargin)
-		return false, true
+		return false, false, true
 	}
 	if strings.HasPrefix(msg, "/") {
 		fmt.Fprintf(out, "unknown command %q (try /exit, /reset, /context)\n", msg)
-		return false, true
+		return false, false, true
 	}
-	return false, false
+	return false, false, false
 }
 
 func printStartupSummary(out io.Writer, plan *chat.Plan, st chatStyle) {

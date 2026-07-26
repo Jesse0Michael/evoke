@@ -26,7 +26,7 @@ Like the format itself, the registry does not require files to declare a categor
 Registry references use the `@namespace/name` format on the CLI:
 
 ```console
-$ evoke generate @jesse/sumi @jesse/winter-coat
+$ evoke image @jesse/sumi @jesse/winter-coat
 ```
 
 The CLI downloads the latest version, caches it in `~/.evoke/library/`, and tracks the SHA256 in a manifest file for reproducibility.

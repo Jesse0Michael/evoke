@@ -16,13 +16,11 @@ $ go install ./cmd/evoke
 
 | Command | Description |
 |:--------|:------------|
-| [`evoke generate`](generate) | Compose files by selector, path, or registry reference and submit to a generation pipeline. |
+| [`evoke image`](image) | Compose files by selector, path, or registry reference and submit to a generation pipeline. |
 | [`evoke chat`](chat) | Compose files into a character and start an interactive chat with a local LLM backend. |
 | [`evoke login`](login) | Sign in to the registry via Google OAuth. |
 | [`evoke settings`](settings) | Manage user settings (source paths, registry URL). |
-| [`evoke index`](index) | Refresh the local SQLite file index. |
 | `evoke view` | Interactive terminal image viewer with metadata display. |
-| `evoke history` | Show recent generations and their outputs. |
 | `evoke queue` | Display the ComfyUI generation queue. |
 | `evoke clear` | Clear the ComfyUI generation queue. |
 | `evoke completion` | Output shell completion script. |

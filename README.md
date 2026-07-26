@@ -14,7 +14,7 @@ The docs live in [`docs/`](docs/) and are published with GitHub Pages (Just the 
 
 ```console
 $ go install ./cmd/evoke
-$ evoke generate character shot
+$ evoke image character shot
 ```
 
 A `.evoke` file is a list of declaration blocks:
@@ -41,10 +41,10 @@ APPEARANCE
     little teal explorer's vest
 ```
 
-The `generate` command resolves inputs — tag-based selectors like `character`, local file paths, or registry references like `@namespace/name` — merges the matching `.evoke` files, and submits the composition to ComfyUI for image generation.
+The `image` command resolves inputs — tag-based selectors like `character`, local file paths, or registry references like `@namespace/name` — merges the matching `.evoke` files, and submits the composition to ComfyUI for image generation.
 
 See [Getting Started](https://jesse0michael.github.io/evoke/getting-started) for more.
 
 ## Status
 
-Experimental. The parser, declaration schema, merge/resolver, tag-based selector system, local file index, registry client, and the `generate` pipeline are implemented. The hosted registry API is functional. See the [documentation](https://jesse0michael.github.io/evoke) for details.
+Experimental. The parser, declaration schema, merge/resolver, tag-based selector system, local file index, registry client, and the `image` pipeline are implemented. The hosted registry API is functional. See the [documentation](https://jesse0michael.github.io/evoke) for details.

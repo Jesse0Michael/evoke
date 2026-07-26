@@ -99,6 +99,7 @@ type Plan struct {
 	Model        string // logical model name (for display)
 	ModelPath    string // resolved GGUF path, from trusted config
 	SystemPrompt string
+	Opening      string // scenario framing seeded once as the first turn ("" if none)
 	Sampling     Sampling
 	History      HistoryPolicy
 	Display      Display
@@ -129,7 +130,7 @@ const (
 // validated Plan. It performs all validation that can happen before launching
 // a backend, returning a joined error describing every problem found. It does
 // not touch the filesystem or the network — path/binary existence is checked at
-// launch time so that a dry-run (--explain) works anywhere.
+// launch time, keeping compilation pure and independently testable.
 func Compile(comp *evoke.Composition, trusted TrustedConfig) (*Plan, error) {
 	if comp == nil || comp.Chat == nil {
 		return nil, errors.New("no effective CHAT declaration in the resolved composition")
@@ -151,8 +152,8 @@ func Compile(comp *evoke.Composition, trusted TrustedConfig) (*Plan, error) {
 
 	// Model reference (required): the GGUF file name, resolved to a path by
 	// searching the configured model directories (like an IMAGE checkpoint).
-	// A miss is a diagnostic here and a hard error at launch, so the prompt can
-	// still be inspected with --explain on a machine without the model.
+	// A miss is a diagnostic here and a hard error at launch, so compilation
+	// stays pure and succeeds on a machine without the model present.
 	model := s.str("model")
 	if model == "" {
 		fail("CHAT is missing a model reference")
@@ -216,6 +217,9 @@ func Compile(comp *evoke.Composition, trusted TrustedConfig) (*Plan, error) {
 		fail("compiled system prompt is empty; the character declarations carry no chat-relevant content")
 	}
 
+	// The scenario, if any, seeds the opening turn rather than the system prompt.
+	plan.Opening = compileOpening(comp)
+
 	plan.Display = Display{
 		CharacterName: cmpOr(comp.Name, "assistant"),
 		Backend:       plan.Backend,
@@ -233,7 +237,7 @@ func Compile(comp *evoke.Composition, trusted TrustedConfig) (*Plan, error) {
 
 // commandArgs returns the llama-server arguments (excluding the executable) for
 // launching the managed backend. It is the single source of truth for the
-// launch command, used by both the runtime and --explain.
+// launch command.
 func (p *Plan) commandArgs() []string {
 	return []string{
 		"--model", p.ModelPath,

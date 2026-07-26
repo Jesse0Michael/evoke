@@ -128,21 +128,30 @@ func (idx *sqliteIndex) ensureRoot(ctx context.Context, root sourceRoot) error {
 	return idx.scanRoot(ctx, root)
 }
 
-func (idx *sqliteIndex) refreshRoot(ctx context.Context, root sourceRoot) error {
+// refreshResult reports what changed during an index refresh.
+type refreshResult struct {
+	Total   int
+	Added   int
+	Updated int
+	Removed int
+}
+
+func (idx *sqliteIndex) refreshRoot(ctx context.Context, root sourceRoot) (refreshResult, error) {
 	// Ensure the root exists in the DB.
 	var rootID int64
 	err := idx.db.QueryRowContext(ctx, "SELECT id FROM source_roots WHERE path = ?", root.Path).Scan(&rootID)
 	if err == sql.ErrNoRows {
-		return idx.ensureRoot(ctx, root)
+		result, err := idx.scanRootWithStats(ctx, root)
+		return result, err
 	}
 	if err != nil {
-		return fmt.Errorf("failed to query root: %w", err)
+		return refreshResult{}, fmt.Errorf("failed to query root: %w", err)
 	}
 
 	homeDir, _ := home()
 	discovered, err := walkRoot(root.Path, homeDir)
 	if err != nil {
-		return fmt.Errorf("failed to walk root %q: %w", root.Path, err)
+		return refreshResult{}, fmt.Errorf("failed to walk root %q: %w", root.Path, err)
 	}
 
 	// Build a set of discovered paths.
@@ -154,7 +163,7 @@ func (idx *sqliteIndex) refreshRoot(ctx context.Context, root sourceRoot) error 
 	// Get existing indexed files for this root.
 	rows, err := idx.db.QueryContext(ctx, "SELECT id, path, size, modified_ns FROM files WHERE root_id = ?", rootID)
 	if err != nil {
-		return fmt.Errorf("failed to query files: %w", err)
+		return refreshResult{}, fmt.Errorf("failed to query files: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -168,12 +177,12 @@ func (idx *sqliteIndex) refreshRoot(ctx context.Context, root sourceRoot) error 
 	for rows.Next() {
 		var f existingFile
 		if err := rows.Scan(&f.id, &f.path, &f.size, &f.modifiedNS); err != nil {
-			return fmt.Errorf("failed to scan file: %w", err)
+			return refreshResult{}, fmt.Errorf("failed to scan file: %w", err)
 		}
 		existing = append(existing, f)
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("failed to iterate files: %w", err)
+		return refreshResult{}, fmt.Errorf("failed to iterate files: %w", err)
 	}
 
 	existingPaths := make(map[string]existingFile, len(existing))
@@ -181,12 +190,16 @@ func (idx *sqliteIndex) refreshRoot(ctx context.Context, root sourceRoot) error 
 		existingPaths[f.path] = f
 	}
 
+	var result refreshResult
+	result.Total = len(discovered)
+
 	// Remove files that no longer exist.
 	for _, f := range existing {
 		if _, ok := discoveredPaths[f.path]; !ok {
 			if err := idx.removeFileByID(ctx, f.id); err != nil {
-				return err
+				return refreshResult{}, err
 			}
+			result.Removed++
 		}
 	}
 
@@ -198,11 +211,16 @@ func (idx *sqliteIndex) refreshRoot(ctx context.Context, root sourceRoot) error 
 		}
 		indexed := parseAndIndex(root.Path, df)
 		if err := idx.upsertFile(ctx, indexed); err != nil {
-			return err
+			return refreshResult{}, err
+		}
+		if exists {
+			result.Updated++
+		} else {
+			result.Added++
 		}
 	}
 
-	return nil
+	return result, nil
 }
 
 func (idx *sqliteIndex) find(ctx context.Context, roots []sourceRoot, tags []string) ([]indexCandidate, error) {
@@ -439,31 +457,26 @@ func (idx *sqliteIndex) rootStats(ctx context.Context) ([]indexRootStat, error) 
 	return stats, rows.Err()
 }
 
-// indexFileError holds a file path and its parse error.
-type indexFileError struct {
-	Path       string
-	ParseError string
-}
+// scanRootWithStats walks the root directory, indexes all discovered .evoke files, and returns stats.
+func (idx *sqliteIndex) scanRootWithStats(ctx context.Context, root sourceRoot) (refreshResult, error) {
+	// Ensure root row exists.
+	if err := idx.ensureRoot(ctx, root); err != nil {
+		return refreshResult{}, err
+	}
 
-// fileErrors returns all indexed files that have parse errors.
-func (idx *sqliteIndex) fileErrors(ctx context.Context) ([]indexFileError, error) {
-	rows, err := idx.db.QueryContext(ctx,
-		"SELECT path, parse_error FROM files WHERE parse_error IS NOT NULL ORDER BY path",
-	)
+	homeDir, _ := home()
+	discovered, err := walkRoot(root.Path, homeDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query file errors: %w", err)
+		return refreshResult{}, fmt.Errorf("failed to walk root %q: %w", root.Path, err)
 	}
-	defer func() { _ = rows.Close() }()
 
-	var errs []indexFileError
-	for rows.Next() {
-		var fe indexFileError
-		if err := rows.Scan(&fe.Path, &fe.ParseError); err != nil {
-			return nil, fmt.Errorf("failed to scan file error: %w", err)
+	for _, df := range discovered {
+		indexed := parseAndIndex(root.Path, df)
+		if err := idx.upsertFile(ctx, indexed); err != nil {
+			return refreshResult{}, err
 		}
-		errs = append(errs, fe)
 	}
-	return errs, rows.Err()
+	return refreshResult{Total: len(discovered), Added: len(discovered)}, nil
 }
 
 // scanRoot walks the root directory and indexes all discovered .evoke files.

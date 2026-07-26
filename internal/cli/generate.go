@@ -23,10 +23,10 @@ type generateConfig struct {
 	ComfyURL string `envconfig:"COMFY_URL" default:"http://127.0.0.1:8188"`
 }
 
-// Generate resolves inputs (selectors, local paths, registry references),
+// Image resolves inputs (selectors, local paths, registry references),
 // merges the selected .evoke documents, and submits the result to ComfyUI.
-func Generate(args []string, verbose bool) int {
-	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
+func Image(args []string, verbose bool) int {
+	fs := flag.NewFlagSet("image", flag.ContinueOnError)
 	fs.BoolVar(&verbose, "v", verbose, "verbose output")
 	fs.BoolVar(&verbose, "verbose", verbose, "verbose output")
 	batch := fs.Int("b", 1, "number of images to generate")
@@ -36,19 +36,19 @@ func Generate(args []string, verbose bool) int {
 	}
 
 	if *batch < 1 {
-		fmt.Fprintln(os.Stderr, "evoke generate: -b must be at least 1")
+		fmt.Fprintln(os.Stderr, "evoke image: -b must be at least 1")
 		return 2
 	}
 
 	var cfg generateConfig
 	if err := envconfig.Process("", &cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
 		return 1
 	}
 
 	inputArgs := fs.Args()
 	if len(inputArgs) == 0 {
-		fmt.Fprintln(os.Stderr, "evoke generate: at least one input is required")
+		fmt.Fprintln(os.Stderr, "evoke image: at least one input is required")
 		return 2
 	}
 
@@ -57,43 +57,34 @@ func Generate(args []string, verbose bool) int {
 	// Load home configuration.
 	settings, err := settings()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
 		return 1
 	}
 
 	manifest, err := manifest()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
 		return 1
 	}
 
 	// Resolve inputs (local paths, registry refs, literals, selectors) through
 	// the shared resolution pipeline.
-	res, err := prepareResolution(ctx, inputArgs, settings, manifest)
+	res, err := prepareResolution(ctx, inputArgs, settings, manifest, verbose)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
+		fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
 		return 1
 	}
 	defer func() { _ = res.Close() }()
 
 	if res.manifestChanged {
 		if err := saveManifest(manifest); err != nil {
-			fmt.Fprintf(os.Stderr, "evoke generate: failed to save manifest: %v\n", err)
+			fmt.Fprintf(os.Stderr, "evoke image: failed to save manifest: %v\n", err)
 			return 1
 		}
 	}
 
 	gen := comfyui.New(cfg.ComfyURL)
 	gen.Verbose = verbose
-
-	// Open the journal for recording generations.
-	j, jErr := openDefaultJournal()
-	if jErr != nil && verbose {
-		fmt.Fprintf(os.Stderr, "evoke generate: warning: could not open journal: %v\n", jErr)
-	}
-	if j != nil {
-		defer func() { _ = j.Close() }()
-	}
 
 	for i := range *batch {
 		if *batch > 1 {
@@ -103,7 +94,7 @@ func Generate(args []string, verbose bool) int {
 		// Resolve selectors in CLI order (re-rolled per batch for variety).
 		docs, err := res.documents(ctx)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
+			fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
 			return 1
 		}
 
@@ -120,13 +111,8 @@ func Generate(args []string, verbose bool) int {
 
 		genResult, err := gen.Generate(ctx, composition)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "evoke generate: %v\n", err)
+			fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
 			return 1
-		}
-
-		// Record the generation in the journal.
-		if j != nil && genResult.PromptID != "" {
-			_ = j.Record(ctx, genResult.PromptID, "comfyui", inputsSummary(inputArgs))
 		}
 
 		if verbose && genResult.Payload != "" {
@@ -351,7 +337,7 @@ func resolveSelector(ctx context.Context, raw string, idx *sqliteIndex, roots []
 	if len(candidates) == 0 {
 		// Refresh and retry once.
 		for _, root := range roots {
-			if refreshErr := idx.refreshRoot(ctx, root); refreshErr != nil {
+			if _, refreshErr := idx.refreshRoot(ctx, root); refreshErr != nil {
 				fmt.Fprintf(os.Stderr, "warning: failed to refresh %s: %v\n", root.Path, refreshErr)
 			}
 		}
@@ -400,7 +386,7 @@ func pickCandidate(candidates []indexCandidate, sel evoke.Selector, raw string, 
 	}
 
 	if !evoke.MatchSelector(doc, sel) {
-		return nil, "", fmt.Errorf("selected file %s no longer matches selector %q (index may be stale; run 'evoke index')", chosen.Path, raw)
+		return nil, "", fmt.Errorf("selected file %s no longer matches selector %q (file may have changed)", chosen.Path, raw)
 	}
 
 	return doc, chosen.Path, nil

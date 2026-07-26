@@ -61,7 +61,7 @@ func TestRunChatLoop(t *testing.T) {
 	require.NoError(t, err)
 	s := out.String()
 	require.Contains(t, s, "Character: Yasmin")
-	require.Contains(t, s, "Yasmin> hello back", "assistant reply is streamed")
+	require.Contains(t, s, "Yasmin: hello back", "assistant reply is streamed")
 	require.Contains(t, s, "retained turns:", "/context reports budget")
 	require.Contains(t, s, "(conversation reset)")
 	require.Contains(t, s, "Session ended.")
@@ -72,6 +72,56 @@ func TestRunChatLoop(t *testing.T) {
 	require.Equal(t, "test-model", fb.reqs[0].Model)
 	// The request goes system -> user so strict-alternation templates accept it.
 	require.Equal(t, chat.RoleUser, fb.reqs[0].Messages[1].Role)
+}
+
+func TestRunChatLoopSeedsOpening(t *testing.T) {
+	plan := testChatPlan()
+	plan.Opening = "Set the scene and begin in character. The situation:\n\nYou answer the door."
+	fb := &fakeBackend{replies: []string{"Oh, hello there!", "nice to meet you"}}
+	in := strings.NewReader("hi\n/exit\n")
+	var out bytes.Buffer
+
+	err := runChatLoop(t.Context(), plan, fb, false, false, in, &out, nil, nil, nil, chatStyle{})
+
+	require.NoError(t, err)
+	s := out.String()
+	// The character speaks first, before any "You:" prompt, in response to the seed.
+	require.Contains(t, s, "Yasmin: Oh, hello there!", "character responds to the opening before the user speaks")
+	require.NotContains(t, s, "You: Set the scene", "the seed message is never echoed as the user's line")
+
+	// Two backend calls: the seeded opening, then the user's "hi". The first
+	// request carries the opening as the sole user turn after the system prompt.
+	require.Len(t, fb.reqs, 2)
+	require.Equal(t, chat.RoleSystem, fb.reqs[0].Messages[0].Role)
+	require.Equal(t, chat.RoleUser, fb.reqs[0].Messages[1].Role)
+	require.Equal(t, plan.Opening, fb.reqs[0].Messages[1].Content)
+	// The second request retains the seeded pair plus the user's message.
+	require.Equal(t, "hi", fb.reqs[1].Messages[len(fb.reqs[1].Messages)-1].Content)
+}
+
+func TestRunChatLoopResetReplaysOpening(t *testing.T) {
+	plan := testChatPlan()
+	plan.Opening = "Set the scene and begin in character. The situation:\n\nYou answer the door."
+	fb := &fakeBackend{replies: []string{"Oh, hello!", "Welcome back!"}}
+	in := strings.NewReader("/reset\n/exit\n")
+	var out bytes.Buffer
+
+	err := runChatLoop(t.Context(), plan, fb, false, false, in, &out, nil, nil, nil, chatStyle{})
+
+	require.NoError(t, err)
+	s := out.String()
+	require.Contains(t, s, "(conversation reset)")
+	require.Contains(t, s, "Yasmin: Oh, hello!", "character opens at startup")
+	require.Contains(t, s, "Yasmin: Welcome back!", "character re-opens after /reset")
+
+	// Two openings: one at startup, one after /reset. Each begins from a cleared
+	// transcript, so the request is exactly system + the opening turn.
+	require.Len(t, fb.reqs, 2)
+	for _, req := range fb.reqs {
+		require.Len(t, req.Messages, 2)
+		require.Equal(t, chat.RoleSystem, req.Messages[0].Role)
+		require.Equal(t, plan.Opening, req.Messages[1].Content)
+	}
 }
 
 func TestRunChatLoopVerboseDiagnostics(t *testing.T) {
@@ -100,7 +150,7 @@ func TestRunChatLoopExitsOnEOF(t *testing.T) {
 	err := runChatLoop(t.Context(), plan, fb, false, false, in, &out, nil, nil, nil, chatStyle{})
 
 	require.NoError(t, err)
-	require.Contains(t, out.String(), "Yasmin> yo")
+	require.Contains(t, out.String(), "Yasmin: yo")
 	require.Contains(t, out.String(), "Session ended.")
 }
 

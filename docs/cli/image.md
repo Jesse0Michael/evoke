@@ -1,15 +1,15 @@
 ---
-title: evoke generate
+title: evoke image
 parent: CLI
 nav_order: 1
 ---
 
-# evoke generate
+# evoke image
 
 Compose `.evoke` files by selector, local path, or registry reference, merge them, and submit the result to a generation pipeline (currently ComfyUI).
 
 ```console
-$ evoke generate <input>...
+$ evoke image <input>...
 ```
 
 ## Input types
@@ -29,12 +29,12 @@ A selector matches files from the local index by tag. Tags are declared in the `
 
 Simple tag selectors:
 ```console
-$ evoke generate character winter
+$ evoke image character winter
 ```
 
 Facet-qualified selectors restrict matches to files that provide a specific declaration:
 ```console
-$ evoke generate c:nurse+modern e:forest
+$ evoke image c:nurse+modern e:forest
 ```
 
 Facet aliases: `c` = CHARACTER, `ap` = APPEARANCE, `a` = APPAREL, `e` = ENVIRONMENT, `p` = PROMPT.
@@ -45,14 +45,14 @@ Multiple tags joined with `+` require all tags to be present.
 
 Direct file references bypass the index:
 ```console
-$ evoke generate ./sumi.evoke ./winter-coat.evoke
+$ evoke image ./sumi.evoke ./winter-coat.evoke
 ```
 
 ### Registry references
 
 Pull files from the hosted registry:
 ```console
-$ evoke generate @jesse/sumi @jesse/winter-coat
+$ evoke image @jesse/sumi @jesse/winter-coat
 ```
 
 Registry references are cached locally in `~/.evoke/library/` and tracked in a manifest file.
@@ -62,21 +62,20 @@ Registry references are cached locally in `~/.evoke/library/` and tracked in a m
 Any argument containing spaces is treated as a literal prompt string and added directly to the PROMPT declaration in the composition. Use shell quoting to pass multi-word strings:
 
 ```console
-$ evoke generate sumi.evoke "a female scientist in a science lab"
+$ evoke image sumi.evoke "a female scientist in a science lab"
 ```
 
 This merges the `sumi.evoke` file with the literal text appended to the positive prompt. Literal prompts compose with file-based PROMPT declarations — they accumulate just like any other PROMPT contribution.
 
 ## Selector resolution
 
-Before selectors can be used, source paths must be configured and indexed:
+Before selectors can be used, source paths must be configured:
 
 ```console
 $ evoke settings set path ~/my-evoke-files
-$ evoke index
 ```
 
-The index is a SQLite database at `~/.evoke/index.db` that stores tags and declarations for fast selector matching.
+The file index is refreshed automatically before selector resolution. It is a SQLite database at `~/.evoke/index.db` that stores tags and declarations for fast selector matching.
 
 ## Flags
 
@@ -90,7 +89,7 @@ The index is a SQLite database at `~/.evoke/index.db` that stores tags and decla
 Use `-b` to trigger multiple generations from the same set of inputs:
 
 ```console
-$ evoke generate -b 5 anime character formal
+$ evoke image -b 5 anime character formal
 ```
 
 Each of the 5 generations independently resolves selector inputs. When a selector matches multiple files, a different random pick is made each time — so you get variety across the batch rather than 5 identical images.
@@ -108,7 +107,7 @@ Static inputs (local paths, registry references, and literal prompts) are resolv
 The command prints which files were selected for each input, then submits the merged composition to ComfyUI:
 
 ```console
-$ evoke generate character winter
+$ evoke image character winter
 character
   selected: /path/to/sumi.evoke (selector)
 winter

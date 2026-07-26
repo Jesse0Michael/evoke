@@ -52,10 +52,10 @@ APPAREL
 ```
 
 ```console
-$ evoke generate character winter
+$ evoke image character winter
 ```
 
-The `generate` command resolves the selectors `character` and `winter` against your indexed `.evoke` files by tag, merges the matched documents, and submits the composition to ComfyUI. The default `?APPAREL` from the character steps aside for the explicit winter coat — because the `?` default is only used when nothing more specific is selected.
+The `image` command resolves the selectors `character` and `winter` against your indexed `.evoke` files by tag, merges the matched documents, and submits the composition to ComfyUI. The default `?APPAREL` from the character steps aside for the explicit winter coat — because the `?` default is only used when nothing more specific is selected.
 
 ## What makes it different
 
@@ -71,13 +71,13 @@ Read the [Design](design) section for the full reasoning.
 Experimental
 {: .label .label-yellow }
 
-The parser, declaration schema, merge/resolver, tag-based selector system, local SQLite file index, registry client, and the `generate` pipeline are all implemented. The hosted registry API is functional.
+The parser, declaration schema, merge/resolver, tag-based selector system, local SQLite file index, registry client, and the `image` pipeline are all implemented. The hosted registry API is functional.
 
 ## Where to go next
 
 | Section | What's there |
 |:--------|:-------------|
-| [Getting Started](getting-started) | Build the CLI, write your first files, and run `generate` |
+| [Getting Started](getting-started) | Build the CLI, write your first files, and run `image` |
 | [File Format](file-format) | Syntax, declarations, prefixes, merge modes |
-| [CLI](cli) | Command reference for `generate`, `login`, `settings`, and `index` |
+| [CLI](cli) | Command reference for `image`, `login`, `settings`, and `index` |
 | [Design](design) | The project brief: principles, resolution model, and architecture |

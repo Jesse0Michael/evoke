@@ -11,10 +11,10 @@ import (
 // Called by the shell completion script via `evoke __complete <args...>`.
 func Complete(args []string) int {
 	// The last arg is the word being completed; preceding args give context.
-	// Shell scripts pass: evoke __complete generate <words...> <current>
+	// Shell scripts pass: evoke __complete image <words...> <current>
 	if len(args) < 2 {
 		// Complete subcommands.
-		for _, cmd := range []string{"login", "generate", "chat", "queue", "clear", "history", "view", "settings", "index", "completion"} {
+		for _, cmd := range []string{"login", "image", "chat", "inspect", "queue", "clear", "view", "settings", "completion"} {
 			fmt.Println(cmd)
 		}
 		return 0
@@ -24,13 +24,15 @@ func Complete(args []string) int {
 	// current is the word being completed (may be empty).
 	current := args[len(args)-1]
 
-	// generate and chat take the same inputs (selectors, paths, registry refs);
+	// image and chat take the same inputs (selectors, paths, registry refs);
 	// they differ only in flags.
 	switch subcmd {
-	case "generate":
+	case "image":
 		return completeInputs(current, []string{"-b", "-v", "--verbose"})
 	case "chat":
-		return completeInputs(current, []string{"--explain", "--no-stream", "-v", "--verbose"})
+		return completeInputs(current, []string{"--stream", "--no-tui", "-v", "--verbose"})
+	case "inspect":
+		return completeInputs(current, []string{"-v", "--verbose"})
 	default:
 		return 0
 	}

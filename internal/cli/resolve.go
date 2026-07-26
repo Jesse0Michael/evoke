@@ -3,6 +3,9 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	evoke "github.com/jesse0michael/evoke/pkg/evoke"
 )
@@ -23,7 +26,7 @@ type resolution struct {
 // selectors are present, and resolves all static inputs once. It is shared by
 // the generate and chat commands so both compose files through one pipeline.
 // The caller must call Close when done.
-func prepareResolution(ctx context.Context, inputArgs []string, settings *Settings, manifest *Manifest) (*resolution, error) {
+func prepareResolution(ctx context.Context, inputArgs []string, settings *Settings, manifest *Manifest, verbose bool) (*resolution, error) {
 	classified := make([]classifiedInput, 0, len(inputArgs))
 	for _, raw := range inputArgs {
 		classified = append(classified, classifyInput(raw))
@@ -40,24 +43,12 @@ func prepareResolution(ctx context.Context, inputArgs []string, settings *Settin
 	}
 
 	if needsIndex {
-		roots, err := persistentRoots(settings)
-		if err != nil {
-			return nil, err
-		}
-		res.roots = roots
-
-		idx, err := openDefaultIndex()
+		idx, roots, err := openIndexRoots(ctx, settings, verbose)
 		if err != nil {
 			return nil, err
 		}
 		res.idx = idx
-
-		for _, root := range roots {
-			if err := idx.ensureRoot(ctx, root); err != nil {
-				_ = idx.Close()
-				return nil, fmt.Errorf("failed to index %s: %w", root.Path, err)
-			}
-		}
+		res.roots = roots
 	}
 
 	for _, ci := range classified {
@@ -68,7 +59,7 @@ func prepareResolution(ctx context.Context, inputArgs []string, settings *Settin
 				res.close()
 				return nil, err
 			}
-			fmt.Printf("%s\n  selected: %s (local path)\n", ci.Raw, path)
+			fmt.Printf("%s => %s\n", ci.Raw, displayPath(path, res.roots))
 			res.staticDocs = append(res.staticDocs, doc)
 
 		case inputRegistryRef:
@@ -80,7 +71,7 @@ func prepareResolution(ctx context.Context, inputArgs []string, settings *Settin
 			if changed {
 				res.manifestChanged = true
 			}
-			fmt.Printf("%s\n  selected: %s (registry)\n", ci.Raw, libraryPath("~/.evoke", ci.Namespace, ci.Name))
+			fmt.Printf("%s => %s\n", ci.Raw, ci.Namespace+"/"+ci.Name+".evoke")
 			res.staticDocs = append(res.staticDocs, doc)
 
 		case inputSelector:
@@ -95,12 +86,57 @@ func prepareResolution(ctx context.Context, inputArgs []string, settings *Settin
 					{Name: "SCENARIO"},
 				},
 			}
-			fmt.Printf("%s\n  added as literal prompt\n", ci.Raw)
 			res.staticDocs = append(res.staticDocs, doc)
 		}
 	}
 
 	return res, nil
+}
+
+// openIndexRoots opens the file index and refreshes every persistent source
+// root, returning the index and the roots. It is shared by resolution and the
+// inspect command so both discover files through the same index. The caller
+// owns the returned index and must Close it.
+func openIndexRoots(ctx context.Context, settings *Settings, verbose bool) (*sqliteIndex, []sourceRoot, error) {
+	roots, err := persistentRoots(settings)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	idx, err := openDefaultIndex()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := idx.pruneRoots(ctx, roots); err != nil {
+		_ = idx.Close()
+		return nil, nil, fmt.Errorf("failed to prune index: %w", err)
+	}
+	for _, root := range roots {
+		result, err := idx.refreshRoot(ctx, root)
+		if err != nil {
+			_ = idx.Close()
+			return nil, nil, fmt.Errorf("failed to index %s: %w", root.Path, err)
+		}
+		if verbose {
+			fmt.Fprintf(os.Stderr, "indexed %s (%d files", root.Path, result.Total)
+			if result.Added > 0 || result.Updated > 0 || result.Removed > 0 {
+				fmt.Fprintf(os.Stderr, ";")
+				if result.Added > 0 {
+					fmt.Fprintf(os.Stderr, " +%d", result.Added)
+				}
+				if result.Updated > 0 {
+					fmt.Fprintf(os.Stderr, " ~%d", result.Updated)
+				}
+				if result.Removed > 0 {
+					fmt.Fprintf(os.Stderr, " -%d", result.Removed)
+				}
+			}
+			fmt.Fprintf(os.Stderr, ")\n")
+		}
+	}
+
+	return idx, roots, nil
 }
 
 // documents resolves selectors (re-rolling random picks each call) and returns
@@ -115,7 +151,7 @@ func (r *resolution) documents(ctx context.Context) ([]*evoke.Document, error) {
 		if err != nil {
 			return nil, err
 		}
-		fmt.Printf("%s\n  selected: %s (selector)\n", ci.Raw, path)
+		fmt.Printf("%s => %s\n", ci.Raw, displayPath(path, r.roots))
 		docs = append(docs, doc)
 
 		if r.idx != nil {
@@ -126,6 +162,24 @@ func (r *resolution) documents(ctx context.Context) ([]*evoke.Document, error) {
 		affinityTags = append(affinityTags, doc.Metadata.Tags...)
 	}
 	return docs, nil
+}
+
+// displayPath renders a resolved .evoke file path for resolution output as a
+// short, readable location: relative to the source root that contains it (e.g.
+// "chat/companion.evoke"), else relative to the working directory, else the
+// path unchanged.
+func displayPath(path string, roots []sourceRoot) string {
+	for _, root := range roots {
+		if rel, err := filepath.Rel(root.Path, path); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+			return rel
+		}
+	}
+	if wd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(wd, path); err == nil && !strings.HasPrefix(rel, "..") {
+			return rel
+		}
+	}
+	return path
 }
 
 // close releases the index without reporting a persistence error (used on the

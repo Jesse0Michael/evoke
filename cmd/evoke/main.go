@@ -40,20 +40,19 @@ func run(args []string) int {
 	switch cmd {
 	case "login":
 		return cli.Login(rest, verbose)
-	case "generate":
-		return cli.Generate(rest, verbose)
+	case "image":
+		return cli.Image(rest, verbose)
 	case "chat":
 		return cli.Chat(rest, verbose)
+	case "inspect":
+		return cli.Inspect(rest, verbose)
 	case "settings":
 		return cli.SettingsCmd(rest, verbose)
-	case "index":
-		return cli.IndexCmd(rest, verbose)
+
 	case "queue":
 		return cli.QueueCmd(rest, verbose)
 	case "clear":
 		return cli.ClearCmd(rest, verbose)
-	case "history":
-		return cli.HistoryCmd(rest, verbose)
 	case "view":
 		return cli.ViewCmd(rest, verbose)
 	case "completion":
@@ -73,16 +72,19 @@ func run(args []string) int {
 func usage() {
 	fmt.Fprint(os.Stderr, `evoke - declarative composition for AI characters and generative assets
 
-Usage:
-    evoke login       Sign in to the registry
-    evoke generate    Compose evoke files together by tag or reference and send it through a configured pipeline
-    evoke chat        Compose evoke files into a character and start an interactive chat with a local LLM backend
+Chat:
+    evoke chat        Compose evoke files into a character and start an interactive chat
+
+Image:
+    evoke image       Compose evoke files and submit to a generation pipeline
+    evoke inspect     List files matching a tag, or show what the selected files compose into
     evoke queue       View the current generation queue
     evoke clear       Clear the generation queue
-    evoke history     View recent generation history and outputs
     evoke view        Interactive image viewer for recent output
+
+Registry:
+    evoke login       Sign in to the registry
     evoke settings    Manage user settings
-    evoke index       Update the local file index
 
 `)
 }

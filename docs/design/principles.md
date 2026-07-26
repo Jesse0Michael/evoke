@@ -37,7 +37,7 @@ A file may mix any supported declarations. The compiler doesn't care what catego
 Evoke files do not import or reference one another. There is no `FROM`, `IMPORT`, or `USE` declaration. The **caller** selects the files to compose:
 
 ```console
-$ evoke generate character winter forest
+$ evoke image character winter forest
 ```
 
 File selection order must not silently determine behavior unless the specification explicitly defines a reason for order to matter. Two conflicting singular values are a [conflict](../file-format/merge-modes#singular), not a last-one-wins race.

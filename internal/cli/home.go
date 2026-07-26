@@ -65,6 +65,9 @@ type ChatSettings struct {
 	// (false). When unset, styling is auto-detected from the terminal (honoring
 	// NO_COLOR).
 	Color *bool `json:"color,omitempty"`
+	// Stream shows the reply token-by-token as it generates (true) or waits and
+	// renders the completed reply (false). When unset, streaming is off.
+	Stream *bool `json:"stream,omitempty"`
 }
 
 // settings reads settings.json from the Evoke home directory.

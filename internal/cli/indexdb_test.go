@@ -251,7 +251,8 @@ NAME
     Added
 `)
 
-	require.NoError(t, idx.refreshRoot(t.Context(), root))
+	_, err := idx.refreshRoot(t.Context(), root)
+	require.NoError(t, err)
 
 	candidates, err := idx.find(t.Context(), []sourceRoot{root}, []string{"fresh"})
 	require.NoError(t, err)

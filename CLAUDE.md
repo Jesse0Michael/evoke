@@ -8,7 +8,7 @@ Evoke is an experimental declarative source format (`.evoke`), CLI, and registry
 
 The `docs/` directory is a Just the Docs / GitHub Pages site; product docs live under `docs/file-format/` and `docs/cli/`, and design principles under `docs/design/`.
 
-**Status:** The parser, declaration schema, validation, merge/resolver, tag-based selector system, SQLite file index, registry client, the `generate` command, and the `chat` command (managed llama.cpp backend) are all implemented. The hosted registry API is functional.
+**Status:** The parser, declaration schema, validation, merge/resolver, tag-based selector system, SQLite file index, registry client, the `image` command, and the `chat` command (managed llama.cpp backend) are all implemented. The hosted registry API is functional.
 
 **Declaration set (13).** `NAME`, `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `SCENARIO`, `PROMPT`, `IMAGE`, `LORA`, `DETAILER`, `CHAT`. `IDENTITY` is a migration alias for `CHARACTER`. `CHAT` is a structured, singular, default-able declaration (same family as `IMAGE`) consumed only by the `chat` command; it never affects image generation. `ENVIRONMENT` carries the whole scene/setting role. `IMAGE`, `LORA`, and `DETAILER` are structured declarations that accept arguments and key=value settings. `TAGS` is a metadata block (not a declaration) used for selector matching. Namespaced/dotted extension names (`FOO.BAR`) are out of scope; the parser rejects them.
 
@@ -17,7 +17,7 @@ The `docs/` directory is a Just the Docs / GitHub Pages site; product docs live 
 These invariants shape almost every file and are easy to violate:
 
 - **Files are typeless.** A `.evoke` file never declares that it is a "character," "apparel," or "location" file. Its meaning *emerges* from the declarations it contains. Never add a `TYPE`/`FROM`/`IMPORT` mechanism.
-- **Composition is external.** Files do not reference each other. The *caller* selects which files compose together (`evoke generate character shot`). File order must not silently change behavior unless the spec explicitly says so.
+- **Composition is external.** Files do not reference each other. The *caller* selects which files compose together (`evoke image character shot`). File order must not silently change behavior unless the spec explicitly says so.
 - **Never concatenate early.** Parsing and merging operate on structured declarations. Flattening to a prompt string is a *rendering* concern that happens last.
 - **Tag-based discovery.** Files declare `TAGS` blocks; the selector system (`pkg/evoke/selector.go`) matches files by tag and/or facet. The SQLite index (`internal/cli/indexdb.go`) stores parsed metadata for fast selector resolution.
 
@@ -51,9 +51,9 @@ All core format logic lives in `pkg/evoke/`:
 
 CLI and generation:
 
-- `cmd/evoke` — thin `evoke` CLI entrypoint: owns command dispatch + usage only, delegates to `internal/cli`. Builds to `bin/evoke`. Commands: `login`, `generate`, `chat`, `settings`, `index`, `queue`, `clear`, `history`, `view`, `completion`.
-- `internal/cli` — command implementations. `generate` resolves inputs (selectors via the SQLite index, local file paths, `@namespace/name` registry references), merges documents, and submits to ComfyUI. `chat` resolves + merges the same way, compiles a chat plan, launches and manages a llama.cpp `llama-server` backend (with the resolved model + settings), runs an interactive conversation, and shuts the backend down on exit. `login` runs the Google loopback + PKCE flow, exchanges the ID token at the registry, and stores tokens in `~/.evoke/credentials.json`. `settings` manages `~/.evoke/settings.json` (source paths + trusted `chat` config). `index` refreshes the local SQLite index. `view` launches an interactive terminal image viewer with metadata display. `history` shows recent generations with output resolution. `queue` displays the ComfyUI generation queue. `clear` clears the queue.
-- `internal/cli/resolve.go` — the shared input-resolution pipeline (classify → index → static docs → per-call selector resolution) used by **both** `generate` and `chat`, so chat consumes the same resolved/merged representation rather than a second loader.
+- `cmd/evoke` — thin `evoke` CLI entrypoint: owns command dispatch + usage only, delegates to `internal/cli`. Builds to `bin/evoke`. Commands: `login`, `image`, `chat`, `settings`, `queue`, `clear`, `view`, `completion`.
+- `internal/cli` — command implementations. `image` resolves inputs (selectors via the SQLite index, local file paths, `@namespace/name` registry references), merges documents, and submits to ComfyUI. `chat` resolves + merges the same way, compiles a chat plan, launches and manages a llama.cpp `llama-server` backend (with the resolved model + settings), runs an interactive conversation, and shuts the backend down on exit. `login` runs the Google loopback + PKCE flow, exchanges the ID token at the registry, and stores tokens in `~/.evoke/credentials.json`. `settings` manages `~/.evoke/settings.json` (source paths + trusted `chat` config). `view` launches an interactive terminal image viewer with metadata display. `queue` displays the ComfyUI generation queue. `clear` clears the queue.
+- `internal/cli/resolve.go` — the shared input-resolution pipeline (classify → index → static docs → per-call selector resolution) used by **both** `image` and `chat`, so chat consumes the same resolved/merged representation rather than a second loader.
 - `internal/cli/indexdb.go` — SQLite-backed file index storing tags and declarations for fast selector resolution.
 - `internal/cli/sources.go` — source root discovery (EVOKE_PATH, configured paths, library directory), file walking, input classification.
 - `internal/generate` — `Generator` interface.
@@ -122,6 +122,10 @@ golangci-lint run                            # lint
 
 After editing `.go` files, run `goimports -w` on them and `golangci-lint run --fix` on the changed files (per global Go guidelines).
 
+After finishing a change to the `evoke` CLI (anything under `cmd/evoke` or `internal/cli`), run `make install` so the installed `evoke` on `PATH` reflects the change.
+
+When you add or change an `evoke` subcommand that composes `.evoke` inputs (tag selectors, local paths, `@namespace/name` refs — e.g. `image`, `chat`, `inspect`), wire it into tab-completion: add it to the `__complete` dispatch in `internal/cli/completion.go` and to all three shell scripts in `internal/cli/completion_script.go` (zsh, bash, fish). Completion changes only take effect after the user regenerates and re-sources the script (`evoke completion zsh`).
+
 ## Testing conventions specific to Evoke
 
 - The resolver/merger and parser are the correctness core — cover **every merge behavior** (singular one/zero/conflict, accumulating dedup, default suppression, positive vs negative channels, unsupported-prefix errors) with table-driven tests.
@@ -133,7 +137,7 @@ After editing `.go` files, run `goimports -w` on them and `golangci-lint run --f
 2. ✅ **Declaration registry + semantic validation** — the 12-declaration schema and per-file checks (unknown declaration, unsupported `!`/`?` prefix).
 3. ✅ **Resolver** — channels, conflicts, accumulation, dedup, diagnostics → `Composition`.
 4. ✅ **Tag-based selectors + SQLite index** — facet/tag matching, source root discovery, persistent file index.
-5. ✅ **`generate` command** — compose files by selector/path/registry-ref and submit to ComfyUI.
+5. ✅ **`image` command** — compose files by selector/path/registry-ref and submit to ComfyUI.
 6. ✅ **Registry API** — hosted push/pull/list with Google OIDC auth.
 7. ✅ **Registry client integration** — `@namespace/name` references, local library cache, manifest tracking.
 8. ✅ **Chat command (managed llama.cpp)** — the `CHAT` declaration, deterministic prompt compilation, token-budgeted sliding-window history, and an interactive chat against a llama.cpp `llama-server` that Evoke launches, health-checks, and shuts down for the session (behind the `Lease` seam).

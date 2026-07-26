@@ -74,21 +74,19 @@ func settingsSet(args []string) int {
 		}
 		s.Paths = append(s.Paths, abs)
 	case "chat.color":
-		switch value {
-		case "on", "true":
-			b := true
-			ensureChat(s).Color = &b
-		case "off", "false":
-			b := false
-			ensureChat(s).Color = &b
-		case "auto":
-			if s.Chat != nil {
-				s.Chat.Color = nil
-			}
-		default:
+		v, ok := parseBoolSetting(value)
+		if !ok {
 			fmt.Fprintln(os.Stderr, "evoke settings set: chat.color must be on, off, or auto")
 			return 2
 		}
+		ensureChat(s).Color = v
+	case "chat.stream":
+		v, ok := parseBoolSetting(value)
+		if !ok {
+			fmt.Fprintln(os.Stderr, "evoke settings set: chat.stream must be on, off, or auto")
+			return 2
+		}
+		ensureChat(s).Stream = v
 	default:
 		fmt.Fprintf(os.Stderr, "evoke settings set: unknown key %q\n", key)
 		settingsUsage()
@@ -150,11 +148,29 @@ func ensureChat(s *Settings) *ChatSettings {
 	return s.Chat
 }
 
+// parseBoolSetting parses a tri-state on/off/auto value. "auto" resolves to a
+// nil pointer (meaning: fall back to auto-detection). ok is false for anything else.
+func parseBoolSetting(value string) (result *bool, ok bool) {
+	switch value {
+	case "on", "true":
+		b := true
+		return &b, true
+	case "off", "false":
+		b := false
+		return &b, true
+	case "auto":
+		return nil, true
+	default:
+		return nil, false
+	}
+}
+
 func settingsUsage() {
 	fmt.Fprint(os.Stderr, `Usage:
     evoke settings                        Show current settings
     evoke settings set path <dir>         Add a source path
     evoke settings remove path <dir>      Remove a source path
     evoke settings set chat.color <on|off|auto>   Style chat output
+    evoke settings set chat.stream <on|off|auto>  Stream chat replies as they generate
 `)
 }

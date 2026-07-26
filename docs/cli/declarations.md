@@ -45,7 +45,7 @@ $ evoke settings
 
 ## Source roots
 
-The `generate` and `index` commands discover `.evoke` files from these roots (in order):
+The `image` and `index` commands discover `.evoke` files from these roots (in order):
 
 1. **`EVOKE_PATH`** environment variable (colon-separated directories)
 2. **Configured paths** from `settings.json`
@@ -72,27 +72,3 @@ On success, stores access and refresh tokens in `~/.evoke/credentials.json`.
 | `GOOGLE_CLIENT_ID` | *(required)* | Desktop OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | *(required)* | Desktop OAuth client secret |
 
----
-
-# evoke index
-{: .no_toc }
-
-Refresh the local SQLite file index by scanning all configured source roots.
-
-```console
-$ evoke index
-```
-
-The index stores tags and declarations for each `.evoke` file, enabling fast selector resolution in `evoke generate`.
-
-## Output
-
-```console
-$ evoke index
-indexing /Users/you/my-characters (configured)
-indexing /Users/you/.evoke/library (library)
-  /Users/you/my-characters (configured): 12 files
-  /Users/you/.evoke/library (library): 3 files
-
-total: 2 roots, 15 files
-```

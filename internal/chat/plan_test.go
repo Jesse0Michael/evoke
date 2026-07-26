@@ -220,20 +220,51 @@ func TestCompileSystemPrompt(t *testing.T) {
 		"Grew up on the coast.",
 		"Studies coral reefs.",
 		"",
-		"Appearance: long dark hair",
-		"",
 		"Stay in character.",
-		"",
-		"Starting situation:",
-		"Wearing: a wetsuit",
-		"Setting: a sunny beach",
-		"You just surfaced from a dive.",
 	}, "\n")
 
 	got := compileSystemPrompt(comp)
 
 	require.Equal(t, want, got)
 	require.NotContains(t, got, "masterpiece", "image-only PROMPT content must not leak into the chat prompt")
+	require.NotContains(t, got, "long dark hair", "appearance is a generate-only concern, not chat")
+	// The scene is seeded via the opening turn, not the always-resent system prompt.
+	require.NotContains(t, got, "Starting situation", "scenario must not live in the system prompt")
+	require.NotContains(t, got, "surfaced from a dive", "scenario belongs in the opening turn")
+	require.NotContains(t, got, "wetsuit", "apparel is a generate-only concern, not chat")
+	require.NotContains(t, got, "sunny beach", "environment is a generate-only concern, not chat")
 	// Deterministic across calls.
 	require.Equal(t, got, compileSystemPrompt(comp))
+}
+
+func TestCompileOpening(t *testing.T) {
+	tests := []struct {
+		name string
+		comp *evoke.Composition
+		want string
+	}{
+		{
+			name: "scenario seeds the opening turn",
+			comp: &evoke.Composition{Scenario: "You just surfaced from a dive."},
+			want: "Set the scene and begin in character. The situation:\n\nYou just surfaced from a dive.",
+		},
+		{
+			name: "no scenario yields no opening",
+			comp: &evoke.Composition{},
+			want: "",
+		},
+		{
+			name: "apparel and environment do not seed the opening",
+			comp: &evoke.Composition{
+				Apparel:     evoke.Prompt{Positive: []string{"a wetsuit"}},
+				Environment: evoke.Prompt{Positive: []string{"a sunny beach"}},
+			},
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, compileOpening(tt.comp))
+		})
+	}
 }
