@@ -49,6 +49,10 @@ func run(args []string) int {
 	case "settings":
 		return cli.SettingsCmd(rest, verbose)
 
+	case "push":
+		return cli.Push(rest, verbose)
+	case "pull":
+		return cli.Pull(rest, verbose)
 	case "queue":
 		return cli.QueueCmd(rest, verbose)
 	case "clear":
@@ -84,6 +88,8 @@ Image:
 
 Registry:
     evoke login       Sign in to the registry
+    evoke push        Push a .evoke file to the registry
+    evoke pull        Download a registry artifact to the local library
     evoke settings    Manage user settings
 
 `)

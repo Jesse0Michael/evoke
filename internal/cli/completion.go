@@ -14,7 +14,7 @@ func Complete(args []string) int {
 	// Shell scripts pass: evoke __complete image <words...> <current>
 	if len(args) < 2 {
 		// Complete subcommands.
-		for _, cmd := range []string{"login", "image", "chat", "inspect", "queue", "clear", "view", "settings", "completion"} {
+		for _, cmd := range []string{"login", "image", "chat", "inspect", "push", "pull", "queue", "clear", "view", "settings", "completion"} {
 			fmt.Println(cmd)
 		}
 		return 0
@@ -33,6 +33,8 @@ func Complete(args []string) int {
 		return completeInputs(current, []string{"--stream", "--no-tui", "-v", "--verbose"})
 	case "inspect":
 		return completeInputs(current, []string{"-v", "--verbose"})
+	case "pull":
+		return completeRegistryRefs(current)
 	default:
 		return 0
 	}
