@@ -56,7 +56,7 @@ func TestRunChatLoop(t *testing.T) {
 	in := strings.NewReader("hello\n/context\n/reset\n/exit\n")
 	var out bytes.Buffer
 
-	err := runChatLoop(t.Context(), plan, fb, true, false, in, &out, nil, nil, nil, chatStyle{})
+	err := runChatLoop(t.Context(), plan, fb, true, false, in, &out, nil, nil, nil, chatStyle{}, nil)
 
 	require.NoError(t, err)
 	s := out.String()
@@ -81,7 +81,7 @@ func TestRunChatLoopSeedsOpening(t *testing.T) {
 	in := strings.NewReader("hi\n/exit\n")
 	var out bytes.Buffer
 
-	err := runChatLoop(t.Context(), plan, fb, false, false, in, &out, nil, nil, nil, chatStyle{})
+	err := runChatLoop(t.Context(), plan, fb, false, false, in, &out, nil, nil, nil, chatStyle{}, nil)
 
 	require.NoError(t, err)
 	s := out.String()
@@ -106,7 +106,7 @@ func TestRunChatLoopResetReplaysOpening(t *testing.T) {
 	in := strings.NewReader("/reset\n/exit\n")
 	var out bytes.Buffer
 
-	err := runChatLoop(t.Context(), plan, fb, false, false, in, &out, nil, nil, nil, chatStyle{})
+	err := runChatLoop(t.Context(), plan, fb, false, false, in, &out, nil, nil, nil, chatStyle{}, nil)
 
 	require.NoError(t, err)
 	s := out.String()
@@ -131,7 +131,7 @@ func TestRunChatLoopVerboseDiagnostics(t *testing.T) {
 	var out bytes.Buffer
 	backendLog := func() string { return "slot released\ncontext shift" }
 
-	err := runChatLoop(t.Context(), plan, fb, true, true, in, &out, nil, nil, backendLog, chatStyle{})
+	err := runChatLoop(t.Context(), plan, fb, true, true, in, &out, nil, nil, backendLog, chatStyle{}, nil)
 
 	require.NoError(t, err)
 	s := out.String()
@@ -147,7 +147,7 @@ func TestRunChatLoopExitsOnEOF(t *testing.T) {
 	in := strings.NewReader("hey\n") // no /exit: input ends, loop exits on EOF
 	var out bytes.Buffer
 
-	err := runChatLoop(t.Context(), plan, fb, false, false, in, &out, nil, nil, nil, chatStyle{})
+	err := runChatLoop(t.Context(), plan, fb, false, false, in, &out, nil, nil, nil, chatStyle{}, nil)
 
 	require.NoError(t, err)
 	require.Contains(t, out.String(), "Yasmin: yo")
@@ -160,7 +160,7 @@ func TestRunChatLoopUnknownCommand(t *testing.T) {
 	in := strings.NewReader("/bogus\n/exit\n")
 	var out bytes.Buffer
 
-	err := runChatLoop(t.Context(), plan, fb, true, false, in, &out, nil, nil, nil, chatStyle{})
+	err := runChatLoop(t.Context(), plan, fb, true, false, in, &out, nil, nil, nil, chatStyle{}, nil)
 
 	require.NoError(t, err)
 	require.Contains(t, out.String(), `unknown command "/bogus"`)
@@ -175,7 +175,7 @@ func TestRunChatLoopExitsWhenBackendDies(t *testing.T) {
 	var out bytes.Buffer
 
 	err := runChatLoop(t.Context(), plan, fb, true, false, strings.NewReader(""), &out,
-		backendDone, func() error { return context.Canceled }, nil, chatStyle{})
+		backendDone, func() error { return context.Canceled }, nil, chatStyle{}, nil)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "backend exited")

@@ -68,6 +68,36 @@ func TestClassifyInput(t *testing.T) {
 			raw:      "dark forest",
 			wantKind: inputLiteral,
 		},
+		{
+			name:     "batch shorthand lowercase",
+			raw:      "x5",
+			wantKind: inputBatch,
+		},
+		{
+			name:     "batch shorthand uppercase",
+			raw:      "X10",
+			wantKind: inputBatch,
+		},
+		{
+			name:     "batch shorthand single digit",
+			raw:      "x1",
+			wantKind: inputBatch,
+		},
+		{
+			name:     "not batch: just x",
+			raw:      "x",
+			wantKind: inputSelector,
+		},
+		{
+			name:     "not batch: x followed by non-digit",
+			raw:      "xray",
+			wantKind: inputSelector,
+		},
+		{
+			name:     "not batch: x0",
+			raw:      "x0",
+			wantKind: inputSelector,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -121,6 +151,92 @@ func TestResolveLocalFilePath(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tt.wantPath, got)
+		})
+	}
+}
+
+func TestParseBatchArg(t *testing.T) {
+	tests := []struct {
+		raw  string
+		want int
+	}{
+		{"x5", 5},
+		{"X10", 10},
+		{"x1", 1},
+		{"x100", 100},
+		{"x200", 100}, // capped at maxBatch
+		{"x999", 100}, // capped at maxBatch
+		{"x", 0},      // too short
+		{"x0", 0},     // zero not valid
+		{"x-1", 0},    // negative
+		{"xray", 0},   // not a number
+		{"5", 0},      // no x prefix
+		{"", 0},       // empty
+		{"X", 0},      // just uppercase X
+		{"x50", 50},
+	}
+	for _, tt := range tests {
+		t.Run(tt.raw, func(t *testing.T) {
+			require.Equal(t, tt.want, parseBatchArg(tt.raw))
+		})
+	}
+}
+
+func TestExtractBatch(t *testing.T) {
+	tests := []struct {
+		name      string
+		inputs    []classifiedInput
+		wantRaws  []string
+		wantBatch int
+	}{
+		{
+			name: "no batch arg",
+			inputs: []classifiedInput{
+				{Raw: "character", Kind: inputSelector},
+				{Raw: "shot", Kind: inputSelector},
+			},
+			wantRaws:  []string{"character", "shot"},
+			wantBatch: 0,
+		},
+		{
+			name: "single batch arg",
+			inputs: []classifiedInput{
+				{Raw: "character", Kind: inputSelector},
+				{Raw: "x5", Kind: inputBatch},
+			},
+			wantRaws:  []string{"character"},
+			wantBatch: 5,
+		},
+		{
+			name: "multiple batch args last wins",
+			inputs: []classifiedInput{
+				{Raw: "x3", Kind: inputBatch},
+				{Raw: "character", Kind: inputSelector},
+				{Raw: "x7", Kind: inputBatch},
+			},
+			wantRaws:  []string{"character"},
+			wantBatch: 7,
+		},
+		{
+			name: "batch in the middle",
+			inputs: []classifiedInput{
+				{Raw: "character", Kind: inputSelector},
+				{Raw: "x2", Kind: inputBatch},
+				{Raw: "shot", Kind: inputSelector},
+			},
+			wantRaws:  []string{"character", "shot"},
+			wantBatch: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filtered, batch := extractBatch(tt.inputs)
+			var raws []string
+			for _, ci := range filtered {
+				raws = append(raws, ci.Raw)
+			}
+			require.Equal(t, tt.wantRaws, raws)
+			require.Equal(t, tt.wantBatch, batch)
 		})
 	}
 }

@@ -13,7 +13,7 @@ import (
 func newTestTUIModel(fb *fakeBackend, opening string) chatTUIModel {
 	plan := testChatPlan()
 	plan.Opening = opening
-	return newChatTUIModel(context.Background(), plan, fb, chatStyle{}, false, nil, nil)
+	return newChatTUIModel(context.Background(), plan, fb, chatStyle{}, false, nil, nil, nil)
 }
 
 // resolveReply runs the pending reply command synchronously (fakeBackend is

@@ -50,8 +50,12 @@ type TrustedConfig struct {
 	Executable string
 	// ModelDirs are the directories searched (recursively) for the model file
 	// named in a CHAT declaration — the "where my GGUFs live" for this machine,
-	// analogous to ComfyUI's models directory for checkpoints.
+	// analogous to ComfyUI's models directory for checkpoints. Also searched
+	// for knowledge database files referenced by KNOWLEDGE declarations.
 	ModelDirs []string
+	// EmbedURL is the ollama-compatible API base URL for query-time embeddings
+	// (default: http://localhost:11434).
+	EmbedURL string
 	// Host and Port are the loopback endpoint the managed server binds to.
 	Host string
 	Port int
@@ -102,6 +106,7 @@ type Plan struct {
 	Opening      string // scenario framing seeded once as the first turn ("" if none)
 	Sampling     Sampling
 	History      HistoryPolicy
+	Knowledge    []KnowledgeConfig // RAG knowledge bases from KNOWLEDGE declarations
 	Display      Display
 	Sources      []string
 	Diagnostics  []string
@@ -209,6 +214,41 @@ func Compile(comp *evoke.Composition, trusted TrustedConfig) (*Plan, error) {
 	if plan.History.ContextWindow > 0 && plan.Sampling.MaxOutputTokens+plan.History.SafetyMargin >= plan.History.ContextWindow {
 		fail("output reserve (%d) plus safety margin (%d) leaves no room in the context window (%d)",
 			plan.Sampling.MaxOutputTokens, plan.History.SafetyMargin, plan.History.ContextWindow)
+	}
+
+	// Knowledge / RAG: resolve KNOWLEDGE declarations from the composition.
+	for _, ks := range comp.Knowledge {
+		cfg := KnowledgeConfig{
+			EmbedModel: defaultEmbedModel,
+			EmbedURL:   cmpOr(trusted.EmbedURL, defaultEmbedURL),
+			TopK:       defaultKnowledgeK,
+		}
+		// The `db` setting names the file; resolve it via model_paths directories
+		// the same way CHAT's `model` setting resolves a GGUF.
+		dbName := ks.Settings["db"]
+		if dbName == "" {
+			fail("KNOWLEDGE %q is missing a db setting", ks.Argument)
+		} else {
+			switch path, ok := resolveModelPath(dbName, trusted.ModelDirs); {
+			case ok:
+				cfg.DBPath = path
+			case len(trusted.ModelDirs) == 0:
+				plan.Diagnostics = append(plan.Diagnostics,
+					fmt.Sprintf("knowledge %q db %q cannot be resolved: no chat.model_paths configured in settings", ks.Argument, dbName))
+			default:
+				plan.Diagnostics = append(plan.Diagnostics,
+					fmt.Sprintf("knowledge %q db file %q not found under chat.model_paths: %s", ks.Argument, dbName, strings.Join(trusted.ModelDirs, ", ")))
+			}
+		}
+		if v, ok := ks.Settings["top_k"]; ok {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				cfg.TopK = n
+			}
+		}
+		if v, ok := ks.Settings["embed_model"]; ok && v != "" {
+			cfg.EmbedModel = v
+		}
+		plan.Knowledge = append(plan.Knowledge, cfg)
 	}
 
 	// System prompt is deterministic given the same composition + settings.

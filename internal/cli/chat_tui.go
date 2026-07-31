@@ -21,8 +21,8 @@ import (
 // the next message can be composed but not submitted until the current one
 // resolves. It is used only on an interactive terminal; piped or non-interactive
 // runs use runChatLoop instead.
-func runChatTUI(ctx context.Context, plan *chat.Plan, client chatBackend, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error) error {
-	m := newChatTUIModel(ctx, plan, client, st, verbose, backendDone, backendErr)
+func runChatTUI(ctx context.Context, plan *chat.Plan, client chatBackend, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*chat.Knowledge) error {
+	m := newChatTUIModel(ctx, plan, client, st, verbose, backendDone, backendErr, knowledgeBases)
 	// Deliberately do NOT capture the mouse: mouse reporting would steal native
 	// click-drag text selection. Most terminals translate the wheel into ↑/↓ keys
 	// for an alt-screen app when the mouse isn't captured, so the viewport still
@@ -51,14 +51,15 @@ func runChatTUI(ctx context.Context, plan *chat.Plan, client chatBackend, st cha
 // remains the source of truth for the transcript sent to the backend; the model
 // only adds presentation (a rendered log, a pinned input, and a busy gate).
 type chatTUIModel struct {
-	ctx         context.Context
-	plan        *chat.Plan
-	client      chatBackend
-	sess        *chat.Session
-	st          chatStyle
-	verbose     bool
-	backendDone <-chan struct{}
-	backendErr  func() error
+	ctx            context.Context
+	plan           *chat.Plan
+	client         chatBackend
+	sess           *chat.Session
+	st             chatStyle
+	verbose        bool
+	backendDone    <-chan struct{}
+	backendErr     func() error
+	knowledgeBases []*chat.Knowledge
 
 	viewport viewport.Model
 	input    textinput.Model
@@ -80,7 +81,7 @@ type replyMsg struct {
 // backendDeadMsg signals the managed backend exited unexpectedly.
 type backendDeadMsg struct{}
 
-func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error) chatTUIModel {
+func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*chat.Knowledge) chatTUIModel {
 	ti := textinput.New()
 	ti.Prompt = "> "
 	ti.Placeholder = "type a message"
@@ -90,16 +91,17 @@ func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, s
 	sp.Spinner = spinner.Ellipsis
 
 	m := chatTUIModel{
-		ctx:         ctx,
-		plan:        plan,
-		client:      client,
-		st:          st,
-		verbose:     verbose,
-		backendDone: backendDone,
-		backendErr:  backendErr,
-		input:       ti,
-		spinner:     sp,
-		sess:        chat.NewSession(plan),
+		ctx:            ctx,
+		plan:           plan,
+		client:         client,
+		st:             st,
+		verbose:        verbose,
+		backendDone:    backendDone,
+		backendErr:     backendErr,
+		knowledgeBases: knowledgeBases,
+		input:          ti,
+		spinner:        sp,
+		sess:           chat.NewSession(plan),
 	}
 	m.transcript = append(m.transcript, st.dim(fmt.Sprintf(
 		"%s · %s · %d ctx — /exit /reset /context",
@@ -219,6 +221,7 @@ func (m chatTUIModel) submit() (tea.Model, tea.Cmd) {
 	}
 	m.transcript = append(m.transcript, m.renderUser(text))
 	m.sess.AddUser(text)
+	m.retrieveContext(text)
 	m.input.Reset()
 	m.busy = true
 	m.refreshViewport()
@@ -268,6 +271,27 @@ func (m chatTUIModel) replyCmd() tea.Cmd {
 	return func() tea.Msg {
 		reply, usage, err := client.Complete(ctx, req)
 		return replyMsg{reply: reply, usage: usage, err: err}
+	}
+}
+
+// retrieveContext queries all knowledge bases and sets the combined results
+// on the session for injection into the next request.
+func (m *chatTUIModel) retrieveContext(query string) {
+	if len(m.knowledgeBases) == 0 {
+		return
+	}
+	var combined []string
+	for _, kb := range m.knowledgeBases {
+		result, err := kb.Retrieve(m.ctx, query)
+		if err != nil {
+			continue
+		}
+		if result != "" {
+			combined = append(combined, result)
+		}
+	}
+	if len(combined) > 0 {
+		m.sess.SetRetrievedContext(strings.Join(combined, "\n\n"))
 	}
 }
 

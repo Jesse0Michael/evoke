@@ -46,7 +46,21 @@ func Image(args []string, verbose bool) int {
 		return 1
 	}
 
-	inputArgs := fs.Args()
+	// Classify all args and extract any xN batch shorthands.
+	var classified []classifiedInput
+	for _, raw := range fs.Args() {
+		classified = append(classified, classifyInput(raw))
+	}
+	classified, inlineBatch := extractBatch(classified)
+	if inlineBatch > 0 {
+		*batch = inlineBatch
+	}
+
+	inputArgs := make([]string, 0, len(classified))
+	for _, ci := range classified {
+		inputArgs = append(inputArgs, ci.Raw)
+	}
+
 	if len(inputArgs) == 0 {
 		fmt.Fprintln(os.Stderr, "evoke image: at least one input is required")
 		return 2

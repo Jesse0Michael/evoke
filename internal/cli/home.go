@@ -59,8 +59,10 @@ type ChatSettings struct {
 	Host string `json:"host,omitempty"`
 	Port int    `json:"port,omitempty"`
 	// ModelPaths are directories searched (recursively) for the GGUF file named
-	// in a CHAT declaration.
+	// in a CHAT declaration and knowledge DB files in KNOWLEDGE declarations.
 	ModelPaths []string `json:"model_paths,omitempty"`
+	// EmbedURL is the ollama-compatible API base URL for query-time embeddings.
+	EmbedURL string `json:"embed_url,omitempty"`
 	// Color forces ANSI styling of interactive chat output on (true) or off
 	// (false). When unset, styling is auto-detected from the terminal (honoring
 	// NO_COLOR).

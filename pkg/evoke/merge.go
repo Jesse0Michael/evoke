@@ -44,6 +44,12 @@ type ChatConfig struct {
 	Instructions []string
 }
 
+// KnowledgeSource holds the resolved configuration for a KNOWLEDGE declaration.
+type KnowledgeSource struct {
+	Argument string            // the DB filename (e.g., "lore.db")
+	Settings map[string]string // optional settings (top_k, embed_model)
+}
+
 type Composition struct {
 	Name        string
 	Character   []string
@@ -57,9 +63,10 @@ type Composition struct {
 	Images      []ImageStage
 	Loras       []LoraDefinition
 	Detailers   []DetailerConfig
-	Chat        *ChatConfig // Resolved CHAT configuration, nil when no CHAT declaration contributes
-	Sources     []string    // Source file paths of merged documents
-	Inputs      []string    // Original CLI input arguments
+	Chat        *ChatConfig       // Resolved CHAT configuration, nil when no CHAT declaration contributes
+	Knowledge   []KnowledgeSource // Resolved KNOWLEDGE declarations
+	Sources     []string          // Source file paths of merged documents
+	Inputs      []string          // Original CLI input arguments
 }
 
 type channelKey struct {
@@ -124,6 +131,7 @@ func Merge(docs []*Document) *Composition {
 	comp.Loras = resolveLoraDefinitions(contributions)
 	comp.Detailers = resolveDetailerConfigs(contributions)
 	comp.Chat = resolveChatConfig(contributions)
+	comp.Knowledge = resolveKnowledgeSources(contributions)
 
 	return comp
 }
@@ -137,6 +145,23 @@ func resolveChatConfig(contributions map[channelKey][]contribution) *ChatConfig 
 	}
 	settings, _, text := resolveStructuredChannel(contribs)
 	return &ChatConfig{Settings: settings, Instructions: text}
+}
+
+// resolveKnowledgeSources resolves all KNOWLEDGE declarations into KnowledgeSource values.
+func resolveKnowledgeSources(contributions map[channelKey][]contribution) []KnowledgeSource {
+	args := collectArguments(contributions, "KNOWLEDGE")
+
+	var sources []KnowledgeSource
+	for _, arg := range args {
+		key := channelKey{"KNOWLEDGE", arg, false}
+		contribs := contributions[key]
+		settings, _, _ := resolveStructuredChannel(contribs)
+		sources = append(sources, KnowledgeSource{
+			Argument: arg,
+			Settings: settings,
+		})
+	}
+	return sources
 }
 
 // resolveImageStages resolves all IMAGE declarations into ImageStage values.

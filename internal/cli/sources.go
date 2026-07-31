@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -32,7 +33,10 @@ const (
 	inputLocalPath
 	inputRegistryRef
 	inputLiteral
+	inputBatch
 )
+
+const maxBatch = 100
 
 // classifiedInput holds a classified generate argument.
 type classifiedInput struct {
@@ -43,7 +47,7 @@ type classifiedInput struct {
 }
 
 // classifyInput determines whether a raw CLI argument is a registry reference,
-// a local path, a literal prompt string, or a tag/declaration selector.
+// a local path, a literal prompt string, a batch shorthand, or a tag/declaration selector.
 func classifyInput(raw string) classifiedInput {
 	if strings.HasPrefix(raw, "@") {
 		ns, name := parseRegistryRef(raw)
@@ -55,7 +59,42 @@ func classifyInput(raw string) classifiedInput {
 	if strings.Contains(raw, " ") {
 		return classifiedInput{Raw: raw, Kind: inputLiteral}
 	}
+	if parseBatchArg(raw) > 0 {
+		return classifiedInput{Raw: raw, Kind: inputBatch}
+	}
 	return classifiedInput{Raw: raw, Kind: inputSelector}
+}
+
+// parseBatchArg checks whether raw is a batch shorthand like "x5" or "X10".
+// Returns the parsed count (capped at maxBatch) or 0 if it doesn't match.
+func parseBatchArg(raw string) int {
+	if len(raw) < 2 {
+		return 0
+	}
+	if raw[0] != 'x' && raw[0] != 'X' {
+		return 0
+	}
+	n, err := strconv.Atoi(raw[1:])
+	if err != nil || n < 1 {
+		return 0
+	}
+	return min(n, maxBatch)
+}
+
+// extractBatch scans classified inputs for batch shorthands (xN), removes
+// them, and returns the remaining inputs along with the batch count.
+// If multiple batch args appear, the last one wins.
+func extractBatch(inputs []classifiedInput) ([]classifiedInput, int) {
+	batch := 0
+	filtered := make([]classifiedInput, 0, len(inputs))
+	for _, ci := range inputs {
+		if ci.Kind == inputBatch {
+			batch = parseBatchArg(ci.Raw)
+			continue
+		}
+		filtered = append(filtered, ci)
+	}
+	return filtered, batch
 }
 
 // parseRegistryRef splits @namespace/name into its parts.

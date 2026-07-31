@@ -105,6 +105,23 @@ func Chat(args []string, verbose bool) int {
 		return 1
 	}
 
+	// Open knowledge bases for RAG if configured.
+	var knowledgeBases []*chat.Knowledge
+	for _, kcfg := range plan.Knowledge {
+		if kcfg.DBPath == "" {
+			continue
+		}
+		kb, kerr := chat.OpenKnowledge(kcfg)
+		if kerr != nil {
+			fmt.Fprintf(os.Stderr, "evoke chat: knowledge: %v\n", kerr)
+			return 1
+		}
+		knowledgeBases = append(knowledgeBases, kb)
+		if verbose {
+			fmt.Printf("Knowledge base loaded: %s\n", kcfg.DBPath)
+		}
+	}
+
 	fmt.Printf("Starting %s backend (%s) ...\n", plan.Backend, plan.Display.Model)
 	lease, err := chat.StartManaged(ctx, plan, cfg.StartupTimeout)
 	if err != nil {
@@ -150,9 +167,9 @@ func Chat(args []string, verbose bool) int {
 	// test) falls back to the line-based loop.
 	var runErr error
 	if !*noTUI && !stream && isInteractive() {
-		runErr = runChatTUI(ctx, plan, client, st, verbose, lease.Done(), lease.Err)
+		runErr = runChatTUI(ctx, plan, client, st, verbose, lease.Done(), lease.Err, knowledgeBases)
 	} else {
-		runErr = runChatLoop(ctx, plan, client, stream, verbose, os.Stdin, os.Stdout, lease.Done(), lease.Err, backendLog, st)
+		runErr = runChatLoop(ctx, plan, client, stream, verbose, os.Stdin, os.Stdout, lease.Done(), lease.Err, backendLog, st, knowledgeBases)
 	}
 	if runErr != nil {
 		fmt.Fprintf(os.Stderr, "evoke chat: %v\n", runErr)
@@ -198,6 +215,9 @@ func buildTrustedChatConfig(s *Settings, cfg chatConfig) chat.TrustedConfig {
 		for _, p := range s.Chat.ModelPaths {
 			addModelDir(p)
 		}
+		if s.Chat.EmbedURL != "" {
+			tc.EmbedURL = s.Chat.EmbedURL
+		}
 	}
 	return tc
 }
@@ -214,9 +234,31 @@ type chatBackend interface {
 // and any backend log output) after each reply. backendDone fires if the managed
 // backend exits unexpectedly, with backendErr reporting the cause. It returns nil
 // on a clean exit (/exit, EOF, or interrupt).
-func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, stream, verbose bool, in io.Reader, out io.Writer, backendDone <-chan struct{}, backendErr func() error, backendLog func() string, st chatStyle) error {
+func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, stream, verbose bool, in io.Reader, out io.Writer, backendDone <-chan struct{}, backendErr func() error, backendLog func() string, st chatStyle, knowledgeBases []*chat.Knowledge) error {
 	sess := chat.NewSession(plan)
 	printStartupSummary(out, plan, st)
+
+	// retrieveContext queries all knowledge bases and sets the combined results
+	// on the session for injection into the next request.
+	retrieveContext := func(query string) {
+		if len(knowledgeBases) == 0 {
+			return
+		}
+		var combined []string
+		for _, kb := range knowledgeBases {
+			result, err := kb.Retrieve(ctx, query)
+			if err != nil {
+				fmt.Fprintf(out, "%s knowledge retrieval: %v\n", st.errorText("warning:"), err)
+				continue
+			}
+			if result != "" {
+				combined = append(combined, result)
+			}
+		}
+		if len(combined) > 0 {
+			sess.SetRetrievedContext(strings.Join(combined, "\n\n"))
+		}
+	}
 
 	// respond generates, prints, and records one assistant reply for the pending
 	// user turn already added to the session. It returns done=true if the session
@@ -319,6 +361,7 @@ func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, strea
 		}
 
 		sess.AddUser(msg)
+		retrieveContext(msg)
 		if respond() {
 			return nil
 		}

@@ -87,6 +87,17 @@ func settingsSet(args []string) int {
 			return 2
 		}
 		ensureChat(s).Stream = v
+	case "chat.model_path":
+		abs, err := expandPath(value)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "evoke settings set: %v\n", err)
+			return 1
+		}
+		if slices.Contains(ensureChat(s).ModelPaths, abs) {
+			fmt.Fprintf(os.Stderr, "model path already configured: %s\n", abs)
+			return 0
+		}
+		ensureChat(s).ModelPaths = append(ensureChat(s).ModelPaths, abs)
 	default:
 		fmt.Fprintf(os.Stderr, "evoke settings set: unknown key %q\n", key)
 		settingsUsage()
@@ -127,6 +138,22 @@ func settingsRemove(args []string) int {
 			return 0
 		}
 		s.Paths = slices.Delete(s.Paths, idx, idx+1)
+	case "chat.model_path":
+		abs, err := expandPath(value)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "evoke settings remove: %v\n", err)
+			return 1
+		}
+		if s.Chat == nil {
+			fmt.Fprintf(os.Stderr, "model path not configured: %s\n", abs)
+			return 0
+		}
+		idx := slices.Index(s.Chat.ModelPaths, abs)
+		if idx == -1 {
+			fmt.Fprintf(os.Stderr, "model path not configured: %s\n", abs)
+			return 0
+		}
+		s.Chat.ModelPaths = slices.Delete(s.Chat.ModelPaths, idx, idx+1)
 	default:
 		fmt.Fprintf(os.Stderr, "evoke settings remove: unknown key %q\n", key)
 		settingsUsage()
@@ -170,6 +197,8 @@ func settingsUsage() {
     evoke settings                        Show current settings
     evoke settings set path <dir>         Add a source path
     evoke settings remove path <dir>      Remove a source path
+    evoke settings set chat.model_path <dir>      Add a model/knowledge search path
+    evoke settings remove chat.model_path <dir>   Remove a model/knowledge search path
     evoke settings set chat.color <on|off|auto>   Style chat output
     evoke settings set chat.stream <on|off|auto>  Stream chat replies as they generate
 `)
