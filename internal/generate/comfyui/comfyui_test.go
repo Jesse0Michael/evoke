@@ -8,8 +8,68 @@ import (
 	"testing"
 
 	"github.com/jesse0michael/evoke/internal/generate"
+	evoke "github.com/jesse0michael/evoke/pkg/evoke"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRenderPromptData(t *testing.T) {
+	tests := []struct {
+		name     string
+		doc      *evoke.Composition
+		expected promptData
+	}{
+		{
+			name: "chat-only declarations are excluded from the image prompt",
+			doc: &evoke.Composition{
+				Name:        "test-character",
+				Character:   []string{"test-character-description"},
+				Personality: evoke.Prompt{Positive: []string{"test-personality"}, Negative: []string{"test-personality-negative"}},
+				Backstory:   []string{"test-backstory"},
+				Scenario:    "test-scenario",
+				Appearance:  evoke.Prompt{Positive: []string{"test-appearance"}, Negative: []string{"test-appearance-negative"}},
+				Apparel:     evoke.Prompt{Positive: []string{"test-apparel"}, Negative: []string{"test-apparel-negative"}},
+				Environment: evoke.Prompt{Positive: []string{"test-environment"}, Negative: []string{"test-environment-negative"}},
+				Prompt:      evoke.Prompt{Positive: []string{"test-prompt"}, Negative: []string{"test-prompt-negative"}},
+			},
+			expected: promptData{
+				Positive:    "test-character-description, test-appearance, test-prompt",
+				Negative:    "test-appearance-negative, test-prompt-negative",
+				Apparel:     prompt{Positive: "test-apparel", Negative: "test-apparel-negative"},
+				Environment: prompt{Positive: "test-environment", Negative: "test-environment-negative"},
+			},
+		},
+		{
+			name: "a chat-only composition renders an empty image prompt",
+			doc: &evoke.Composition{
+				Personality: evoke.Prompt{Positive: []string{"test-personality"}},
+				Backstory:   []string{"test-backstory"},
+				Scenario:    "test-scenario",
+			},
+			expected: promptData{},
+		},
+		{
+			name: "IMAGE text leads the prompt",
+			doc: &evoke.Composition{
+				Character: []string{"test-character-description"},
+				Backstory: []string{"test-backstory"},
+				Images: []evoke.ImageStage{{
+					Text: evoke.Prompt{Positive: []string{"test-quality"}, Negative: []string{"test-quality-negative"}},
+				}},
+			},
+			expected: promptData{
+				Positive: "test-quality, test-character-description",
+				Negative: "test-quality-negative",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := renderPromptData(tt.doc)
+
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
 
 func TestClient_Queue(t *testing.T) {
 	tests := []struct {

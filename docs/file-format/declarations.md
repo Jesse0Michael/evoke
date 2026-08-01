@@ -34,11 +34,37 @@ Every declaration has a registered definition that fixes its **merge mode**, whe
 | `LORA`        | singular      | — | ✓ | required | 110 |
 | `DETAILER`    | singular      | ✓ | ✓ | required | 120 |
 | `CHAT`        | singular      | — | ✓ | — | 130 |
+| `KNOWLEDGE`   | singular      | — | ✓ | required | 140 |
 
 - **Merge** — how repeated contributions combine. See [Merge Modes](merge-modes).
 - **`!` negative** — whether values may be routed to the exclusion channel. See [Prefixes & Channels](prefixes).
 - **`?` default** — whether values may be marked as defaults used only when nothing more specific exists.
 - **Order** — the canonical, ascending order renderers use so output is deterministic rather than dependent on file order.
+
+## Which command consumes which declaration
+
+A declaration is only meaningful to the commands that read it. `image` and `chat` consume overlapping but distinct subsets, and a declaration ignored by a command costs nothing there — it is simply not rendered.
+
+| Declaration | `evoke image` | `evoke chat` |
+|:------------|:--------------|:-------------|
+| `NAME`        | output directory name (not part of the prompt) | the character's name |
+| `CHARACTER`   | positive prompt | identity |
+| `PERSONALITY` | — | personality, plus "traits to avoid" from the `!` channel |
+| `BACKSTORY`   | — | backstory |
+| `APPEARANCE`  | positive / negative prompt | — |
+| `APPAREL`     | apparel conditioning | — |
+| `ENVIRONMENT` | environment conditioning | — |
+| `SCENARIO`    | — | the opening turn |
+| `PROMPT`      | positive / negative prompt | — |
+| `IMAGE`       | sampler settings and prompt text | — |
+| `LORA`        | LoRA chain | — |
+| `DETAILER`    | per-region inpaint prompts | — |
+| `CHAT`        | — | runtime, sampling, and system instructions |
+| `KNOWLEDGE`   | — | retrieval sources |
+
+`PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **chat-only**. They describe disposition, history, and narrative situation — none of which a diffusion model can render — so the image pipeline does not put them in the prompt. This means a character file can carry a full backstory without it competing for the image prompt's limited attention.
+
+For guidance on writing the content of these blocks well, see the [Style Guide](https://github.com/jesse0michael/evoke/blob/main/STYLE.md).
 
 ## Reference
 
@@ -66,7 +92,7 @@ CHARACTER
 ### PERSONALITY
 {: .no_toc }
 
-Behavioral tendencies and traits. **Accumulating**; supports the negative channel and defaults.
+Behavioral tendencies and traits. **Accumulating**; supports the negative channel and defaults. **Chat-only** — not rendered into image prompts.
 
 ```text
 PERSONALITY
@@ -82,7 +108,7 @@ PERSONALITY
 ### BACKSTORY
 {: .no_toc }
 
-Canonical background information. **Accumulating**, positive only.
+Canonical background information. **Accumulating**, positive only. **Chat-only** — not rendered into image prompts, so it can be as long as the character needs.
 
 ```text
 BACKSTORY
@@ -139,7 +165,7 @@ ENVIRONMENT
 ### SCENARIO
 {: .no_toc }
 
-The current narrative or conversational situation. **Singular** (one active value); supports defaults, positive only.
+The current narrative or conversational situation. **Singular** (one active value); supports defaults, positive only. **Chat-only** — it seeds the opening turn and is not rendered into image prompts.
 
 ```text
 SCENARIO
@@ -238,6 +264,22 @@ Interactive-chat configuration consumed by [`evoke chat`](../cli/chat). **Singul
 
 `model` is a GGUF **file name** — like a `checkpoint` in `IMAGE` — resolved against the model directories in trusted local settings, so a `.evoke` file names the model, not a machine path, and stays portable. Evoke launches and manages the `llama-server` backend for the session. See [`evoke chat`](../cli/chat) for how it resolves and how the backend is managed.
 
+### KNOWLEDGE
+{: .no_toc }
+
+A retrieval source for retrieval-augmented generation during chat. **Singular per argument** (the argument names the source); supports defaults, positive only. **Chat-only.**
+
+```text
+KNOWLEDGE lore
+    db = lore.db
+    top_k = 5
+    embed_model = nomic-embed-text
+```
+
+**Settings:** `db` (required), `top_k`, `embed_model`.
+
+`db` is a SQLite file **name**, resolved against the same `chat.model_paths` directories as the `CHAT` `model` setting, so the file stays portable. The database holds pre-embedded text chunks; at each turn the user's message is embedded via an ollama-compatible endpoint and the closest `top_k` chunks are injected as reference material.
+
 ## What isn't here
 
-The thirteen declarations above are the complete set. Using any other name is an *unknown declaration* validation error. Namespaced/dotted extension names (`FOO.BAR`) are also rejected.
+The fourteen declarations above are the complete set. Using any other name is an *unknown declaration* validation error. Namespaced/dotted extension names (`FOO.BAR`) are also rejected.

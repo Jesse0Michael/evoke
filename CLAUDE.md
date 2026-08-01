@@ -10,7 +10,7 @@ The `docs/` directory is a Just the Docs / GitHub Pages site; product docs live 
 
 **Status:** The parser, declaration schema, validation, merge/resolver, tag-based selector system, SQLite file index, registry client, the `image` command, and the `chat` command (managed llama.cpp backend) are all implemented. The hosted registry API is functional.
 
-**Declaration set (13).** `NAME`, `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `SCENARIO`, `PROMPT`, `IMAGE`, `LORA`, `DETAILER`, `CHAT`. `IDENTITY` is a migration alias for `CHARACTER`. `CHAT` is a structured, singular, default-able declaration (same family as `IMAGE`) consumed only by the `chat` command; it never affects image generation. `ENVIRONMENT` carries the whole scene/setting role. `IMAGE`, `LORA`, and `DETAILER` are structured declarations that accept arguments and key=value settings. `TAGS` is a metadata block (not a declaration) used for selector matching. Namespaced/dotted extension names (`FOO.BAR`) are out of scope; the parser rejects them.
+**Declaration set (14).** `NAME`, `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `SCENARIO`, `PROMPT`, `IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE`. `IDENTITY` is a migration alias for `CHARACTER`. `CHAT` is a structured, singular, default-able declaration (same family as `IMAGE`) consumed only by the `chat` command; it never affects image generation. `PERSONALITY`, `BACKSTORY`, `SCENARIO`, and `KNOWLEDGE` are likewise **chat-only** — they carry disposition, history, narrative situation, and retrieval, none of which a diffusion model can render, so `internal/generate/comfyui` deliberately excludes them from the prompt. `CHARACTER` is the only declaration both commands consume. `ENVIRONMENT` carries the whole scene/setting role. `IMAGE`, `LORA`, and `DETAILER` are structured declarations that accept arguments and key=value settings. `TAGS` is a metadata block (not a declaration) used for selector matching. Namespaced/dotted extension names (`FOO.BAR`) are out of scope; the parser rejects them.
 
 ## Core mental model (the non-obvious parts)
 
@@ -125,6 +125,17 @@ After editing `.go` files, run `goimports -w` on them and `golangci-lint run --f
 After finishing a change to the `evoke` CLI (anything under `cmd/evoke` or `internal/cli`), run `make install` so the installed `evoke` on `PATH` reflects the change.
 
 When you add or change an `evoke` subcommand that composes `.evoke` inputs (tag selectors, local paths, `@namespace/name` refs — e.g. `image`, `chat`, `inspect`), wire it into tab-completion: add it to the `__complete` dispatch in `internal/cli/completion.go` and to all three shell scripts in `internal/cli/completion_script.go` (zsh, bash, fish). Completion changes only take effect after the user regenerates and re-sources the script (`evoke completion zsh`).
+
+## Writing `.evoke` content
+
+Authoring `.evoke` content (characters, apparel, environments, styles, collections) is a different task from working on the Go code. **Read [STYLE.md](STYLE.md) first** — it is the source of truth. Summary:
+
+- Rules are grouped by **target class**, so new targets (audio, video) join a class. **Rendering** (`image`) reads `APPEARANCE`/`APPAREL`/`ENVIRONMENT`/`PROMPT`/`IMAGE`/`LORA`/`DETAILER`; **language** (`chat`) reads `PERSONALITY`/`BACKSTORY`/`SCENARIO`/`CHAT`/`KNOWLEDGE`. `CHARACTER` is the only one read by both. `NAME` never enters the image prompt.
+- **Rendering: no negation, abstraction, emotion, or `or`.** `no clothing` renders clothing. Exclusions go in the matching `!BLOCK`. **Language inverts this** — negation and abstraction are necessary; write prose in second person.
+- **Short comma-separated phrases, never prose.** CLIP is bag-of-words; grammar words spend tokens for nothing. Sentences are for T5 (Flux, SD3.5), not SDXL. Evoke targets Illustrious-family SDXL → Danbooru tags where canonical, photographic vocabulary otherwise.
+- **Weights fight the model's prior — that is their only job.** Weight traits that get erased, not traits that feel important. Numeric `(trait:1.25)` only, never `((word))`; 1.1–1.3; 1–3 per character; identity declarations only. Needing >1.4 means out-of-distribution → negate what it drifts toward, or use a `LORA`. Escape Danbooru parens: `vex_\(lol\)`.
+- **One self-contained unit per line** (dedup is exact-match on the trimmed line); no trailing periods on rendering lines (comma-joined).
+- **Each file stays in its lane**; camera/lighting/quality directives live in one pipeline file.
 
 ## Testing conventions specific to Evoke
 

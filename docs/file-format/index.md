@@ -30,6 +30,6 @@ There is no file header, no type, and no import mechanism. A file's meaning emer
 The pages in this section cover:
 
 - **[Syntax](syntax)** — the exact line-oriented rules the parser enforces, and every syntax error it can raise.
-- **[Declarations](declarations)** — the nine built-in declarations, with their merge mode and which prefixes each supports.
+- **[Declarations](declarations)** — the fourteen built-in declarations, with their merge mode, which prefixes each supports, and which command consumes each.
 - **[Prefixes & Channels](prefixes)** — what the `!` (negative) and `?` (default) prefixes select, and what they deliberately do *not* mean.
 - **[Merge Modes](merge-modes)** — how repeated contributions to the same declaration combine.

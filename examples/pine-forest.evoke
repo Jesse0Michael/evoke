@@ -1,3 +1,7 @@
+# A pine forest exterior.
+#
+#   evoke image sumi pine-forest
+
 TAGS
     forest
     nature
@@ -5,6 +9,10 @@ TAGS
 
 ENVIRONMENT
     pine forest
-    tall evergreen trees
     soft morning mist
     diffused natural light
+    fallen needles on the ground
+
+!ENVIRONMENT
+    buildings
+    paved road

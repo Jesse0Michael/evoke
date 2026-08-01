@@ -67,6 +67,21 @@ $ evoke image sumi.evoke "a female scientist in a science lab"
 
 This merges the `sumi.evoke` file with the literal text appended to the positive prompt. Literal prompts compose with file-based PROMPT declarations — they accumulate just like any other PROMPT contribution.
 
+## What ends up in the prompt
+
+Only the declarations a diffusion model can render are sent. The merged composition becomes two prompt strings, assembled in this order:
+
+```text
+positive:  IMAGE text → CHARACTER → APPEARANCE → PROMPT → APPAREL → ENVIRONMENT
+negative:  !IMAGE text → !APPEARANCE → !PROMPT → !APPAREL → !ENVIRONMENT
+```
+
+`PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **not** included — they carry disposition, history, and narrative situation, which a diffusion model cannot render. They are consumed by [`evoke chat`](chat) instead. `NAME` is used for the output directory, not the prompt.
+
+Order is significant. CLIP processes roughly 75 tokens per chunk and dilutes what comes later, so material near the front of the positive prompt carries more weight than material near the end. `IMAGE` text leads, which makes it the right place for quality tags and the wrong place for character detail.
+
+Use `-v` to print the merged composition and the exact payload submitted.
+
 ## Selector resolution
 
 Before selectors can be used, source paths must be configured:

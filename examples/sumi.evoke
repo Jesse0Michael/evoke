@@ -1,4 +1,7 @@
-# Sumi — our octopus humanoid mascot
+# Sumi — our octopus humanoid mascot.
+#
+#   evoke image sumi
+#   evoke chat sumi
 
 TAGS
     character
@@ -18,17 +21,18 @@ PERSONALITY
     endlessly helpful
 
 APPEARANCE
-    small round body
-    smooth violet skin
-    eight tapering tentacles
+    (smooth violet skin:1.25)
+    (eight tapering tentacles:1.2)
     large luminous eyes
+    small round body
     bioluminescent speckles
 
-?APPAREL
-    little teal explorer's vest
-
 !APPEARANCE
-    scary
-    slimy
-    monstrous
-    photorealistic
+    human skin
+    pale skin
+    two arms
+    sharp teeth
+    slime
+
+?APPAREL
+    teal explorer vest
