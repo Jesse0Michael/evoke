@@ -14,7 +14,7 @@ func Complete(args []string) int {
 	// Shell scripts pass: evoke __complete image <words...> <current>
 	if len(args) < 2 {
 		// Complete subcommands.
-		for _, cmd := range []string{"login", "image", "chat", "inspect", "push", "pull", "queue", "clear", "view", "settings", "completion"} {
+		for _, cmd := range []string{"login", "image", "chat", "inspect", "knowledge", "push", "pull", "queue", "clear", "view", "settings", "completion"} {
 			fmt.Println(cmd)
 		}
 		return 0
@@ -33,11 +33,53 @@ func Complete(args []string) int {
 		return completeInputs(current, []string{"--stream", "--no-tui", "-v", "--verbose"})
 	case "inspect":
 		return completeInputs(current, []string{"-v", "--verbose"})
+	case "knowledge":
+		// knowledge takes a corpus directory, not .evoke inputs.
+		return completeKnowledge(current)
 	case "pull":
 		return completeRegistryRefs(current)
 	default:
 		return 0
 	}
+}
+
+// completeKnowledge completes the knowledge command: directories to build from,
+// plus its flags.
+func completeKnowledge(current string) int {
+	if strings.HasPrefix(current, "-") {
+		for _, f := range []string{"-o", "--output", "--model", "--url", "--max-tokens", "--overlap", "--exclude", "--dry-run", "-v", "--verbose"} {
+			if strings.HasPrefix(f, current) {
+				fmt.Println(f)
+			}
+		}
+		return 0
+	}
+	return completeDirs(current)
+}
+
+// completeDirs lists directories matching the partial path.
+func completeDirs(prefix string) int {
+	dir := "."
+	if i := strings.LastIndex(prefix, "/"); i >= 0 {
+		dir = prefix[:i+1]
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		name := e.Name() + "/"
+		if dir != "." || strings.HasPrefix(prefix, "./") {
+			name = dir + e.Name() + "/"
+		}
+		if strings.HasPrefix(name, prefix) {
+			fmt.Println(name)
+		}
+	}
+	return 0
 }
 
 // completeInputs outputs completion candidates for commands that compose .evoke

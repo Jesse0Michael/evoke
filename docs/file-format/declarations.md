@@ -280,6 +280,8 @@ KNOWLEDGE lore
 
 `db` is a SQLite file **name**, resolved against the same `chat.model_paths` directories as the `CHAT` `model` setting, so the file stays portable. The database holds pre-embedded text chunks; at each turn the user's message is embedded via an ollama-compatible endpoint and the closest `top_k` chunks are injected as reference material.
 
+Build the database from a directory of markdown with [`evoke knowledge`](../cli/knowledge). `embed_model` is optional and normally omitted: the database records the model it was built with, and chat adopts it. Set it only to override that — a conflict between the two is an error rather than a silent drop in retrieval quality.
+
 ## What isn't here
 
 The fourteen declarations above are the complete set. Using any other name is an *unknown declaration* validation error. Namespaced/dotted extension names (`FOO.BAR`) are also rejected.

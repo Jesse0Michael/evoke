@@ -35,6 +35,7 @@ _evoke() {
         'image:Compose evoke files and generate images'
         'chat:Compose evoke files and chat with a local LLM'
         'inspect:List files matching a tag or show what selected files compose into'
+        'knowledge:Build a RAG knowledge database from a directory of markdown'
         'push:Push a .evoke file to the registry'
         'pull:Download a registry artifact to the local library'
         'settings:Manage user settings'
@@ -55,6 +56,9 @@ _evoke() {
             ;;
         inspect)
             _evoke_complete inspect
+            ;;
+        knowledge)
+            _evoke_complete knowledge
             ;;
         pull)
             _evoke_complete pull
@@ -79,12 +83,12 @@ const bashCompletion = `_evoke() {
     _init_completion || return
 
     if [[ ${cword} -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "login image chat inspect push pull settings completion" -- "${cur}"))))
+        COMPREPLY=($(compgen -W "login image chat inspect knowledge push pull settings completion" -- "${cur}"))
         return
     fi
 
     case "${words[1]}" in
-        image|chat|inspect|pull)
+        image|chat|inspect|knowledge|pull)
             local completions
             completions=$(evoke __complete "${words[1]}" "${words[@]:2:cword-2}" "${cur}" 2>/dev/null)
             COMPREPLY=($(compgen -W "${completions}" -- "${cur}"))
@@ -103,6 +107,7 @@ complete -c evoke -n '__fish_use_subcommand' -a login -d 'Sign in to the registr
 complete -c evoke -n '__fish_use_subcommand' -a image -d 'Compose evoke files and generate images'
 complete -c evoke -n '__fish_use_subcommand' -a chat -d 'Compose evoke files and chat with a local LLM'
 complete -c evoke -n '__fish_use_subcommand' -a inspect -d 'List files matching a tag or show what selected files compose into'
+complete -c evoke -n '__fish_use_subcommand' -a knowledge -d 'Build a RAG knowledge database from a directory of markdown'
 complete -c evoke -n '__fish_use_subcommand' -a push -d 'Push a .evoke file to the registry'
 complete -c evoke -n '__fish_use_subcommand' -a pull -d 'Download a registry artifact to the local library'
 complete -c evoke -n '__fish_use_subcommand' -a settings -d 'Manage user settings'
@@ -116,6 +121,9 @@ complete -c evoke -n '__fish_seen_subcommand_from chat' -a '(evoke __complete ch
 
 # Inspect completions
 complete -c evoke -n '__fish_seen_subcommand_from inspect' -a '(evoke __complete inspect (commandline -cop)[3..] (commandline -ct) 2>/dev/null)'
+
+# Knowledge completions
+complete -c evoke -n '__fish_seen_subcommand_from knowledge' -a '(evoke __complete knowledge (commandline -cop)[3..] (commandline -ct) 2>/dev/null)'
 
 # Pull completions
 complete -c evoke -n '__fish_seen_subcommand_from pull' -a '(evoke __complete pull (commandline -cop)[3..] (commandline -ct) 2>/dev/null)'

@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/jesse0michael/evoke/internal/chat"
+	"github.com/jesse0michael/evoke/internal/knowledge"
 )
 
 // runChatTUI drives the interactive conversation as a full-screen terminal UI:
@@ -21,7 +22,7 @@ import (
 // the next message can be composed but not submitted until the current one
 // resolves. It is used only on an interactive terminal; piped or non-interactive
 // runs use runChatLoop instead.
-func runChatTUI(ctx context.Context, plan *chat.Plan, client chatBackend, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*chat.Knowledge) error {
+func runChatTUI(ctx context.Context, plan *chat.Plan, client chatBackend, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base) error {
 	m := newChatTUIModel(ctx, plan, client, st, verbose, backendDone, backendErr, knowledgeBases)
 	// Deliberately do NOT capture the mouse: mouse reporting would steal native
 	// click-drag text selection. Most terminals translate the wheel into ↑/↓ keys
@@ -59,7 +60,7 @@ type chatTUIModel struct {
 	verbose        bool
 	backendDone    <-chan struct{}
 	backendErr     func() error
-	knowledgeBases []*chat.Knowledge
+	knowledgeBases []*knowledge.Base
 
 	viewport viewport.Model
 	input    textinput.Model
@@ -81,7 +82,7 @@ type replyMsg struct {
 // backendDeadMsg signals the managed backend exited unexpectedly.
 type backendDeadMsg struct{}
 
-func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*chat.Knowledge) chatTUIModel {
+func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base) chatTUIModel {
 	ti := textinput.New()
 	ti.Prompt = "> "
 	ti.Placeholder = "type a message"

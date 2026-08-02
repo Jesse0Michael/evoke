@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jesse0michael/evoke/internal/chat"
+	"github.com/jesse0michael/evoke/internal/knowledge"
 	evoke "github.com/jesse0michael/evoke/pkg/evoke"
 	"github.com/kelseyhightower/envconfig"
 	"golang.org/x/term"
@@ -106,19 +107,19 @@ func Chat(args []string, verbose bool) int {
 	}
 
 	// Open knowledge bases for RAG if configured.
-	var knowledgeBases []*chat.Knowledge
+	var knowledgeBases []*knowledge.Base
 	for _, kcfg := range plan.Knowledge {
 		if kcfg.DBPath == "" {
 			continue
 		}
-		kb, kerr := chat.OpenKnowledge(kcfg)
+		kb, kerr := knowledge.Open(kcfg)
 		if kerr != nil {
 			fmt.Fprintf(os.Stderr, "evoke chat: knowledge: %v\n", kerr)
 			return 1
 		}
 		knowledgeBases = append(knowledgeBases, kb)
 		if verbose {
-			fmt.Printf("Knowledge base loaded: %s\n", kcfg.DBPath)
+			fmt.Printf("Knowledge base loaded: %s (%d chunks, %s)\n", kcfg.DBPath, kb.Len(), kb.Meta().EmbedModel)
 		}
 	}
 
@@ -234,7 +235,7 @@ type chatBackend interface {
 // and any backend log output) after each reply. backendDone fires if the managed
 // backend exits unexpectedly, with backendErr reporting the cause. It returns nil
 // on a clean exit (/exit, EOF, or interrupt).
-func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, stream, verbose bool, in io.Reader, out io.Writer, backendDone <-chan struct{}, backendErr func() error, backendLog func() string, st chatStyle, knowledgeBases []*chat.Knowledge) error {
+func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, stream, verbose bool, in io.Reader, out io.Writer, backendDone <-chan struct{}, backendErr func() error, backendLog func() string, st chatStyle, knowledgeBases []*knowledge.Base) error {
 	sess := chat.NewSession(plan)
 	printStartupSummary(out, plan, st)
 

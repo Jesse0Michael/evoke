@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jesse0michael/evoke/internal/knowledge"
 	evoke "github.com/jesse0michael/evoke/pkg/evoke"
 )
 
@@ -106,7 +107,7 @@ type Plan struct {
 	Opening      string // scenario framing seeded once as the first turn ("" if none)
 	Sampling     Sampling
 	History      HistoryPolicy
-	Knowledge    []KnowledgeConfig // RAG knowledge bases from KNOWLEDGE declarations
+	Knowledge    []knowledge.Config // RAG knowledge bases from KNOWLEDGE declarations
 	Display      Display
 	Sources      []string
 	Diagnostics  []string
@@ -218,10 +219,12 @@ func Compile(comp *evoke.Composition, trusted TrustedConfig) (*Plan, error) {
 
 	// Knowledge / RAG: resolve KNOWLEDGE declarations from the composition.
 	for _, ks := range comp.Knowledge {
-		cfg := KnowledgeConfig{
-			EmbedModel: defaultEmbedModel,
-			EmbedURL:   cmpOr(trusted.EmbedURL, defaultEmbedURL),
-			TopK:       defaultKnowledgeK,
+		// EmbedModel is deliberately left unset: the database records the model
+		// its vectors were built with, and only an explicit embed_model= setting
+		// should override that.
+		cfg := knowledge.Config{
+			EmbedURL: cmpOr(trusted.EmbedURL, knowledge.DefaultEmbedURL),
+			TopK:     knowledge.DefaultTopK,
 		}
 		// The `db` setting names the file; resolve it via model_paths directories
 		// the same way CHAT's `model` setting resolves a GGUF.
