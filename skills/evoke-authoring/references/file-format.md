@@ -49,10 +49,11 @@ The parser accumulates all of them with line numbers rather than stopping at the
 ```text
 TAGS
     character
-    mascot
 ```
 
-A selector is tags joined with `+` — `evoke image nurse+modern` matches files carrying both. A bare filename or a path also works as an input, as does an `@namespace/name` registry reference.
+A selector is tags joined with `+` — `evoke image nurse+modern` matches files carrying both. When several files match, one is chosen at random.
+
+The index adds each file's base name as an **implicit tag**, so `sumi.evoke` is always reachable as `evoke image sumi` whether or not it declares any tags. A path and an `@namespace/name` registry reference also work as inputs.
 
 ## Prefixes & channels
 

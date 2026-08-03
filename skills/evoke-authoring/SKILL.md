@@ -5,7 +5,7 @@ description: Write, fix, and review `.evoke` files — the declarative source fo
 
 # Authoring `.evoke` files
 
-An `.evoke` file is a list of **declaration blocks**: a declaration name at column 1, indented value lines beneath it. Files are typeless and never reference each other — the *caller* selects which files compose together (`evoke image sumi winter-coat forest`), and the compiler merges the selection into either an image prompt (`evoke image`) or a chat system prompt (`evoke chat`).
+An `.evoke` file is a list of **declaration blocks**: a declaration name at column 1, indented value lines beneath it. Files are typeless and never reference each other — the _caller_ selects which files compose together (`evoke image sumi winter-coat forest`), and the compiler merges the selection into either an image prompt (`evoke image`) or a chat system prompt (`evoke chat`).
 
 ## Diagnose before editing
 
@@ -27,7 +27,7 @@ Most work here is fixing a composition whose output came out wrong, not authorin
 
 4. **Re-inspect the same composition** and compare against what you started with: the symptom gone, nothing else moved. Then inspect the edited file alone, and with its other usual partners. A fix that only holds in one composition is not a fix — that failure mode is exactly what this format exists to prevent.
 
-Writing a *new* file instead? Pick the rules below, write it, then run steps 3–4 with the partners it will really be selected with.
+Writing a _new_ file instead? Pick the rules below, write it, then run steps 3–4 with the partners it will really be selected with.
 
 If `evoke` isn't on `PATH`, say so rather than skipping verification silently, and check the syntax rules in `references/file-format.md` by hand.
 
@@ -35,17 +35,17 @@ If `evoke` isn't on `PATH`, say so rather than skipping verification silently, a
 
 Route by the declaration you are writing, not by the file:
 
-| Writing…                                                                        | Read                                              |
-| :------------------------------------------------------------------------------ | :------------------------------------------------ |
+| Writing…                                                                         | Read                                              |
+| :------------------------------------------------------------------------------- | :------------------------------------------------ |
 | `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `PROMPT`, `IMAGE`/`DETAILER` prompt text | `references/style-guide.md` §2 and **§3**         |
 | `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `SCENARIO`, `CHAT` instructions         | `references/style-guide.md` §2 and **§4**         |
-| Both kinds in one file                                                          | §2, §3, and §4 — apply each only to its own block |
-| Deciding what goes in which file, tags, `?` defaults                            | `references/style-guide.md` §5                    |
-| Syntax, prefixes, merge modes, `key = value` settings                           | `references/file-format.md`                       |
+| Both kinds in one file                                                           | §2, §3, and §4 — apply each only to its own block |
+| Deciding what goes in which file, tags, `?` defaults                             | `references/style-guide.md` §5                    |
+| Syntax, prefixes, merge modes, `key = value` settings                            | `references/file-format.md`                       |
 
 **Read the section before writing, not after.** §3 and §4 contradict each other on purpose, and the failure mode is silent — prose in an `APPEARANCE` block parses fine and renders badly; tags in a `CHARACTER` block are ignored by the image pipeline entirely and read as noise by the chat model.
 
-The one-line version of each, which is *not* a substitute for reading them:
+The one-line version of each, which is _not_ a substitute for reading them:
 
 - **§3 rendering** — short comma-separated Danbooru-style phrases, never prose. Nothing negated, abstract, instructional, or emotional. Exclusions go in the matching `!BLOCK`. Numeric weights only, 1.1–1.3, 1–3 per character, and only on traits that failed unweighted.
 - **§4 language** — prose. Negation and abstraction are necessary. Name the behavior, never the impression. Third person for `CHARACTER`/`PERSONALITY`/`BACKSTORY`/`SCENARIO`; second person only for `CHAT` instructions.
@@ -54,11 +54,14 @@ The one-line version of each, which is *not* a substitute for reading them:
 
 These are not style preferences — violating them breaks composition:
 
+- **Write only what the source supports, and only the blocks you were asked for.** Every value traces to something the user said or the material states. No block gets filled in because it looks empty, and no declaration appears because a "character file" seems to want one — `APPEARANCE` is the sole place invention is forced for characters. `ENVIRONMENT` is the sole place invention is forced for locations (nothing renders an unspecified nose) — keep those choices plain and meaningless, and list them in your reply. Full rule: `references/style-guide.md` §2.
+- **Subject count and framing are not character traits.** `1boy`, `solo`, `upper body`, `from below` belong to the shot file, not `APPEARANCE` — a character asserting a count fights every composition that wanted a different one.
 - **A file must read correctly alone and in every combination it will be selected with.** It cannot assume a partner.
 - **No file types, no imports.** Never invent `TYPE`, `FROM`, `IMPORT`, or a reference to another file. A file's meaning emerges from the declarations it contains.
 - **One concern per file** — the smallest thing you would select on its own. If it is never selected alone, fold it into its parent; if you routinely swap half of it, split it.
 - **Keep singular declarations out of shared files.** `NAME`, `SCENARIO`, `IMAGE`, `LORA`, `DETAILER`, `CHAT`, and `KNOWLEDGE` conflict when two files in a composition each supply one. An `IMAGE` block in a character file breaks the first two-character composition.
-- **Never wrap one sentence across two lines.** A newline ends a value, so a wrapped sentence silently becomes two unrelated values. Let lines run long. How you *group* values on a line is otherwise free — comma-joined blocks compile identically either way. Match the file you're editing; don't restructure one to fit a house style.
+- **Never wrap one sentence across two lines.** A newline ends a value, so a wrapped sentence silently becomes two unrelated values. Let lines run long.
+- **Comma-joined blocks default to one line.** They compile identically either way, so layout is a reading choice and compact wins. Exclusion blocks (`!APPEARANCE`, `!APPAREL`, `!PERSONALITY`, …) and short lists like an `APPAREL` outfit are always one comma-separated line. Separate lines are for weighted identity traits, facet-grouped `APPEARANCE`, and `PERSONALITY` clauses.
 - **Technical directives live in one pipeline/style file** — camera, lens, quality anchors, sampler settings. Never in a character or apparel file.
 
 ## Shape of a file
@@ -66,7 +69,6 @@ These are not style preferences — violating them breaks composition:
 ```text
 TAGS
     character
-    mascot
 
 NAME
     Sumi
@@ -76,18 +78,17 @@ CHARACTER
 
 APPEARANCE
     (smooth violet skin:1.25)
-    octopus humanoid
-    small round body
-    large luminous eyes
+    octopus humanoid, small round body, large luminous eyes
 
 !APPEARANCE
     human skin, pale skin, two arms, scary
 
 ?APPAREL
-    green shirt
-    blue jeans
+    green shirt, blue jeans
 ```
 
-`TAGS` is metadata for selector matching, not a declaration — lowercase kebab-case, a role tag (`character`, `apparel`, `style`, `environment`) plus descriptors, tagged for how you will *select* the file rather than what it is.
+`TAGS` is metadata for selector matching, not a declaration. The index already tags every file with its own filename, and a selector resolves to _one_ match chosen at random, so `TAGS` names only the sets a file can be drawn from interchangeably: a role (`character`, `apparel`, `style`, `environment`) and any collection it shares with siblings (`npc`, `crew`). Never tag a file with its own name, never tag its content, and expect one or two tags — none is fine. See §5.
+
+Comments are optional and default to none — see §2. Never open a file with a header restating what it is, what it contains, or how to invoke it.
 
 Finish with the checklist in `references/style-guide.md` §6, running only the half that matches the blocks you touched.

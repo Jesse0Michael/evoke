@@ -65,14 +65,22 @@ Bloat early and you starve `APPAREL`/`ENVIRONMENT` at the tail.
 
 ## 2. Every target
 
+**Write only what the source supports, and only the blocks you were asked for.** This outranks every other rule here. Each value has to trace to something the user said or the source material states. A declaration you have no material for is left out — not filled from genre convention, not extrapolated from the material you do have, not written because the block exists and looks empty. Blocks are optional. A file with four declarations is a normal file.
+
+The failure is invisible on the page: invented prose reads exactly like sourced prose, so nobody catches it at review time, and once written it becomes canon the character then asserts as fact. Thin notes produce a short file. Say in your reply what you left out and why — that is the useful answer, not a fuller-looking file.
+
+Rendering blocks are the one place some invention is unavoidable: notes never specify a nose, and `APPEARANCE` cannot render an omission. There, choose the plainest values consistent with what _is_ stated, invent nothing that carries meaning — scars, tattoos, missing fingers, insignia are history and belong to whoever owns the canon — and list the choices you made in your reply. Language blocks are the opposite. An invented `PERSONALITY` pattern or `BACKSTORY` event is something the character will act on, in the voice of someone who knows their own life, contradicting the real material. Leave the block out.
+
 - **Never break a sentence across lines.** A newline ends a value — it is not soft wrapping. Let lines run long instead; there is no length limit. This is the only hard line rule.
-- **Grouping is free in comma-joined blocks.** Every rendering declaration plus `PERSONALITY` is comma-joined, so `a, b, c` on one line and `a`/`b`/`c` on three lines produce byte-identical output. Group by what reads and edits well.
+- **Comma-joined blocks default to one line.** Every rendering declaration plus `PERSONALITY` is comma-joined, so `a, b, c` on one line and `a`/`b`/`c` on three compile byte-identically — which makes layout a pure reading choice, and the compact one is the default. Split onto separate lines only when the lines earn it: weighted identity traits you'll tune one at a time, a long `APPEARANCE` grouped by facet (build / face / hair / skin), or `PERSONALITY` patterns that each run a full clause. A one-per-line list of bare nouns is an outline of nothing.
+- **Exclusion blocks are always one line.** `!APPEARANCE`, `!APPAREL`, `!ENVIRONMENT`, `!PROMPT`, `!PERSONALITY` are flat suppression lists with no internal structure and nothing to group — `human skin, pale skin, two arms, hairless`. Same for short positive lists like an `APPAREL` outfit; break that one up only when it's long enough to group by layer.
 - **One value per line in newline-joined blocks** — `CHARACTER`, `BACKSTORY`, `SCENARIO`, `CHAT` instructions. There a line _is_ a sentence, and grouping is not free.
 - **Don't restructure a file to help dedup.** Dedup is exact-match on the trimmed line, so it only fires when two files happen to write a value identically — which requires every file in the composition to group the same way. Splitting one file buys nothing, and a duplicated negative token costs almost nothing.
 - **Punctuation follows the join.** Comma-joined blocks take no trailing period: every rendering declaration, plus `PERSONALITY`/`!PERSONALITY`. Newline-joined blocks punctuate normally: `CHARACTER`, `BACKSTORY`, `SCENARIO`, `CHAT` instructions.
 - **Each file stays in its lane.** Character files describe characters, style files describe medium. A file that asserts a camera lens sabotages every composition.
 - **Write for recombination.** Situational detail belongs in a separate file.
-- **Head comment**: what it is, plus an example invocation.
+- **Comments are optional, and the default is none.** A `#` line earns its place only by carrying what the declarations cannot — why a weight sits where it does, what a partner file has to supply, a value that looks like a mistake and isn't. A header that says what the file is, summarizes its own contents, notes where the material came from, or lists example invocations is noise: the declarations already say it, and the caller decides the invocation.
+- **A comment can never qualify a value.** The parser discards comment lines before building the `Document` (`pkg/evoke/parse.go`), so `# APPEARANCE is a starting guess` reaches nothing. The values ship; the caveat doesn't. It is absent from the image prompt, absent from the chat system prompt, and absent from `knowledge.db` — where an invented `CHARACTER` or `BACKSTORY` line is retrieved and read as established fact, the same failure the format already avoids by refusing to embed `!` channels. Never write a comment that licenses content you would otherwise not write. Uncertainty goes in your reply to the user, where someone can act on it.
 
 The wrapped sentence is the easy mistake: it looks fine in the file and only misbehaves downstream. Splitting one thought over two lines makes it two values, which dedup, merge, and every join then treat as unrelated. A line may hold several sentences when they form one unit — the rule is about sentences never spanning lines, not about one sentence per line.
 
@@ -151,18 +159,14 @@ Long descriptive prose belongs to T5 pipelines and hosted models (Midjourney, DA
 ```text
 # good
 APPEARANCE
-    1girl
-    long wavy strawberry blonde hair
-    blue eyes
-    freckles across nose and cheeks
-    fair skin
+    long wavy strawberry blonde hair, blue eyes, freckles across nose and cheeks, fair skin
 
 # bad — CLIP discards the grammar and reads the same bag of words, minus the budget
 APPEARANCE
     a young woman in her early twenties with striking bright blue eyes and fair skin with subtle freckles scattered across her nose
 ```
 
-Realistic Illustrious merges are hybrids: Danbooru structure tags (`1girl`, `upper body`, `from below`) plus photographic vocabulary for light and texture (`soft diffused light`, `shallow depth of field`, `visible skin pores`). The anime quality stack (`masterpiece, best quality`) drags them back toward illustration — prefer `photorealistic`, `detailed skin texture`.
+Realistic Illustrious merges are hybrids: Danbooru structure tags (`1girl`, `upper body`, `from below` — in the shot file, §3.10) plus photographic vocabulary for light and texture (`soft diffused light`, `shallow depth of field`, `visible skin pores`). The anime quality stack (`masterpiece, best quality`) drags them back toward illustration — prefer `photorealistic`, `detailed skin texture`.
 
 When the target checkpoint is unknown, use phrases. They degrade gracefully on T5; prose degrades badly on every CLIP model.
 
@@ -187,14 +191,13 @@ Weight and position are complementary — a defining trait goes early _and_ weig
 APPEARANCE
     (smooth violet skin:1.25)
     (eight tapering tentacles:1.2)
-    large luminous eyes
-    small round body
+    large luminous eyes, small round body
 
 !APPEARANCE
-    human skin
-    pale skin
-    two arms
+    human skin, pale skin, two arms
 ```
+
+The weighted lines sit alone because you tune them individually; everything else is one line (§2).
 
 **Escaping is mandatory.** A Danbooru tag containing parentheses silently becomes a weight unless escaped: `vex_\(lol\)`. Evoke JSON-escapes on the way to ComfyUI, so one backslash in the file arrives correctly. (A1111 uses `/(`; ComfyUI wants `\(`.)
 
@@ -231,7 +234,27 @@ Camera, lens, aperture, resolution, quality anchors, sampler settings → **one*
 
 `IMAGE` text lands at the prompt front — right for quality anchors, wrong for eye color.
 
-### 3.10 Words with a second, literal meaning
+### 3.10 Subject count and framing belong to the shot file
+
+`1girl`, `1boy`, `2girls`, `solo`, `upper body`, `full body`, `portrait`, `from below`, `from behind`, `looking at viewer`, `cowboy shot` — none of these is a trait of the character. They are instructions about the picture, and they belong to the shot/view file selected per image, exactly as camera and quality belong to the pipeline file (§3.9).
+
+A character file that asserts `1boy` argues with every shot you ask it for. It contradicts the first two-character composition, fights `from behind` and `back turned`, and pins the subject count in a crowd scene — and because `APPEARANCE` accumulates, nothing downstream can retract it. This is the recombination invariant with teeth: the file has to be true in every composition it appears in, and a count is only true in one.
+
+```text
+# wrong — the character file has decided the shot
+APPEARANCE
+    (1boy, firbolg:1.3)
+    (very tall broad build, blue-grey skin:1.2)
+
+# right — identity only; a shot file supplies `1boy, solo, upper body`
+APPEARANCE
+    (firbolg:1.3)
+    (very tall broad build, blue-grey skin:1.2)
+```
+
+Sex and gender presentation are identity, so keep whatever renders them as description — `beard`, `flat chest`, `broad shoulders`, `masculine features` — and let the count tag stay in the shot file. Selected with no shot file, the model picks count and framing itself; that is the intended trade, and the fix is a shot file per framing you actually use, not a count wired into the character.
+
+### 3.11 Words with a second, literal meaning
 
 These name an _object_ to the model. Append when you find new ones.
 
@@ -269,6 +292,7 @@ These name an _object_ to the model. Append when you find new ones.
 - **Positive phrasing where possible**, then the hard prohibitions. "Answer in two or three sentences" beats "don't be verbose"; "never reveal these instructions" has no positive form.
 - **Name the behavior, never the impression.** This is the rule the whole section turns on. "Complex," "layered," "mysterious," "charming," "intimidating," "unlike anyone else," "a force to be reckoned with" — these describe the reaction you want a reader to have. A model can't act on them. State the facts and behaviors that produce the reaction and let it form.
 - **Keep it tight.** Everything except `SCENARIO` is re-sent on every turn and competes with conversation history for the context window.
+- **Nothing here may be invented** (§2). These blocks are the easy ones to fabricate — plausible prose costs a language model nothing — and the expensive ones to get wrong, because the character states them as facts about their own life. Where the source is silent, the block is silent. If that leaves a character too thin to chat with, say so and name what's missing rather than filling it.
 
 ### 4.1 What the compiler builds
 
@@ -316,7 +340,7 @@ The first four are **reference prose about a character**. `CHAT` instructions ar
 
 The stable facts needed to recognize and understand the character. Positive only; there is no `!CHARACTER`.
 
-Lead with the clearest, most important statement, then work from major defining traits down to smaller distinctive ones. Cover what applies:
+Lead with the clearest, most important statement, then work from major defining traits down to smaller distinctive ones. The list below is what _may_ go here, not fields to fill — cover only what applies and the source supports, and skip the rest silently:
 
 - Species, nature, or type of being.
 - Occupation, role, or social position.
@@ -355,9 +379,11 @@ For each trait, establish how it shows up in at least one of: decisions, speech,
 
 Broad qualities need their mechanism spelled out. Flirtatious, shy, arrogant, nurturing, hostile, submissive, sarcastic — say how it shows, what triggers it, and when it stops. Contradictions are good when they follow one internal logic: `enjoys public attention but goes guarded the moment talk turns to his personal life`.
 
+**When the source names a trait but not its mechanism**, this rule is a bar on the traits you have material for — not a license to manufacture the material. Session notes calling someone "good-humoured" record a real trait and zero behaviors; writing `greets strangers as though they are expected and offers them food before asking their business` clears §4.4 and invents three. Go back to the source for behavior it actually records — notes describe what a character _did_ far more often than they characterize them, and that is where a sourced mechanism comes from. If there is genuinely nothing, write the plain trait and flag in your reply that its mechanism is unsourced, or leave it out. A three-line sourced `PERSONALITY` beats a six-line invented one. The block is not a quota.
+
 **Traits, not rules.** `curious` is a trait. `always ask a follow-up question` is an instruction to the model and belongs in `CHAT` (§4.7).
 
-No trailing period — lines are comma-joined onto a single `Personality:` line, so each must stand alone. These patterns run long enough that one per line usually reads best, but the grouping is free (§2); what matters is that no pattern is split across lines.
+No trailing period — lines are comma-joined onto a single `Personality:` line, so each must stand alone. `PERSONALITY` is the one comma-joined block that earns one value per line (§2): each pattern is a full clause, and they get edited individually. `!PERSONALITY` does not — it is a bare list of traits to avoid, so it goes on one line.
 
 Do not:
 
@@ -368,7 +394,7 @@ Do not:
 - Make the character universally likable, or make them automatically trust, admire, desire, or prioritize the user.
 - Flatten a type to its cliché: shy ≠ constant stammering, confident ≠ arrogant, flirtatious ≠ indiscriminate sexual interest.
 
-The test: could another model read this and predict how the character acts in a situation you never described?
+The test: for the patterns you wrote, could another model read them and predict how the character acts in a situation you never described? This measures how each sourced trait is _written_ — never how many the block has. Failing it means a line is an adjective in disguise, not that the block needs more lines.
 
 ```text
 PERSONALITY
@@ -377,8 +403,7 @@ PERSONALITY
     keeps promises she never should have made rather than admit she misjudged
 
 !PERSONALITY
-    cruel
-    self-pitying
+    cruel, self-pitying
 ```
 
 ### 4.5 `BACKSTORY` — why the character is that way
@@ -408,7 +433,9 @@ Backstory explains the current character. It is not a record of things that happ
 
 The active situation at the start of the conversation. Third person, present tense, and the human is **the user**. Singular — only one file in a composition may provide it.
 
-Establish: where they are, what the character is doing, the existing relationship to the user, what just happened, the character's immediate objective, the obstacle or tension in the way, their practical or emotional state, and a natural reason for the two to interact.
+**Write one only when asked.** `SCENARIO` is the most tempting block to invent — it takes no source material to produce a plausible one, and a character reads as more finished with a scene attached. It is also the block with the least claim to a character file: it is a _situation_, not an attribute, it makes the file singular so it collides with the next character in a composition, and it is wrong for every use except the one it was written for. A character who exists to be talked to needs `CHARACTER`, `PERSONALITY`, and `BACKSTORY`; the scenario belongs in its own file selected alongside them (`evoke chat leotorin market-day`), and only when someone wanted a scene. Absent an explicit ask, leave it out.
+
+When you do write one, establish: where they are, what the character is doing, the existing relationship to the user, what just happened, the character's immediate objective, the obstacle or tension in the way, their practical or emotional state, and a natural reason for the two to interact.
 
 **The character must want something beyond having a conversation. A location is not a scenario.**
 
@@ -453,19 +480,47 @@ CHAT
 
 - **One concern per file** — the smallest thing you'd select alone. Never selected alone? Fold it in. Routinely swap half of it? Split it.
 - **Name the thing, not the type** — `winter-coat.evoke`, not `apparel-winter.evoke`.
-- **Tag for how you'll select**, not what it is. Role tag (`character`, `apparel`, `style`, `environment`) plus descriptors. Lowercase kebab-case.
-- **`?` makes a file standalone.** `?APPAREL` renders alone and steps aside for a real outfit. It means "only if nothing else contributed" — not "optional." On declarations with `key = value` settings it steps aside per key, so `?IMAGE` keeps the `checkpoint` a later file never mentioned while yielding the `steps` it did.
+- **The filename is already a tag.** The index carries every file's base name as an implicit tag, so `leotorin.evoke` answers `evoke image leotorin` with no `TAGS` block at all. Never tag a file with its own name.
+- **Tags name the sets you'd draw from at random**, because that is literally what they do: a selector resolves to _one_ matching file, picked at random when several match, and re-picked per image in a batch. A tag earns its place when you'd accept any file carrying it — a role (`character`, `apparel`, `style`, `environment`) and the collections the file is drawn from alongside siblings (`npc`, `party`, `crew`). A tag only one file carries is its filename spelled longer.
+- **Content is not tags.** `firbolg`, `druid`, `farmer`, `balance` restate declarations in a namespace that exists to pick substitutes. A descriptor tag is worth writing only when several files share it and you'd ask for any of them (`winter` across coats). Lowercase kebab-case; one or two tags is normal and none is fine.
+- **`?` is the default value** — a real statement about the subject that yields. `?APPAREL` is what the character wears when nobody dressed them; `?ENVIRONMENT` is where they are when nobody placed them. Not "optional," not scaffolding to make a file render alone: it is the file's answer, offered until a caller supplies a different one. On declarations with `key = value` settings it yields per key, so `?IMAGE` keeps the `checkpoint` a later file never mentioned while giving up the `steps` it did. See §5.1.
 - **Keep singular declarations out of shared files.** `NAME`, `SCENARIO`, `IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE` conflict when two files provide one (warns, takes the first). `IMAGE` in a character file breaks the first two-character composition.
-- **Structured blocks layer per setting, later argument winning.** `IMAGE`, `LORA`, `DETAILER`, `CHAT`, and `KNOWLEDGE` merge setting by setting, so a shot file writes `DETAILER face` with only `max_detection = 2` and inherits the character's detector, sizes, and text. Put the tuning in the shot or pipeline file that owns that concern, and remember the override has to come *later* in the composition than what it overrides.
+- **Structured blocks layer per setting, later argument winning.** `IMAGE`, `LORA`, `DETAILER`, `CHAT`, and `KNOWLEDGE` merge setting by setting, so a shot file writes `DETAILER face` with only `max_detection = 2` and inherits the character's detector, sizes, and text. Put the tuning in the shot or pipeline file that owns that concern, and remember the override has to come _later_ in the composition than what it overrides.
 - **`!` is for the file's own contradictions.** `!APPEARANCE scary` belongs in Sumi because Sumi isn't that. Generic quality negatives belong in the one style file.
+
+### 5.1 Which blocks take `?`
+
+The test is **why the caller selected this file**. Explicit blocks are what the selection was _for_. `?` blocks are what comes along with it.
+
+Selecting `leotorin` asks for the character — his face is the thing you asked for, his tunic and his farm merely arrive with him. Selecting `winter-coat` or `tavern` means you wanted the outfit or the place, so nothing in those files defers to anything.
+
+| File kind        | Explicit                                                      | `?` default                                                                       |
+| :--------------- | :------------------------------------------------------------ | :-------------------------------------------------------------------------------- |
+| Character        | `APPEARANCE`/`!`, `CHARACTER`, `PERSONALITY`/`!`, `BACKSTORY` | `?APPAREL`; `?ENVIRONMENT` only when the source establishes a home, shop, or city |
+| Apparel          | `APPAREL`/`!`                                                 | —                                                                                 |
+| Place / location | `ENVIRONMENT`/`!`                                             | —                                                                                 |
+| Style / pipeline | `IMAGE`, `PROMPT`, quality anchors                            | settings a shot file should be free to raise                                      |
+
+- **`APPEARANCE` is never `?`.** A character's face is not a fallback — there is no composition where you want a different file's face substituted for it, and in a two-character composition accumulation is already the behavior you want.
+- **A location file never defaults its own `ENVIRONMENT`.** Its whole purpose is to assert that place; `?ENVIRONMENT` there yields to anything and asserts nothing.
+- **`?ENVIRONMENT` in a character file needs a source.** A farm, a shop, a home city the notes actually establish. Adding one so the file renders alone is §2 fabrication with a `?` in front of it.
+- **Override is whole-channel, not per line.** One explicit `APPAREL` anywhere in the composition drops _every_ `?APPAREL` line — you get the coat file's outfit, not the coat plus the character's trousers. That is what makes a default easy to displace, and it is why a `?` block should be complete on its own: a default outfit missing trousers is never completed by the thing that replaces it.
+- **A file's own explicit block suppresses its own default.** Declaration and channel together are the unit (`channelKey{name, argument, negative}`), so `?APPAREL` and `APPAREL` in one file means the default never fires. The flip side is that the unit is _narrow_: an explicit `APPEARANCE` leaves `?APPAREL` alone, and an explicit `!APPAREL` doesn't suppress a positive `?APPAREL`.
 
 ---
 
 ## 6. Checklist
 
+**Before anything else (§2)**
+
+- [ ] Can every value be pointed at something in the prompt or the source material?
+- [ ] Any block written because it was empty rather than because there was material for it?
+- [ ] Any declaration present that nobody asked for?
+
 **Rendering blocks (§3)**
 
 - [ ] Every line describes something drawable?
+- [ ] Subject count or framing (`1boy`, `solo`, `upper body`, `from below`) in a character file instead of the shot file?
 - [ ] Negation words in a positive block?
 - [ ] Short phrases, no grammar words, no trailing periods?
 - [ ] Weights: numeric only, ≤1.3, 1–3 per character, identity files only, and only on traits that actually failed flat?
@@ -473,12 +528,13 @@ CHAT
 - [ ] Any `or`?
 - [ ] Camera/lighting/quality directives that belong in the pipeline file?
 - [ ] Renders sensibly alone _and_ combined with its expected partners?
+- [ ] `?` on the block the file exists to assert, or explicit on a block that merely came along with the subject (§5.1) — and is every `?` block complete enough to stand as the whole channel?
 
 **Language blocks (§4)**
 
 - [ ] Right person for the block — third for `CHARACTER`/`PERSONALITY`/`BACKSTORY`/ `SCENARIO`, second only for `CHAT` instructions?
 - [ ] Any word describing an _impression_ ("complex," "mysterious," "charming") instead of the behavior that creates it?
-- [ ] `PERSONALITY` states what the character does, not adjectives — and could another model predict their behavior in a situation you never wrote?
+- [ ] `PERSONALITY` states what the character does, not adjectives — is each pattern's mechanism from the source rather than supplied to satisfy §4.4?
 - [ ] Every `BACKSTORY` detail produces a present belief, behavior, or conflict?
 - [ ] Any block repeating what another already established?
 - [ ] `SCENARIO` has an objective, a complication, and a reason to keep talking — and decides nothing about what the user says, feels, or wants?
@@ -488,6 +544,9 @@ CHAT
 
 - [ ] Any sentence wrapped across two lines?
 - [ ] Singular declarations that will conflict with a sibling?
+- [ ] Exclusion blocks and short lists broken across lines instead of comma-joined onto one?
+- [ ] Tags naming the file itself, or restating its content, instead of sets you'd pick from at random?
+- [ ] Comments saying what the file is, what it contains, or how to invoke it?
 
 ---
 

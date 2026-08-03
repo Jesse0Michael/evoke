@@ -19,7 +19,7 @@ Each positional argument is classified as one of four input types:
 
 ### Selectors
 
-A selector matches files from the local index by tag. Tags are declared in the `TAGS` block of each `.evoke` file.
+A selector matches files from the local index by tag. Tags are declared in the `TAGS` block of each `.evoke` file, and the index adds each file's base name as an implicit tag — `sumi.evoke` is reachable as `sumi` whether or not it declares any tags of its own.
 
 Simple tag selectors:
 ```console
