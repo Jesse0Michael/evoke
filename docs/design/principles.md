@@ -1,19 +1,6 @@
----
-title: Principles
-parent: Design
-nav_order: 1
----
-
 # Core Principles
-{: .no_toc }
 
 These invariants shape almost every design decision. They're easy to violate by accident, so they're stated explicitly.
-
-## Table of contents
-{: .no_toc .text-delta }
-
-1. TOC
-{:toc}
 
 ---
 
@@ -29,8 +16,7 @@ A file's purpose **emerges** from the declarations it contains:
 
 A file may mix any supported declarations. The compiler doesn't care what category a file "is" — it only interprets declarations.
 
-{: .warning }
-> Don't add a `TYPE`, `FROM`, or `IMPORT` mechanism. It would break the typeless model.
+> **Watch out:** don't add a `TYPE`, `FROM`, or `IMPORT` mechanism. It would break the typeless model.
 
 ## Composition is controlled externally
 
@@ -40,7 +26,7 @@ Evoke files do not import or reference one another. There is no `FROM`, `IMPORT`
 $ evoke image character winter forest
 ```
 
-File selection order must not silently determine behavior unless the specification explicitly defines a reason for order to matter. Two conflicting singular values are a [conflict](../file-format/merge-modes#singular), not a last-one-wins race.
+File selection order must not silently determine behavior unless the specification explicitly defines a reason for order to matter. Two conflicting singular values are a [conflict](../file-format/merge-modes.md#singular), not a last-one-wins race.
 
 ## Declarations, not directives
 

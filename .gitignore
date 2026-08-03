@@ -1,5 +1,7 @@
 tmp/
 bin/
+site/
+.venv/
 
 # misc
 .DS_Store

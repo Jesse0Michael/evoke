@@ -1,18 +1,4 @@
----
-title: Getting Started
-nav_order: 2
----
-
 # Getting Started
-{: .no_toc }
-
-## Table of contents
-{: .no_toc .text-delta }
-
-1. TOC
-{:toc}
-
----
 
 ## Build the CLI
 
@@ -31,7 +17,7 @@ Commands available:
 - `evoke login` — sign in to the registry
 - `evoke settings` — manage user settings (source paths)
 
-See the [CLI reference](cli) for details.
+See the [CLI reference](cli/index.md) for details.
 
 ## Write your first file
 
@@ -51,7 +37,7 @@ NAME
     Sumi
 
 CHARACTER
-    octopus humanoid mascot
+    an octopus humanoid, and the mascot of this project
 
 PERSONALITY
     curious
@@ -59,6 +45,7 @@ PERSONALITY
     endlessly helpful
 
 APPEARANCE
+    octopus humanoid
     small round body
     smooth violet skin
     eight tapering tentacles
@@ -90,7 +77,7 @@ APPAREL
     short sleeves
 ```
 
-The `!` prefix routes those values to the **negative** channel (things to exclude — for an image target, a negative prompt). See [Prefixes & Channels](file-format/prefixes).
+The `!` prefix routes those values to the **negative** channel (things to exclude — for an image target, a negative prompt). See [Prefixes & Channels](file-format/prefixes.md).
 
 ## Generate an image
 
@@ -112,7 +99,7 @@ In the example above, `character` matches `sumi.evoke` (it has the `character` t
 
 ## Learn the format
 
-- [Syntax](file-format/syntax) — the exact line-oriented rules the parser enforces
-- [Declarations](file-format/declarations) — the nine built-in declarations
-- [Prefixes & Channels](file-format/prefixes) — what `!` and `?` mean
-- [Merge Modes](file-format/merge-modes) — how repeated values combine
+- [Syntax](file-format/syntax.md) — the exact line-oriented rules the parser enforces
+- [Declarations](file-format/declarations.md) — the nine built-in declarations
+- [Prefixes & Channels](file-format/prefixes.md) — what `!` and `?` mean
+- [Merge Modes](file-format/merge-modes.md) — how repeated values combine

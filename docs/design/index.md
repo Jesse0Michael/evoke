@@ -1,9 +1,3 @@
----
-title: Design
-nav_order: 5
-has_children: true
----
-
 # Design
 
 This section documents the reasoning, vocabulary, and architecture behind Evoke.
@@ -37,9 +31,9 @@ parse  →  schema lookup  →  validate  →  merge  →  generate
 
 ## In this section
 
-- **[Principles](principles)** — the non-obvious invariants: typeless files, external composition, no early concatenation.
-- **[Resolution Model](resolution)** — the merge algorithm: singular vs accumulating, default suppression, conflict handling.
-- **[Registry](registry)** — the hosted registry API for publishing and pulling `.evoke` artifacts.
+- **[Principles](principles.md)** — the non-obvious invariants: typeless files, external composition, no early concatenation.
+- **[Resolution Model](resolution.md)** — the merge algorithm: singular vs accumulating, default suppression, conflict handling.
+- **[Registry](registry.md)** — the hosted registry API for publishing and pulling `.evoke` artifacts.
 
 ## Framing
 

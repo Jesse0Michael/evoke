@@ -1,9 +1,3 @@
----
-title: evoke settings
-parent: CLI
-nav_order: 2
----
-
 # evoke settings
 
 Manage user settings stored in `~/.evoke/settings.json`.
@@ -54,7 +48,6 @@ The `image` and `index` commands discover `.evoke` files from these roots (in or
 ---
 
 # evoke login
-{: .no_toc }
 
 Sign in to the hosted registry via Google OAuth (browser loopback + PKCE flow).
 

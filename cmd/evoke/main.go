@@ -80,7 +80,7 @@ func usage() {
 
 Chat:
     evoke chat        Compose evoke files into a character and start an interactive chat
-    evoke knowledge   Build a RAG knowledge database from a directory of markdown
+    evoke knowledge   Build a RAG knowledge database from markdown and .evoke files
 
 Image:
     evoke image       Compose evoke files and submit to a generation pipeline

@@ -32,7 +32,7 @@ func TestRenderPromptData(t *testing.T) {
 				Prompt:      evoke.Prompt{Positive: []string{"test-prompt"}, Negative: []string{"test-prompt-negative"}},
 			},
 			expected: promptData{
-				Positive:    "test-character-description, test-appearance, test-prompt",
+				Positive:    "test-appearance, test-prompt",
 				Negative:    "test-appearance-negative, test-prompt-negative",
 				Apparel:     prompt{Positive: "test-apparel", Negative: "test-apparel-negative"},
 				Environment: prompt{Positive: "test-environment", Negative: "test-environment-negative"},
@@ -41,6 +41,7 @@ func TestRenderPromptData(t *testing.T) {
 		{
 			name: "a chat-only composition renders an empty image prompt",
 			doc: &evoke.Composition{
+				Character:   []string{"test-character-description"},
 				Personality: evoke.Prompt{Positive: []string{"test-personality"}},
 				Backstory:   []string{"test-backstory"},
 				Scenario:    "test-scenario",
@@ -50,14 +51,15 @@ func TestRenderPromptData(t *testing.T) {
 		{
 			name: "IMAGE text leads the prompt",
 			doc: &evoke.Composition{
-				Character: []string{"test-character-description"},
-				Backstory: []string{"test-backstory"},
+				Character:  []string{"test-character-description"},
+				Backstory:  []string{"test-backstory"},
+				Appearance: evoke.Prompt{Positive: []string{"test-appearance"}},
 				Images: []evoke.ImageStage{{
 					Text: evoke.Prompt{Positive: []string{"test-quality"}, Negative: []string{"test-quality-negative"}},
 				}},
 			},
 			expected: promptData{
-				Positive: "test-quality, test-character-description",
+				Positive: "test-quality, test-appearance",
 				Negative: "test-quality-negative",
 			},
 		},

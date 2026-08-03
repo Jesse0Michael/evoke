@@ -1,9 +1,3 @@
----
-title: CLI
-nav_order: 4
-has_children: true
----
-
 # CLI
 
 `evoke` is a single Go binary. Build it from a clone of the repository:
@@ -16,11 +10,11 @@ $ go install ./cmd/evoke
 
 | Command | Description |
 |:--------|:------------|
-| [`evoke image`](image) | Compose files by selector, path, or registry reference and submit to a generation pipeline. |
-| [`evoke chat`](chat) | Compose files into a character and start an interactive chat with a local LLM backend. |
-| [`evoke knowledge`](knowledge) | Build a RAG vector database from a directory of markdown for `KNOWLEDGE` to reference. |
-| [`evoke login`](login) | Sign in to the registry via Google OAuth. |
-| [`evoke settings`](settings) | Manage user settings (source paths, registry URL). |
+| [`evoke image`](image.md) | Compose files by selector, path, or registry reference and submit to a generation pipeline. |
+| [`evoke chat`](chat.md) | Compose files into a character and start an interactive chat with a local LLM backend. |
+| [`evoke knowledge`](knowledge.md) | Build a RAG vector database from a directory of markdown and `.evoke` files for `KNOWLEDGE` to reference. |
+| `evoke login` | Sign in to the registry via Google OAuth. |
+| [`evoke settings`](settings.md) | Manage user settings (source paths, registry URL). |
 | `evoke view` | Interactive terminal image viewer with metadata display. |
 | `evoke queue` | Display the ComfyUI generation queue. |
 | `evoke clear` | Clear the ComfyUI generation queue. |

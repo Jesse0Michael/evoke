@@ -1,19 +1,4 @@
----
-title: Prefixes & Channels
-parent: File Format
-nav_order: 3
----
-
 # Prefixes & Channels
-{: .no_toc }
-
-## Table of contents
-{: .no_toc .text-delta }
-
-1. TOC
-{:toc}
-
----
 
 A declaration name may carry a prefix that selects a **channel** or marks a value as a **default**. A prefix is not an operation — it never means delete, override, or disable.
 
@@ -21,10 +6,10 @@ A declaration name may carry a prefix that selects a **channel** or marks a valu
 |:-------|:-----|:--------|
 | *(none)* | positive | An explicit positive contribution. |
 | `!` | negative | Contributes to the negative / exclusion channel. |
-| `?` | default | Used only when no explicit contribution exists for the same declaration and channel. |
+| `?` | default | Used only when no explicit contribution supplies the same thing — see [`?` — defaults](#--defaults). |
 | `?!` | default negative | A default contribution into the negative channel. Reserved; deferred until a real use case appears. |
 
-Only declarations whose [definition](declarations) supports a given prefix may use it. Using an unsupported prefix is a validation error.
+Only declarations whose [definition](declarations.md) supports a given prefix may use it. Using an unsupported prefix is a validation error.
 
 ## No prefix — positive contribution
 
@@ -35,7 +20,7 @@ APPAREL
     black dress
 ```
 
-How multiple positive values combine depends on the declaration's [merge mode](merge-modes).
+How multiple positive values combine depends on the declaration's [merge mode](merge-modes.md).
 
 ## `!` — the negative channel
 
@@ -71,7 +56,7 @@ APPEARANCE
 
 ## `?` — defaults
 
-The `?` prefix marks a **default**: a value used only when no explicit contribution exists for the same declaration and channel. This gives source content canonical fallbacks without needing a replacement operator.
+The `?` prefix marks a **default**: a value used only when no explicit contribution supplies the same thing. This gives source content canonical fallbacks without needing a replacement operator.
 
 ```text
 # sumi.evoke — the character's canonical outfit
@@ -91,10 +76,30 @@ Compose both and the result uses the winter coat. The moment *any* explicit `APP
 
 Think of a default as a stable property of the content: *"use this when nothing more specific has been selected."*
 
+### What counts as "the same thing"
+
+A default steps aside for an explicit contribution of *the same thing*, and the unit of "the same thing" is whatever was contributed:
+
+| The default contributes                                                                       | An explicit contribution replaces                                                                                |
+| :--------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------- |
+| **values in a channel** — `?APPAREL`, `?APPEARANCE`, `?PERSONALITY`, and the prompt text on `?IMAGE` / `?DETAILER` / `?CHAT` | **the whole channel.** One explicit line replaces every default line in it — you cannot add to an inherited list. |
+| **a `key = value` setting** on `?IMAGE`, `?LORA`, `?DETAILER`, `?CHAT`, `?KNOWLEDGE`          | **that one key.** Settings the explicit block never mentioned still apply.                                        |
+
+One rule, two granularities, because a setting is addressable by name and a prompt line is not. A shot file writing
+
+```text
+IMAGE
+    steps = 20
+```
+
+against a pipeline's `?IMAGE` gets `steps = 20` with the default's `checkpoint`, `cfg`, and quality-anchor text intact — it never said anything about those. Add a prompt line to that same block and the default's text drops out entirely, because text is a channel, not a key.
+
+Explicit blocks then layer among *themselves* per key, with the last argument winning; see [field-level layering](merge-modes.md#structured-field-level-overlay).
+
 ## `?!` — default negative
 
 The combination — a default contribution into the negative channel — is part of the design but deliberately postponed until a concrete use case justifies it. It is not needed for the current milestones.
 
 ## Why there is no `=` / force operator
 
-Version one has no replace, force, or override operator. If canonical values use `?`, an ordinary explicit declaration already suppresses them — so a force operator isn't needed to "win" over a default. And two *conflicting* explicit singular values are treated as a [conflict](merge-modes#singular), never silently resolved by file order. A force operator may be reconsidered later only if a real use case demands it.
+Version one has no replace, force, or override operator. If canonical values use `?`, an ordinary explicit declaration already suppresses them — so a force operator isn't needed to "win" over a default. And two *conflicting* explicit singular values are treated as a [conflict](merge-modes.md#singular), never silently resolved by file order. A force operator may be reconsidered later only if a real use case demands it.

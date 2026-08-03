@@ -1,23 +1,8 @@
----
-title: Resolution Model
-parent: Design
-nav_order: 2
----
-
 # Resolution Model
-{: .no_toc }
-
-## Table of contents
-{: .no_toc .text-delta }
-
-1. TOC
-{:toc}
-
----
 
 Resolution is the merge stage. It takes declarations from every selected file and produces a single `Composition` — the merged result that a generator consumes. The implementation lives in `pkg/evoke/merge.go`.
 
-For the merge semantics themselves — singular conflicts, accumulation, dedup, defaults — see [Merge Modes](../file-format/merge-modes).
+For the merge semantics themselves — singular conflicts, accumulation, dedup, defaults — see [Merge Modes](../file-format/merge-modes.md).
 
 ## The Composition
 
@@ -49,7 +34,7 @@ For each declaration and each channel (positive / negative):
 1. Collect all contributions, separating explicit from default.
 2. If any explicit contributions exist, ignore all defaults.
 3. If no explicit contributions exist, use the defaults.
-4. Apply the declaration's [merge mode](../file-format/merge-modes):
+4. Apply the declaration's [merge mode](../file-format/merge-modes.md):
    - **Singular** — at most one value. Multiple explicit values are a conflict (warns, uses first).
    - **Accumulating** — combine all values in order, deduplicating exact normalized matches.
 5. Positive and negative channels are resolved independently.

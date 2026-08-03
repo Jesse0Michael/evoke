@@ -1,0 +1,9 @@
+{
+  "name": "evoke",
+  "description": "Author .evoke files — the declarative source format for AI characters and generative assets. Ships the style guide and format reference as a skill so any repo of .evoke content gets them without vendoring the docs.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Jesse Michael"
+  },
+  "homepage": "https://github.com/jesse0michael/evoke"
+}

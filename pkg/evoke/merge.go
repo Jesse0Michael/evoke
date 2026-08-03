@@ -275,8 +275,22 @@ func resolveDetailerConfigs(contributions map[channelKey][]contribution) []Detai
 	return configs
 }
 
-// resolveStructuredChannel performs field-level default merge for structured declarations.
-// It returns merged settings, accumulated lora references, and prompt text lines.
+// resolveStructuredChannel resolves one channel of a structured declaration
+// (IMAGE, LORA, DETAILER, CHAT, KNOWLEDGE) into settings, lora references, and
+// prompt text.
+//
+// Settings layer per key rather than resolving as one atomic value: defaults
+// apply first, then explicit blocks, and within each group the last file in
+// composition order wins. That way a shot or pipeline file only has to name the
+// settings it changes — `DETAILER face` with just `max_detection = 2` keeps the
+// detector, sizes, and text it did not mention. Two files setting the same key
+// is ordinary layering, not a conflict; the caller's argument order decides,
+// which is the one place order-dependence is specified rather than accidental.
+//
+// Prompt text follows the ordinary channel rule instead, because it is content
+// rather than configuration: explicit text suppresses default text (so `?` still
+// means "only if nothing else contributed"), and text accumulates within
+// whichever group is active. Lora references accumulate across everything.
 func resolveStructuredChannel(contribs []contribution) (map[string]string, []string, []string) {
 	if len(contribs) == 0 {
 		return nil, nil, nil
@@ -291,79 +305,53 @@ func resolveStructuredChannel(contribs []contribution) (map[string]string, []str
 		}
 	}
 
-	if len(explicit) > 1 {
-		sources := make([]string, len(explicit))
-		for i, e := range explicit {
-			sources[i] = e.source
-		}
-		slog.Warn("conflict: multiple explicit contributions for structured declaration; using first", "sources", sources)
-	}
+	settings := make(map[string]string)
+	var loras []string
 
-	// Parse defaults into base settings + text.
-	baseSettings := make(map[string]string)
-	var baseLoras []string
-	var baseText []string
-	for _, c := range defaults {
-		for _, v := range c.values {
-			if k, val := ParseSetting(v); k != "" {
-				if k == "lora" {
-					baseLoras = appendUnique(baseLoras, val)
-				} else {
-					if _, exists := baseSettings[k]; !exists {
-						baseSettings[k] = val
-					}
+	// Applied in two passes so an explicit setting always outranks a default
+	// regardless of file order; within a pass, the last writer wins.
+	apply := func(group []contribution) []string {
+		var text []string
+		for _, c := range group {
+			for _, v := range c.values {
+				switch k, val := ParseSetting(v); {
+				case k == "lora":
+					loras = appendUnique(loras, val)
+				case k != "":
+					settings[k] = val
+				default:
+					text = append(text, v)
 				}
-			} else {
-				baseText = append(baseText, v)
 			}
 		}
+		return text
 	}
 
-	if len(explicit) == 0 {
-		return baseSettings, baseLoras, baseText
+	defaultText := apply(defaults)
+	text := apply(explicit)
+	if len(text) == 0 {
+		text = defaultText
 	}
 
-	// Parse explicit contribution.
-	explicitSettings := make(map[string]string)
-	var explicitLoras []string
-	var explicitText []string
-	for _, v := range explicit[0].values {
-		if k, val := ParseSetting(v); k != "" {
-			if k == "lora" {
-				explicitLoras = appendUnique(explicitLoras, val)
-			} else {
-				explicitSettings[k] = val
-			}
-		} else {
-			explicitText = append(explicitText, v)
+	return settings, loras, dedupeValues(text)
+}
+
+// dedupeValues drops exact duplicates, comparing trimmed values while preserving
+// the original text.
+func dedupeValues(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(values))
+	result := make([]string, 0, len(values))
+	for _, v := range values {
+		normalized := strings.TrimSpace(v)
+		if !seen[normalized] {
+			seen[normalized] = true
+			result = append(result, v)
 		}
 	}
-
-	// Field-level overlay: explicit settings override defaults.
-	merged := make(map[string]string)
-	for k, v := range baseSettings {
-		merged[k] = v
-	}
-	for k, v := range explicitSettings {
-		merged[k] = v
-	}
-
-	// Loras accumulate across explicit and defaults.
-	var mergedLoras []string
-	for _, l := range baseLoras {
-		mergedLoras = appendUnique(mergedLoras, l)
-	}
-	for _, l := range explicitLoras {
-		mergedLoras = appendUnique(mergedLoras, l)
-	}
-
-	// If explicit has text, it replaces all default text.
-	mergedText := baseText
-	if len(explicitText) > 0 {
-		mergedText = explicitText
-	}
-
-	return merged, mergedLoras, mergedText
+	return result
 }
 
 // collectArguments returns all unique argument values for a declaration name across all channels.
@@ -451,18 +439,11 @@ func resolveChannel(def Definition, contribs []contribution, negative bool) []st
 		return nil
 	}
 
-	var result []string
-	seen := make(map[string]bool)
+	var values []string
 	for _, c := range active {
-		for _, v := range c.values {
-			normalized := strings.TrimSpace(v)
-			if !seen[normalized] {
-				seen[normalized] = true
-				result = append(result, v)
-			}
-		}
+		values = append(values, c.values...)
 	}
-	return result
+	return dedupeValues(values)
 }
 
 // ImageStageByArgument returns the ImageStage with the given argument, or nil if not found.

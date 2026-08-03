@@ -1,18 +1,12 @@
----
-title: evoke chat
-parent: CLI
-nav_order: 2
----
-
 # evoke chat
 
-Compose `.evoke` files into a character and start an interactive conversation with a local LLM backend. Chat is a second output target built from the same resolved Evoke data as [`image`](image): the parser, selectors, and merge semantics are identical — only the compilation target differs.
+Compose `.evoke` files into a character and start an interactive conversation with a local LLM backend. Chat is a second output target built from the same resolved Evoke data as [`image`](image.md): the parser, selectors, and merge semantics are identical — only the compilation target differs.
 
 ```console
 $ evoke chat <input>...
 ```
 
-Inputs are classified and resolved exactly as in [`evoke image`](image#input-types) (selectors, local paths, `@namespace/name` registry references, literal prompts). The merged composition's persistent character declarations become the system prompt; the `CHAT` declaration selects the model, sampling, and conversation policy.
+Inputs are classified and resolved exactly as in [`evoke image`](image.md#input-types) (selectors, local paths, `@namespace/name` registry references, literal prompts). The merged composition's persistent character declarations become the system prompt; the `CHAT` declaration selects the model, sampling, and conversation policy.
 
 The shipped [`examples/chat.evoke`](https://github.com/jesse0michael/evoke/blob/main/examples/chat.evoke) is a self-contained basic assistant — start there:
 

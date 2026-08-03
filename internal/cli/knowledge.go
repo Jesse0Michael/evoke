@@ -17,8 +17,8 @@ import (
 const defaultKnowledgeDB = "knowledge.db"
 
 // KnowledgeCmd builds the RAG vector database that a KNOWLEDGE declaration
-// refers to: it walks a directory of markdown, splits each file into
-// heading-scoped chunks, embeds them, and writes a SQLite database.
+// refers to: it walks a directory of markdown and .evoke files, splits each
+// file into heading-scoped chunks, embeds them, and writes a SQLite database.
 //
 // The database is written to the working directory, and --output is an ordinary
 // path. chat resolves a KNOWLEDGE db= against chat.model_paths, but that is a
@@ -35,13 +35,12 @@ func KnowledgeCmd(args []string, verbose bool) int {
 	url := fs.String("url", "", "ollama-compatible API base URL (default: chat.embed_url setting, else "+knowledge.DefaultEmbedURL+")")
 	maxTokens := fs.Int("max-tokens", knowledge.DefaultMaxTokens, "target maximum tokens per chunk")
 	overlap := fs.Int("overlap", knowledge.DefaultOverlap, "token overlap between split chunks")
-	dryRun := fs.Bool("dry-run", false, "chunk and report counts without embedding or writing the database")
 	var exclude stringList
 	fs.Var(&exclude, "exclude", "glob of files to skip, matched on relative path or base name (repeatable)")
 
 	// flag stops parsing at the first non-flag argument, so resume after each
 	// positional. This accepts flags before or after the directory, since
-	// `evoke knowledge ./docs --dry-run` is the natural thing to type.
+	// `evoke knowledge ./docs --exclude index.md` is the natural thing to type.
 	var positional []string
 	remaining := args
 	for {
@@ -108,7 +107,6 @@ func KnowledgeCmd(args []string, verbose bool) int {
 		MaxTokens:  *maxTokens,
 		Overlap:    *overlap,
 		Exclude:    exclude,
-		DryRun:     *dryRun,
 	}
 	if verbose {
 		opts.Progress = func(p knowledge.FileProgress) {
@@ -120,11 +118,6 @@ func KnowledgeCmd(args []string, verbose bool) int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "evoke knowledge: %v\n", err)
 		return 1
-	}
-
-	if *dryRun {
-		fmt.Printf("Dry run: %d files, %d chunks (nothing written)\n", result.Files, result.Chunks)
-		return 0
 	}
 
 	fmt.Printf("Wrote %s\n", result.Output)

@@ -1,19 +1,4 @@
----
-title: Declarations
-parent: File Format
-nav_order: 2
----
-
 # Declarations
-{: .no_toc }
-
-## Table of contents
-{: .no_toc .text-delta }
-
-1. TOC
-{:toc}
-
----
 
 Every declaration has a registered definition that fixes its **merge mode**, whether it supports the **`!` negative channel**, whether it supports the **`?` default**, and its canonical **render order**. The thirteen declarations below are the implemented set.
 
@@ -36,8 +21,8 @@ Every declaration has a registered definition that fixes its **merge mode**, whe
 | `CHAT`        | singular      | — | ✓ | — | 130 |
 | `KNOWLEDGE`   | singular      | — | ✓ | required | 140 |
 
-- **Merge** — how repeated contributions combine. See [Merge Modes](merge-modes).
-- **`!` negative** — whether values may be routed to the exclusion channel. See [Prefixes & Channels](prefixes).
+- **Merge** — how repeated contributions combine. See [Merge Modes](merge-modes.md). The structured declarations (`IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE`) are singular **per argument** but resolve by [field-level layering](merge-modes.md#structured-field-level-overlay), not all-or-nothing: a block only needs to name the settings it changes and inherits the rest, and for a key two files both set, the later argument wins.
+- **`!` negative** — whether values may be routed to the exclusion channel. See [Prefixes & Channels](prefixes.md).
 - **`?` default** — whether values may be marked as defaults used only when nothing more specific exists.
 - **Order** — the canonical, ascending order renderers use so output is deterministic rather than dependent on file order.
 
@@ -48,7 +33,7 @@ A declaration is only meaningful to the commands that read it. `image` and `chat
 | Declaration | `evoke image` | `evoke chat` |
 |:------------|:--------------|:-------------|
 | `NAME`        | output directory name (not part of the prompt) | the character's name |
-| `CHARACTER`   | positive prompt | identity |
+| `CHARACTER`   | — | identity |
 | `PERSONALITY` | — | personality, plus "traits to avoid" from the `!` channel |
 | `BACKSTORY`   | — | backstory |
 | `APPEARANCE`  | positive / negative prompt | — |
@@ -62,14 +47,13 @@ A declaration is only meaningful to the commands that read it. `image` and `chat
 | `CHAT`        | — | runtime, sampling, and system instructions |
 | `KNOWLEDGE`   | — | retrieval sources |
 
-`PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **chat-only**. They describe disposition, history, and narrative situation — none of which a diffusion model can render — so the image pipeline does not put them in the prompt. This means a character file can carry a full backstory without it competing for the image prompt's limited attention.
+`CHARACTER`, `PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **chat-only**. They describe identity, disposition, history, and narrative situation — none of which a diffusion model can render — so the image pipeline does not put them in the prompt. This means a character file can carry a full identity and backstory without it competing for the image prompt's limited attention. Everything drawable about a subject belongs in `APPEARANCE`.
 
-For guidance on writing the content of these blocks well, see the [Style Guide](https://github.com/jesse0michael/evoke/blob/main/STYLE.md).
+For guidance on writing the content of these blocks well, see the style guide at `skills/evoke-authoring/references/style-guide.md`.
 
 ## Reference
 
 ### NAME
-{: .no_toc }
 
 The human-facing character or entity name. **Singular** — a single explicit value. No negative channel (a name has no meaningful "negative prompt"), no default.
 
@@ -79,18 +63,16 @@ NAME
 ```
 
 ### CHARACTER
-{: .no_toc }
 
-A stable factual description of who the character is. **Accumulating**, positive only. `IDENTITY` is accepted as a migration alias for `CHARACTER`.
+A stable factual description of who the character is. **Accumulating**; positive only — there is no negative channel, because an identity has no meaningful "not this" (contradictions belong in `!PERSONALITY`). **Chat-only** — not rendered into image prompts; drawable detail goes in `APPEARANCE`. `IDENTITY` is accepted as a migration alias for `CHARACTER`.
 
 ```text
 CHARACTER
-    adult emergency-room nurse
-    grew up in Wisconsin
+    an adult emergency-room nurse
+    the most senior person on the night shift
 ```
 
 ### PERSONALITY
-{: .no_toc }
 
 Behavioral tendencies and traits. **Accumulating**; supports the negative channel and defaults. **Chat-only** — not rendered into image prompts.
 
@@ -106,7 +88,6 @@ PERSONALITY
 ```
 
 ### BACKSTORY
-{: .no_toc }
 
 Canonical background information. **Accumulating**, positive only. **Chat-only** — not rendered into image prompts, so it can be as long as the character needs.
 
@@ -116,7 +97,6 @@ BACKSTORY
 ```
 
 ### APPEARANCE
-{: .no_toc }
 
 General visible physical traits. **Accumulating**; supports the negative channel and defaults.
 
@@ -134,7 +114,6 @@ APPEARANCE
 ```
 
 ### APPAREL
-{: .no_toc }
 
 Clothing and accessories. **Accumulating**; supports the negative channel and defaults. This is deliberately broad for the MVP — narrower declarations like `OUTFIT` or `FOOTWEAR` may come later.
 
@@ -151,7 +130,6 @@ APPAREL
 The `?` default apparel is used only when no explicit `APPAREL` appears in the composition.
 
 ### ENVIRONMENT
-{: .no_toc }
 
 Scene and setting details. **Accumulating**; supports the negative channel and defaults. In the MVP, `ENVIRONMENT` carries the entire scene/setting role — there is no separate `LOCATION` declaration.
 
@@ -163,7 +141,6 @@ ENVIRONMENT
 ```
 
 ### SCENARIO
-{: .no_toc }
 
 The current narrative or conversational situation. **Singular** (one active value); supports defaults, positive only. **Chat-only** — it seeds the opening turn and is not rendered into image prompts.
 
@@ -173,7 +150,6 @@ SCENARIO
 ```
 
 ### PROMPT
-{: .no_toc }
 
 Direct prompt material for when no more specific declaration fits — an escape hatch, not the preferred representation. **Accumulating**; supports the negative channel and defaults.
 
@@ -187,7 +163,6 @@ PROMPT
 ```
 
 ### IMAGE
-{: .no_toc }
 
 Pipeline stage configuration for image generation. **Singular** (per argument); supports the negative channel and defaults. The argument names the stage (e.g., `upscale`); an unnamed IMAGE is the base generation stage. Values are a mix of `key = value` settings and prompt text lines.
 
@@ -206,10 +181,11 @@ IMAGE upscale
     denoise = 0.3
 ```
 
-**Settings:** `checkpoint`, `steps`, `cfg`, `sampler_name`, `scheduler`, `width`, `height`, `denoise`. For `IMAGE upscale`: `upscale_model`, `factor`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `tile_width`, `tile_height`.
+**Settings:** `checkpoint`, `steps`, `cfg`, `sampler_name`, `scheduler`, `width`, `height`, `denoise`, `disabled`. For `IMAGE upscale`: `upscale_model`, `factor`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `tile_width`, `tile_height`, `disabled`.
+
+`disabled = true` switches a stage off — see [Disabling a stage](#disabling-a-stage).
 
 ### LORA
-{: .no_toc }
 
 LoRA model definition. **Singular** (per argument); supports defaults. The argument is the reference name. Values are `key = value` settings.
 
@@ -220,10 +196,9 @@ LORA rimix
     clip = 0.8
 ```
 
-**Settings:** `model` (required — the filename), `strength` (default 1.0), `clip` (default 1.0).
+**Settings:** `model` (required — the filename), `strength` (default 1.0), `clip` (default 1.0), `disabled`.
 
 ### DETAILER
-{: .no_toc }
 
 Inpainting detailer configuration. **Singular** (per argument); supports the negative channel and defaults. The argument names the body region: `face`, `eye`, `upper_body`, `lower_body`, `hand`. Values are a mix of `key = value` settings and prompt text lines.
 
@@ -242,12 +217,13 @@ Inpainting detailer configuration. **Singular** (per argument); supports the neg
     empty eyes, missing iris
 ```
 
-**Settings:** `detector`, `guide_size`, `max_size`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `feather`, `bbox_threshold`, `bbox_dilation`, `bbox_crop_factor`, `noise_mask_feather`, `drop_size`, `max_detection`.
+**Settings:** `detector`, `guide_size`, `max_size`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `feather`, `bbox_threshold`, `bbox_dilation`, `bbox_crop_factor`, `noise_mask_feather`, `drop_size`, `max_detection`, `disabled`.
+
+A later file can raise `max_detection` — or set `disabled = true` — with a `DETAILER face` block naming only that setting; the detector, sizes, and prompt text are inherited. See [field-level layering](merge-modes.md#structured-field-level-overlay).
 
 ### CHAT
-{: .no_toc }
 
-Interactive-chat configuration consumed by [`evoke chat`](../cli/chat). **Singular** with field-level default overlay (like `IMAGE`/`LORA`): a general file may supply `?CHAT` defaults that a more specific file overrides field by field. Values are a mix of `key = value` settings and free-text lines; the free text becomes extra chat-specific system instructions. It does not affect image generation.
+Interactive-chat configuration consumed by [`evoke chat`](../cli/chat.md). **Singular** with field-level default overlay (like `IMAGE`/`LORA`): a general file may supply `?CHAT` defaults that a more specific file overrides field by field. Values are a mix of `key = value` settings and free-text lines; the free text becomes extra chat-specific system instructions. It does not affect image generation.
 
 ```text
 ?CHAT
@@ -262,10 +238,9 @@ Interactive-chat configuration consumed by [`evoke chat`](../cli/chat). **Singul
 
 **Settings:** `backend` (`llama.cpp`), `model`, `context_window`, `gpu_layers`, `max_output_tokens`, `safety_margin`, `min_recent_turns`, `temperature`, `top_p`, `repeat_penalty`, `seed`, `stop`.
 
-`model` is a GGUF **file name** — like a `checkpoint` in `IMAGE` — resolved against the model directories in trusted local settings, so a `.evoke` file names the model, not a machine path, and stays portable. Evoke launches and manages the `llama-server` backend for the session. See [`evoke chat`](../cli/chat) for how it resolves and how the backend is managed.
+`model` is a GGUF **file name** — like a `checkpoint` in `IMAGE` — resolved against the model directories in trusted local settings, so a `.evoke` file names the model, not a machine path, and stays portable. Evoke launches and manages the `llama-server` backend for the session. See [`evoke chat`](../cli/chat.md) for how it resolves and how the backend is managed.
 
 ### KNOWLEDGE
-{: .no_toc }
 
 A retrieval source for retrieval-augmented generation during chat. **Singular per argument** (the argument names the source); supports defaults, positive only. **Chat-only.**
 
@@ -280,7 +255,43 @@ KNOWLEDGE lore
 
 `db` is a SQLite file **name**, resolved against the same `chat.model_paths` directories as the `CHAT` `model` setting, so the file stays portable. The database holds pre-embedded text chunks; at each turn the user's message is embedded via an ollama-compatible endpoint and the closest `top_k` chunks are injected as reference material.
 
-Build the database from a directory of markdown with [`evoke knowledge`](../cli/knowledge). `embed_model` is optional and normally omitted: the database records the model it was built with, and chat adopts it. Set it only to override that — a conflict between the two is an error rather than a silent drop in retrieval quality.
+Build the database from a directory of markdown and `.evoke` files with [`evoke knowledge`](../cli/knowledge.md). `embed_model` is optional and normally omitted: the database records the model it was built with, and chat adopts it. Set it only to override that — a conflict between the two is an error rather than a silent drop in retrieval quality.
+
+## Disabling a stage
+
+`IMAGE`, `LORA`, and `DETAILER` accept a `disabled` setting, so a composition can switch off a pass that another file supplied:
+
+```text
+# no-upscale.evoke — a quick draft pass
+IMAGE upscale
+    disabled = true
+```
+
+```bash
+evoke image character pipeline no-upscale
+```
+
+- **Exactly `true` disables.** `TRUE`, `1`, and `yes` are not recognized and leave the stage on. There is no validation warning for a misspelled value.
+- **It layers like any other setting**, so a later argument can set `disabled = false` to turn a stage back on, and the last file to name the key wins. See [field-level layering](merge-modes.md#structured-field-level-overlay).
+- **`evoke inspect` renders a disabled block with a leading `!`** — `!DETAILER face` — which is the quickest way to confirm what a composition actually turned off.
+
+What each one disables:
+
+| Declaration            | Effect                                                                    |
+| :--------------------- | :------------------------------------------------------------------------ |
+| `IMAGE upscale`        | the upscale pass is skipped                                               |
+| `DETAILER <region>`    | that region's inpaint pass is skipped                                     |
+| `LORA <name>`          | dropped from the LoRA chain; references to it resolve to nothing          |
+| `IMAGE` (unnamed base) | **not** a way to skip generation — only makes the base stage's settings and prompt text be ignored, falling back to built-in defaults. Rarely what you want. |
+
+`CHAT` and `KNOWLEDGE` do not support `disabled`; `evoke chat` reports it as an ignored unknown setting.
+
+### The other two ways a stage ends up off
+
+Both come up when hunting down a detailer that never ran:
+
+- **An explicit negative block with no positive contribution anywhere** disables the stage. `!DETAILER hand` on its own means "there is no hand detailer, and here is the negative prompt for it" — nothing positive ever configured it. A `?DETAILER hand` default *plus* an explicit `!DETAILER hand` means "use the default config with this negative prompt," not "disable."
+- **The generator disables anything it cannot configure**: a detailer whose resolved settings include no `detector`, or an upscale stage with no `upscale_model`. Settings alone never switch a stage *on* — some file in the composition has to supply the detector or model, so a shot file that sets only `max_detection` for a region no file has configured changes nothing.
 
 ## What isn't here
 

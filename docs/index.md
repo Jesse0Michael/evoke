@@ -1,17 +1,8 @@
----
-title: Home
-layout: home
-nav_order: 1
----
-
 # Evoke
-{: .fs-9 }
 
 A declarative, composable source format and CLI for AI characters, scenes, prompts, and generative assets.
-{: .fs-6 .fw-300 }
 
-[Get started](getting-started){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[View on GitHub](https://github.com/jesse0michael/evoke){: .btn .fs-5 .mb-4 .mb-md-0 }
+[Get started](getting-started.md) · [View on GitHub](https://github.com/jesse0michael/evoke)
 
 ---
 
@@ -29,9 +20,10 @@ NAME
     Sumi
 
 CHARACTER
-    octopus humanoid mascot
+    an octopus humanoid, and the mascot of this project
 
 APPEARANCE
+    octopus humanoid
     small round body
     smooth violet skin
     large luminous eyes
@@ -63,21 +55,18 @@ The `image` command resolves the selectors `character` and `winter` against your
 - **Composition is external.** Files don't import each other — the caller picks which files compose together via selectors, paths, or registry references.
 - **Nothing is concatenated early.** Merging works on structured declarations; flattening to a prompt string happens last.
 
-Read the [Design](design) section for the full reasoning.
+Read the [Design](design/index.md) section for the full reasoning.
 
 ## Status
-{: .d-inline-block }
 
-Experimental
-{: .label .label-yellow }
-
-The parser, declaration schema, merge/resolver, tag-based selector system, local SQLite file index, registry client, and the `image` pipeline are all implemented. The hosted registry API is functional.
+**Experimental.** The parser, declaration schema, merge/resolver, tag-based selector system, local SQLite file index, registry client, and the `image` pipeline are all implemented. The hosted registry API is functional.
 
 ## Where to go next
 
 | Section | What's there |
 |:--------|:-------------|
-| [Getting Started](getting-started) | Build the CLI, write your first files, and run `image` |
-| [File Format](file-format) | Syntax, declarations, prefixes, merge modes |
-| [CLI](cli) | Command reference for `image`, `login`, `settings`, and `index` |
-| [Design](design) | The project brief: principles, resolution model, and architecture |
+| [Getting Started](getting-started.md) | Build the CLI, write your first files, and run `image` |
+| [File Format](file-format/index.md) | Syntax, declarations, prefixes, merge modes |
+| `skills/evoke-authoring/` | What to put *in* the blocks: rendering vs. language targets, weights, file design. Lives outside `docs/` because it is packaged as a Claude Code skill, but it is plain markdown — read `references/style-guide.md` directly |
+| [CLI](cli/index.md) | Command reference for `image`, `chat`, `knowledge`, and `settings` |
+| [Design](design/index.md) | The project brief: principles, resolution model, and architecture |

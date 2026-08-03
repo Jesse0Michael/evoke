@@ -1,19 +1,4 @@
----
-title: Syntax
-parent: File Format
-nav_order: 1
----
-
 # Syntax
-{: .no_toc }
-
-## Table of contents
-{: .no_toc .text-delta }
-
-1. TOC
-{:toc}
-
----
 
 Evoke syntax is line-oriented and block-structured. The parser scans the source line by line — there is no separate token stream — and enforces only syntax. Whether a declaration actually *exists* and whether its prefix is *allowed* are separate, declaration-level checks handled during validation.
 
@@ -25,7 +10,7 @@ Evoke syntax is line-oriented and block-structured. The parser scans the source 
     blue jeans
 ```
 
-- **`?`** — an optional [prefix](prefixes) (`!`, `?`, or `?!`).
+- **`?`** — an optional [prefix](prefixes.md) (`!`, `?`, or `?!`).
 - **`APPAREL`** — the declaration name, at column 1 (no indentation).
 - **`green shirt` / `blue jeans`** — indented value lines belonging to the header above them.
 
@@ -102,5 +87,4 @@ The parser accumulates every error it finds rather than stopping at the first, a
 | `indented value has no preceding declaration` | A value line before any header. |
 | `declaration "..." has no values` | A header with no indented values (an empty block). |
 
-{: .note }
-> These are **syntax** errors. Errors like *unknown declaration* or *unsupported prefix* come from the validation stage, which runs after a file parses cleanly.
+> **Note:** these are **syntax** errors. Errors like *unknown declaration* or *unsupported prefix* come from the validation stage, which runs after a file parses cleanly.

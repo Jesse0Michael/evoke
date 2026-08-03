@@ -1,0 +1,6 @@
+# Local docs preview only (`make docs`). Not needed to read or edit the markdown.
+#
+# Bounded below 10 deliberately: the Material maintainers have said MkDocs 2.0
+# removes the plugin and theming systems with no migration path, so an
+# unpinned install would eventually break the preview for no benefit.
+mkdocs-material>=9.7,<10

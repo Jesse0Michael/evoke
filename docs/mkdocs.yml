@@ -1,0 +1,70 @@
+# Optional renderer for the markdown in this directory.
+#
+# The markdown is the actual artifact and is written to stand on its own: no
+# front matter, no theme-specific markup, and relative links that point to real
+# .md files so they resolve in an editor, on GitHub, and in a rendered site
+# alike. This file only supplies titles and ordering, which markdown has
+# nowhere to put.
+#
+# There is deliberately no deploy wiring — no CI, no gh-deploy, no committed
+# build output. Preview locally with `make docs`; if the docs later move into
+# the registry frontend, delete this file and requirements.txt and nothing
+# else in this directory changes.
+
+site_name: Evoke
+site_description: A declarative, composable source format and compiler for AI characters and generative assets.
+repo_url: https://github.com/jesse0michael/evoke
+edit_uri: edit/main/docs/
+
+# No site_url on purpose: nothing is published yet, and a wrong one only serves
+# to emit bogus canonical URLs and sitemap entries. Set it if a host appears.
+
+# The config lives inside the directory it renders, so docs_dir is "." and
+# site_dir has to climb out (MkDocs refuses to build into its own source).
+# Without exclude_docs, MkDocs would treat these two non-markdown files as
+# static assets and copy them into the published site.
+docs_dir: .
+site_dir: ../site
+exclude_docs: |
+  mkdocs.yml
+  requirements.txt
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: indigo
+    accent: indigo
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - File Format:
+      - file-format/index.md
+      - Syntax: file-format/syntax.md
+      - Declarations: file-format/declarations.md
+      - Prefixes & Channels: file-format/prefixes.md
+      - Merge Modes: file-format/merge-modes.md
+  - CLI:
+      - cli/index.md
+      - evoke image: cli/image.md
+      - evoke chat: cli/chat.md
+      - evoke knowledge: cli/knowledge.md
+      - evoke settings: cli/settings.md
+  - Design:
+      - design/index.md
+      - Principles: design/principles.md
+      - Resolution Model: design/resolution.md
+      - Registry: design/registry.md

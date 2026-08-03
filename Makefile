@@ -62,3 +62,9 @@ lint: # Run the linter and vulnerability checker.
 .PHONY: test
 test: # Run the tests.
 	go test -cover ./... -timeout 60s
+
+.PHONY: docs
+docs: # Preview the docs locally at http://127.0.0.1:8000 (needs Python).
+	@test -d .venv || python3 -m venv .venv
+	@.venv/bin/pip install -q -r docs/requirements.txt
+	.venv/bin/mkdocs serve -f docs/mkdocs.yml

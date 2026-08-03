@@ -185,11 +185,13 @@ func (c *Client) Generate(ctx context.Context, doc *evoke.Composition) (*generat
 func renderPromptData(doc *evoke.Composition) promptData {
 	var pd promptData
 
-	// PERSONALITY, BACKSTORY, and SCENARIO are chat-only: they carry disposition,
-	// history, and narrative situation, none of which a diffusion model can render.
-	// Feeding them here spent prompt tokens on unrenderable text and — because
-	// APPAREL and ENVIRONMENT are appended last — diluted the parts that do render.
-	pd.Positive = joinValues(doc.Character, doc.Appearance.Positive, doc.Prompt.Positive)
+	// CHARACTER, PERSONALITY, BACKSTORY, and SCENARIO are chat-only: they carry
+	// identity, disposition, history, and narrative situation, none of which a
+	// diffusion model can render. Feeding them here spent prompt tokens on
+	// unrenderable text and — because APPAREL and ENVIRONMENT are appended last —
+	// diluted the parts that do render. Everything drawable about a subject belongs
+	// in APPEARANCE.
+	pd.Positive = joinValues(doc.Appearance.Positive, doc.Prompt.Positive)
 	pd.Negative = joinValues(doc.Appearance.Negative, doc.Prompt.Negative)
 	pd.Apparel.Positive = joinAll(doc.Apparel.Positive)
 	pd.Apparel.Negative = joinAll(doc.Apparel.Negative)

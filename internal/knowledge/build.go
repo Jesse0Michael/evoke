@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/jesse0michael/evoke/pkg/evoke"
 )
 
 // skipDirs are directories that never hold corpus content. They are only
@@ -15,9 +17,20 @@ var skipDirs = map[string]bool{
 	"node_modules": true,
 }
 
+const (
+	markdownExt = ".md"
+	evokeExt    = ".evoke"
+)
+
+// corpusExt reports whether a file name is one the builder indexes.
+func corpusExt(name string) bool {
+	ext := filepath.Ext(name)
+	return strings.EqualFold(ext, markdownExt) || strings.EqualFold(ext, evokeExt)
+}
+
 // BuildOptions configures a knowledge database build.
 type BuildOptions struct {
-	// Input is the root directory of the markdown corpus.
+	// Input is the root directory of the corpus.
 	Input string
 	// Output is the path of the database file to write.
 	Output string
@@ -31,8 +44,6 @@ type BuildOptions struct {
 	// Exclude holds glob patterns matched against each file's corpus-relative
 	// path and its base name.
 	Exclude []string
-	// DryRun chunks the corpus and reports counts without embedding or writing.
-	DryRun bool
 	// Progress, when set, is called once per file as it is processed.
 	Progress func(FileProgress)
 }
@@ -52,10 +63,10 @@ type BuildResult struct {
 	Dims   int
 }
 
-// Build walks the corpus, chunks every markdown file, embeds each chunk, and
-// writes the vector database. The database is built into a temporary file and
-// renamed into place only on success, so a failed rebuild (an unreachable
-// embedding endpoint, say) leaves the existing database intact.
+// Build walks the corpus, chunks every markdown and .evoke file, embeds each
+// chunk, and writes the vector database. The database is built into a
+// temporary file and renamed into place only on success, so a failed rebuild
+// (an unreachable embedding endpoint, say) leaves the existing database intact.
 func Build(ctx context.Context, opts BuildOptions) (*BuildResult, error) {
 	if opts.Input == "" {
 		return nil, fmt.Errorf("input directory is required")
@@ -77,7 +88,7 @@ func Build(ctx context.Context, opts BuildOptions) (*BuildResult, error) {
 		return nil, err
 	}
 	if len(files) == 0 {
-		return nil, fmt.Errorf("no markdown files found under %s", opts.Input)
+		return nil, fmt.Errorf("no markdown or evoke files found under %s", opts.Input)
 	}
 
 	embedder := NewEmbedder(opts.EmbedModel, opts.EmbedURL)
@@ -102,17 +113,12 @@ func Build(ctx context.Context, opts BuildOptions) (*BuildResult, error) {
 		if err != nil {
 			rel = path
 		}
-		raw, err := os.ReadFile(path)
+		chunks, err := fileChunks(path, filepath.ToSlash(rel), opts)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read %s: %w", path, err)
+			return nil, err
 		}
-		chunks := ChunkMarkdown(filepath.ToSlash(rel), string(raw), opts.MaxTokens, opts.Overlap)
 
 		for _, c := range chunks {
-			if opts.DryRun {
-				id++
-				continue
-			}
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
@@ -139,9 +145,6 @@ func Build(ctx context.Context, opts BuildOptions) (*BuildResult, error) {
 		}
 	}
 
-	if opts.DryRun {
-		return result, nil
-	}
 	if store == nil {
 		return nil, fmt.Errorf("no chunks were produced from %s", opts.Input)
 	}
@@ -155,6 +158,33 @@ func Build(ctx context.Context, opts BuildOptions) (*BuildResult, error) {
 	tmpPath = ""
 
 	return result, nil
+}
+
+// fileChunks reads one corpus file and splits it into chunks. Markdown is
+// chunked as-is; a .evoke file is parsed and re-rendered as markdown first, so
+// only world facts reach the index and the chunker sees real heading structure
+// instead of evoke's "#" comments. Chunks keep the source path either way.
+func fileChunks(path, rel string, opts BuildOptions) ([]Chunk, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s: %w", path, err)
+	}
+
+	content := string(raw)
+	if strings.EqualFold(filepath.Ext(path), evokeExt) {
+		doc, err := evoke.Parse(raw)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse %s: %w", path, err)
+		}
+		// A fragment with no NAME, or one carrying only generator input,
+		// renders to nothing and contributes no chunks.
+		content = renderEvokeMarkdown(doc)
+		if content == "" {
+			return nil, nil
+		}
+	}
+
+	return ChunkMarkdown(rel, content, opts.MaxTokens, opts.Overlap), nil
 }
 
 // createTemp opens the database in a sibling temp file of the output so the
@@ -183,9 +213,9 @@ func createTemp(opts BuildOptions, model string, dims int) (*Store, string, erro
 	return store, tmpPath, nil
 }
 
-// corpusFiles walks root and returns the sorted set of markdown files, skipping
-// hidden entries, known non-content directories, and anything matching an
-// exclude pattern.
+// corpusFiles walks root and returns the sorted set of markdown and .evoke
+// files, skipping hidden entries, known non-content directories, and anything
+// matching an exclude pattern.
 func corpusFiles(root string, exclude []string) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -203,7 +233,7 @@ func corpusFiles(root string, exclude []string) ([]string, error) {
 			}
 			return nil
 		}
-		if strings.HasPrefix(name, ".") || !strings.EqualFold(filepath.Ext(name), ".md") {
+		if strings.HasPrefix(name, ".") || !corpusExt(name) {
 			return nil
 		}
 		rel, relErr := filepath.Rel(root, path)

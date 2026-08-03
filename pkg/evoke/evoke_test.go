@@ -418,6 +418,29 @@ func TestMerge_ImageStages(t *testing.T) {
 			},
 		},
 		{
+			// Per-key layering is not DETAILER-specific: a pipeline file can
+			// swap one IMAGE setting without restating the stage.
+			name: "two explicit IMAGE stages layer per key, last wins",
+			docs: []*evoke.Document{
+				{Declarations: []*evoke.Declaration{
+					{Name: "IMAGE", Argument: "base", Values: []string{
+						"checkpoint = perfection.safetensors",
+						"steps = 35",
+						"width = 1216",
+					}},
+				}},
+				{Declarations: []*evoke.Declaration{
+					{Name: "IMAGE", Argument: "base", Values: []string{"steps = 12"}},
+				}},
+			},
+			want: []evoke.ImageStage{
+				{
+					Argument: "base",
+					Settings: map[string]string{"checkpoint": "perfection.safetensors", "steps": "12", "width": "1216"},
+				},
+			},
+		},
+		{
 			name: "default IMAGE base with explicit overlay",
 			docs: []*evoke.Document{
 				{Declarations: []*evoke.Declaration{
@@ -673,6 +696,120 @@ func TestMerge_DetailerConfigs(t *testing.T) {
 					Argument: "hand",
 					Text:     evoke.Prompt{Negative: []string{"bad hands"}},
 					Disabled: true,
+				},
+			},
+		},
+		{
+			// A shot file raising max_detection over a character's explicit
+			// detailer: settings layer per key, so the shot only names what it
+			// changes and inherits detector, sizes, and text.
+			name: "two explicit DETAILERs layer per key, last wins",
+			docs: []*evoke.Document{
+				{Declarations: []*evoke.Declaration{
+					{Name: "DETAILER", Argument: "face", Values: []string{
+						"clear visible irises",
+						"detector = bbox/face_yolov8m.pt",
+						"guide_size = 1024",
+						"max_detection = 1",
+					}},
+				}},
+				{Declarations: []*evoke.Declaration{
+					{Name: "DETAILER", Argument: "face", Values: []string{"max_detection = 2"}},
+				}},
+			},
+			want: []evoke.DetailerConfig{
+				{
+					Argument: "face",
+					Settings: map[string]string{"detector": "bbox/face_yolov8m.pt", "guide_size": "1024", "max_detection": "2"},
+					Text:     evoke.Prompt{Positive: []string{"clear visible irises"}},
+				},
+			},
+		},
+		{
+			// The mirror of the case above: argument order decides a contested
+			// key, and the loser's other settings are still inherited rather
+			// than discarded with it.
+			name: "reversed order gives the other explicit value but keeps both files' settings",
+			docs: []*evoke.Document{
+				{Declarations: []*evoke.Declaration{
+					{Name: "DETAILER", Argument: "face", Values: []string{"max_detection = 2"}},
+				}},
+				{Declarations: []*evoke.Declaration{
+					{Name: "DETAILER", Argument: "face", Values: []string{
+						"clear visible irises",
+						"detector = bbox/face_yolov8m.pt",
+						"max_detection = 1",
+					}},
+				}},
+			},
+			want: []evoke.DetailerConfig{
+				{
+					Argument: "face",
+					Settings: map[string]string{"detector": "bbox/face_yolov8m.pt", "max_detection": "1"},
+					Text:     evoke.Prompt{Positive: []string{"clear visible irises"}},
+				},
+			},
+		},
+		{
+			// Explicit settings outrank defaults by group, not by position, so a
+			// default declared after an explicit block cannot override it.
+			name: "a later default never overrides an earlier explicit",
+			docs: []*evoke.Document{
+				{Declarations: []*evoke.Declaration{
+					{Name: "DETAILER", Argument: "face", Values: []string{"max_detection = 2"}},
+				}},
+				{Declarations: []*evoke.Declaration{
+					{Name: "DETAILER", Argument: "face", Default: true, Values: []string{
+						"max_detection = 1",
+						"steps = 15",
+					}},
+				}},
+			},
+			want: []evoke.DetailerConfig{
+				{
+					Argument: "face",
+					Settings: map[string]string{"max_detection": "2", "steps": "15"},
+				},
+			},
+		},
+		{
+			name: "later default overrides earlier default for the same key",
+			docs: []*evoke.Document{
+				{Declarations: []*evoke.Declaration{
+					{Name: "DETAILER", Argument: "face", Default: true, Values: []string{"guide_size = 1024"}},
+				}},
+				{Declarations: []*evoke.Declaration{
+					{Name: "DETAILER", Argument: "face", Default: true, Values: []string{"guide_size = 512", "steps = 99"}},
+				}},
+			},
+			want: []evoke.DetailerConfig{
+				{
+					Argument: "face",
+					Settings: map[string]string{"guide_size": "512", "steps": "99"},
+				},
+			},
+		},
+		{
+			// Text is content, not configuration: it accumulates across explicit
+			// blocks (deduplicated exactly) instead of one file's text replacing
+			// another's, while defaults still step aside for any explicit text.
+			name: "explicit text accumulates and suppresses default text",
+			docs: []*evoke.Document{
+				{Declarations: []*evoke.Declaration{
+					{Name: "DETAILER", Argument: "face", Default: true, Values: []string{"default iris prompt"}},
+				}},
+				{Declarations: []*evoke.Declaration{
+					{Name: "DETAILER", Argument: "face", Values: []string{"defined iris ring", "natural catchlights"}},
+				}},
+				{Declarations: []*evoke.Declaration{
+					{Name: "DETAILER", Argument: "face", Values: []string{"natural catchlights", "subtle veining"}},
+				}},
+			},
+			want: []evoke.DetailerConfig{
+				{
+					Argument: "face",
+					Settings: map[string]string{},
+					Text:     evoke.Prompt{Positive: []string{"defined iris ring", "natural catchlights", "subtle veining"}},
 				},
 			},
 		},

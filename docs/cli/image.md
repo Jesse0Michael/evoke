@@ -1,9 +1,3 @@
----
-title: evoke image
-parent: CLI
-nav_order: 1
----
-
 # evoke image
 
 Compose `.evoke` files by selector, local path, or registry reference, merge them, and submit the result to a generation pipeline (currently ComfyUI).
@@ -72,11 +66,11 @@ This merges the `sumi.evoke` file with the literal text appended to the positive
 Only the declarations a diffusion model can render are sent. The merged composition becomes two prompt strings, assembled in this order:
 
 ```text
-positive:  IMAGE text → CHARACTER → APPEARANCE → PROMPT → APPAREL → ENVIRONMENT
+positive:  IMAGE text → APPEARANCE → PROMPT → APPAREL → ENVIRONMENT
 negative:  !IMAGE text → !APPEARANCE → !PROMPT → !APPAREL → !ENVIRONMENT
 ```
 
-`PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **not** included — they carry disposition, history, and narrative situation, which a diffusion model cannot render. They are consumed by [`evoke chat`](chat) instead. `NAME` is used for the output directory, not the prompt.
+`CHARACTER`, `PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **not** included — they carry identity, disposition, history, and narrative situation, which a diffusion model cannot render. They are consumed by [`evoke chat`](chat.md) instead. `NAME` is used for the output directory, not the prompt. Everything drawable about a subject belongs in `APPEARANCE`.
 
 Order is significant. CLIP processes roughly 75 tokens per chunk and dilutes what comes later, so material near the front of the positive prompt carries more weight than material near the end. `IMAGE` text leads, which makes it the right place for quality tags and the wrong place for character detail.
 

@@ -6,9 +6,17 @@ The core idea: **prompts are compiled artifacts, not source material.** Instead 
 
 ## Documentation
 
-📖 **[jesse0michael.github.io/evoke](https://jesse0michael.github.io/evoke)** — file format, CLI reference, and design principles.
+📖 **[`docs/`](docs/index.md)** — [file format](docs/file-format/index.md), [CLI reference](docs/cli/index.md), and [design principles](docs/design/index.md).
 
-The docs live in [`docs/`](docs/) and are published with GitHub Pages (Just the Docs theme, native Jekyll build — no build step).
+The docs are plain markdown with no front matter and no theme-specific markup, so they read the same in an editor, on GitHub, or rendered. `docs/mkdocs.yml` supplies titles and ordering for an optional local preview (`make docs`); there is no build step, no CI, and no committed site output.
+
+✍️ **[`skills/evoke-authoring/`](skills/evoke-authoring/SKILL.md)** — how to *write* `.evoke` content, packaged as a Claude Code skill: the [style guide](skills/evoke-authoring/references/style-guide.md) and a condensed [format reference](skills/evoke-authoring/references/file-format.md). Both are ordinary markdown worth reading directly. To use it in a repo of `.evoke` files:
+
+```bash
+claude
+> /plugin marketplace add jesse0michael/evoke
+> /plugin install evoke
+```
 
 ## Quick start
 
@@ -29,9 +37,10 @@ NAME
     Sumi
 
 CHARACTER
-    octopus humanoid mascot
+    an octopus humanoid, and the mascot of this project
 
 APPEARANCE
+    octopus humanoid
     small round body
     smooth violet skin
     eight tapering tentacles
@@ -43,8 +52,8 @@ APPEARANCE
 
 The `image` command resolves inputs — tag-based selectors like `character`, local file paths, or registry references like `@namespace/name` — merges the matching `.evoke` files, and submits the composition to ComfyUI for image generation.
 
-See [Getting Started](https://jesse0michael.github.io/evoke/getting-started) for more.
+See [Getting Started](docs/getting-started.md) for more, and the [Style Guide](skills/evoke-authoring/references/style-guide.md) for how to write the content of the blocks.
 
 ## Status
 
-Experimental. The parser, declaration schema, merge/resolver, tag-based selector system, local file index, registry client, and the `image` pipeline are implemented. The hosted registry API is functional. See the [documentation](https://jesse0michael.github.io/evoke) for details.
+Experimental. The parser, declaration schema, merge/resolver, tag-based selector system, local file index, registry client, and the `image` pipeline are implemented. The hosted registry API is functional. See the [documentation](docs/index.md) for details.

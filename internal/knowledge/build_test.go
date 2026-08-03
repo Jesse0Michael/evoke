@@ -57,6 +57,7 @@ func TestCorpusFiles(t *testing.T) {
 		"Design/Flora.md":        "# Flora",
 		"Design/Fauna.md":        "# Fauna",
 		"Design/notes.txt":       "not markdown",
+		"Drahkar.evoke":          "NAME\n    Drahkar\n",
 		".obsidian/workspace.md": "# Hidden dir",
 		".hidden.md":             "# Hidden file",
 		"node_modules/pkg.md":    "# Vendored",
@@ -69,24 +70,29 @@ func TestCorpusFiles(t *testing.T) {
 		expected []string
 	}{
 		{
-			name:     "hidden entries and node_modules are skipped",
+			name:     "markdown and evoke are walked, hidden entries and node_modules skipped",
 			exclude:  nil,
-			expected: []string{"Design/Fauna.md", "Design/Flora.md", "Planes/Deep/Nest.md", "index.md"},
+			expected: []string{"Design/Fauna.md", "Design/Flora.md", "Drahkar.evoke", "Planes/Deep/Nest.md", "index.md"},
 		},
 		{
 			name:     "exclude by base name",
 			exclude:  []string{"index.md"},
-			expected: []string{"Design/Fauna.md", "Design/Flora.md", "Planes/Deep/Nest.md"},
+			expected: []string{"Design/Fauna.md", "Design/Flora.md", "Drahkar.evoke", "Planes/Deep/Nest.md"},
 		},
 		{
 			name:     "exclude by relative path glob",
 			exclude:  []string{"Design/*"},
-			expected: []string{"Planes/Deep/Nest.md", "index.md"},
+			expected: []string{"Drahkar.evoke", "Planes/Deep/Nest.md", "index.md"},
 		},
 		{
 			name:     "multiple excludes combine",
 			exclude:  []string{"index.md", "Flora.md"},
-			expected: []string{"Design/Fauna.md", "Planes/Deep/Nest.md"},
+			expected: []string{"Design/Fauna.md", "Drahkar.evoke", "Planes/Deep/Nest.md"},
+		},
+		{
+			name:     "evoke files can be excluded by extension glob",
+			exclude:  []string{"*.evoke"},
+			expected: []string{"Design/Fauna.md", "Design/Flora.md", "Planes/Deep/Nest.md", "index.md"},
 		},
 	}
 
@@ -139,22 +145,72 @@ func TestBuild(t *testing.T) {
 	require.Equal(t, root, base.Meta().Source)
 }
 
-func TestBuild_DryRunWritesNothing(t *testing.T) {
+// TestBuild_MixedCorpus covers the .evoke half of the walk end to end: world
+// facts are indexed with a real heading path, generator input and the negative
+// channel never reach the store, and a nameless fragment contributes nothing.
+func TestBuild_MixedCorpus(t *testing.T) {
 	root := writeCorpus(t, map[string]string{
-		"Flora.md": "# Flora\n\nAshroot grows in ash.\n\n## Blightvine\n\nA creeping vine.\n",
+		"Drahkar.md": "# Drahkar\n\nA city under an ash-choked sky.\n",
+		"Sumi.evoke": `# Sumi — our octopus humanoid mascot.
+
+TAGS
+    character
+
+NAME
+    Sumi
+
+CHARACTER
+    an octopus humanoid
+
+PERSONALITY
+    curious
+
+!PERSONALITY
+    cruel
+
+APPEARANCE
+    (smooth violet skin:1.25)
+
+!APPEARANCE
+    human skin
+
+IMAGE
+    steps = 30
+`,
+		"winter-coat.evoke": "APPAREL\n    heavy green winter coat\n",
 	})
 	out := filepath.Join(t.TempDir(), "knowledge.db")
 	calls := 0
 	srv := countingEmbedServer(t, 3, &calls)
 
+	var progress []FileProgress
 	result, err := Build(t.Context(), BuildOptions{
-		Input: root, Output: out, EmbedModel: "test-embed-model", EmbedURL: srv.URL, DryRun: true,
+		Input:      root,
+		Output:     out,
+		EmbedModel: "test-embed-model",
+		EmbedURL:   srv.URL,
+		Progress:   func(p FileProgress) { progress = append(progress, p) },
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, 2, result.Chunks)
-	require.Equal(t, 0, calls, "dry run must not contact the embedding endpoint")
-	require.NoFileExists(t, out)
+	require.Equal(t, &BuildResult{Output: out, Files: 3, Chunks: 3, Model: "test-embed-model", Dims: 3}, result)
+	require.Equal(t, []FileProgress{
+		{File: "Drahkar.md", Chunks: 1},
+		{File: "Sumi.evoke", Chunks: 2},
+		{File: "winter-coat.evoke", Chunks: 0},
+	}, progress)
+
+	base, err := Open(Config{DBPath: out, EmbedURL: srv.URL})
+	require.NoError(t, err)
+	stored := make([]Chunk, 0, len(base.chunks))
+	for _, c := range base.chunks {
+		stored = append(stored, Chunk{File: c.file, Heading: c.heading, Content: c.content})
+	}
+	require.Equal(t, []Chunk{
+		{File: "Drahkar.md", Heading: "Drahkar", Content: "A city under an ash-choked sky."},
+		{File: "Sumi.evoke", Heading: "Sumi > Character", Content: "an octopus humanoid"},
+		{File: "Sumi.evoke", Heading: "Sumi > Personality", Content: "curious"},
+	}, stored)
 }
 
 // TestBuild_FailureLeavesExistingDatabase is the reason the build goes through a
@@ -208,6 +264,15 @@ func TestBuild_Errors(t *testing.T) {
 		{
 			name: "invalid exclude pattern",
 			opts: BuildOptions{Input: populated, Output: "out.db", Exclude: []string{"["}},
+		},
+		{
+			// An unparseable file fails the build loudly rather than being
+			// silently dropped from the corpus.
+			name: "malformed evoke file",
+			opts: BuildOptions{
+				Input:  writeCorpus(t, map[string]string{"broken.evoke": "NAME\n"}),
+				Output: "out.db",
+			},
 		},
 	}
 	for _, tt := range tests {

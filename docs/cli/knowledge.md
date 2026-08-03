@@ -1,12 +1,6 @@
----
-title: evoke knowledge
-parent: CLI
-nav_order: 3
----
-
 # evoke knowledge
 
-Build the vector database that a [`KNOWLEDGE`](../file-format/declarations#knowledge) declaration points at. It walks a directory of markdown, splits every file into heading-scoped chunks, embeds each chunk through an ollama-compatible endpoint, and writes a SQLite database.
+Build the vector database that a [`KNOWLEDGE`](../file-format/declarations.md#knowledge) declaration points at. It walks a directory of markdown and `.evoke` files, splits every file into heading-scoped chunks, embeds each chunk through an ollama-compatible endpoint, and writes a SQLite database.
 
 ```console
 $ evoke knowledge <dir>
@@ -46,12 +40,30 @@ The build writes to a temporary file and renames it into place only on success, 
 | `--max-tokens` | `1000` | Target maximum tokens per chunk. |
 | `--overlap` | `100` | Token overlap carried across a split section. |
 | `--exclude` | — | Glob of files to skip, matched on relative path or base name. Repeatable. |
-| `--dry-run` | `false` | Chunk and report counts without embedding or writing. |
 | `--verbose`, `-v` | `false` | Print per-file chunk counts. |
 
 ## Chunking
 
 Each markdown file is split at heading boundaries, and every chunk carries its full heading path (`Flora > Ashroot`) so the vector captures where the text sits in the document. A section longer than `--max-tokens` is split further on paragraph boundaries, with `--overlap` tokens of the previous piece prepended to the next so meaning is not lost at the seam. Base64 image data and image markup are stripped before embedding.
+
+## `.evoke` files
+
+A `.evoke` file in the corpus is parsed and re-rendered as markdown before chunking, so what gets indexed is the file's *world facts* rather than its raw text. `NAME` becomes the `#` heading and each remaining declaration a `##` section, giving heading paths like `Sumi > Personality` — one chunk per aspect, so "how does she behave" retrieves separately from "who is she."
+
+| Indexed | Dropped |
+|:--------|:--------|
+| `NAME` — the heading anchor | every `!` negative channel |
+| `CHARACTER` | `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `PROMPT` |
+| `PERSONALITY` | `IMAGE`, `LORA`, `DETAILER` |
+| `BACKSTORY` | `CHAT`, `KNOWLEDGE`, `TAGS`, `SCENARIO` |
+
+The dropped set is everything that is *input to a generator* rather than a statement about the world — tag soup, prompt weights, sampler settings, and runtime config. `SCENARIO` is excluded because it is a transient situation rather than canon; embedding it would make a momentary scene setup permanently retrievable as fact.
+
+Negatives are dropped rather than relabeled. `!PERSONALITY cruel` means "not this," and a retrieved chunk carries no frame that preserves the inversion — stored as-is it would feed the model the opposite of canon. (`evoke chat` can keep them because it relabels them "Traits to avoid:" for a live model.)
+
+A `?` default is indexed when it is the effective value, which for a single file it always is.
+
+Files that render to nothing contribute no chunks. That covers two cases: a file with no `NAME` (evoke files compose, but the builder walks them one at a time, so a nameless `winter-coat.evoke` fragment would be prose about nobody), and a file carrying only generator input. A file that fails to parse fails the build rather than being silently skipped.
 
 Hidden files and directories and `node_modules` are always skipped. Everything else needs `--exclude`:
 
@@ -59,10 +71,10 @@ Hidden files and directories and `node_modules` are always skipped. Everything e
 $ evoke knowledge ./docs --exclude index.md --exclude 'Drafts/*'
 ```
 
-Use `--dry-run` to check what the chunking produces before spending time on embeddings:
+Use `-v` to see what the chunking produced, per file:
 
 ```console
-$ evoke knowledge ./docs --dry-run -v
+$ evoke knowledge ./docs -v
 ```
 
 ## The embedding model must match

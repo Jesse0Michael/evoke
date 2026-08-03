@@ -1,0 +1,14 @@
+{
+  "name": "evoke",
+  "description": "Skills for authoring .evoke content.",
+  "owner": {
+    "name": "Jesse Michael"
+  },
+  "plugins": [
+    {
+      "name": "evoke",
+      "description": "Author .evoke files: the content style guide (rendering vs. language targets, weights, file design) and the format reference (syntax, prefixes, merge modes, declaration settings).",
+      "source": "."
+    }
+  ]
+}

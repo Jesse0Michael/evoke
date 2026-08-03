@@ -47,7 +47,7 @@ func Complete(args []string) int {
 // plus its flags.
 func completeKnowledge(current string) int {
 	if strings.HasPrefix(current, "-") {
-		for _, f := range []string{"-o", "--output", "--model", "--url", "--max-tokens", "--overlap", "--exclude", "--dry-run", "-v", "--verbose"} {
+		for _, f := range []string{"-o", "--output", "--model", "--url", "--max-tokens", "--overlap", "--exclude", "-v", "--verbose"} {
 			if strings.HasPrefix(f, current) {
 				fmt.Println(f)
 			}
