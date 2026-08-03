@@ -176,6 +176,8 @@ SDXL — Illustrious especially — averages distinctive characters toward gener
 
 **Test: does the trait survive unweighted?** Not "is it important" — everything in a character file feels important, and weight is relative, so weighting everything is weighting nothing. Generate flat once, weight what came back wrong. `blue eyes` renders fine alone; `violet skin` doesn't.
 
+The predictor, before you've tested, is **rarity, not centrality**. The prior fights a trait exactly when the training data rarely paired it with the rest of the description — species, non-human skin and eye colors, atypical proportions, extra or missing limbs. A trait can be the single most defining thing about a character and still need no weight: `very tall broad build` is common, renders flat, and weighting it only steals relative strength from the traits that needed it. Same trait, different character: `blue-grey skin` earns a weight, `tan skin` never does.
+
 | Rule   | Value                                                                                                                                                                                                         |
 | :----- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Form   | Numeric `(trait:1.25)` only. **Never** `(word)` or `((word))` — [multiplier and nesting order are implementation-dependent](https://www.generativelabs.com/insights/prompt-syntax-for-stable-diffusion-faq).  |
@@ -244,15 +246,21 @@ A character file that asserts `1boy` argues with every shot you ask it for. It c
 # wrong — the character file has decided the shot
 APPEARANCE
     (1boy, firbolg:1.3)
-    (very tall broad build, blue-grey skin:1.2)
+    (blue-grey skin:1.2)
+    male focus, very tall broad build, long pale beard, wide flat nose
 
 # right — identity only; a shot file supplies `1boy, solo, upper body`
 APPEARANCE
     (firbolg:1.3)
-    (very tall broad build, blue-grey skin:1.2)
+    (blue-grey skin:1.2)
+    male focus, very tall broad build, long pale beard, wide flat nose
 ```
 
-Sex and gender presentation are identity, so keep whatever renders them as description — `beard`, `flat chest`, `broad shoulders`, `masculine features` — and let the count tag stay in the shot file. Selected with no shot file, the model picks count and framing itself; that is the intended trade, and the fix is a shot file per framing you actually use, not a count wired into the character.
+Two weights, not five: the species and the non-human skin tone are what Illustrious averages away. The build, beard, and nose render fine flat and stay unweighted no matter how defining they feel (§3.6).
+
+**Gender belongs in `APPEARANCE` — dropping the count must not drop the gender**, or the render misgenders the character. Use the gender tag that carries no count: `male focus` / `female focus` on booru-trained checkpoints (Illustrious, Pony, NoobAI), `man` / `woman` on natural-caption ones. Those state who the subject is without deciding how many are in frame. Secondary traits — `beard`, `flat chest`, `broad shoulders`, `wide hips` — belong there too and reinforce it, but they are reinforcement, not a substitute for saying it. If a character still renders wrong, put `1boy`/`1girl` in the shot file, which is already deciding the count and is the file allowed to.
+
+Selected with no shot file, the model picks count and framing itself. That is the intended trade, and the fix is a shot file per framing you actually use, not a count wired into the character.
 
 ### 3.11 Words with a second, literal meaning
 

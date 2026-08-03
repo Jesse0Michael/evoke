@@ -55,7 +55,7 @@ The one-line version of each, which is _not_ a substitute for reading them:
 These are not style preferences — violating them breaks composition:
 
 - **Write only what the source supports, and only the blocks you were asked for.** Every value traces to something the user said or the material states. No block gets filled in because it looks empty, and no declaration appears because a "character file" seems to want one — `APPEARANCE` is the sole place invention is forced for characters. `ENVIRONMENT` is the sole place invention is forced for locations (nothing renders an unspecified nose) — keep those choices plain and meaningless, and list them in your reply. Full rule: `references/style-guide.md` §2.
-- **Subject count and framing are not character traits.** `1boy`, `solo`, `upper body`, `from below` belong to the shot file, not `APPEARANCE` — a character asserting a count fights every composition that wanted a different one.
+- **Subject count and framing are not character traits.** `1boy`, `solo`, `upper body`, `from below` belong to the shot file, not `APPEARANCE` — a character asserting a count fights every composition that wanted a different one. Gender is a character trait and stays in `APPEARANCE`; use the count-free tag (`male focus` / `female focus`, or `man` / `woman`) so dropping the count never misgenders the render.
 - **A file must read correctly alone and in every combination it will be selected with.** It cannot assume a partner.
 - **No file types, no imports.** Never invent `TYPE`, `FROM`, `IMPORT`, or a reference to another file. A file's meaning emerges from the declarations it contains.
 - **One concern per file** — the smallest thing you would select on its own. If it is never selected alone, fold it into its parent; if you routinely swap half of it, split it.
@@ -88,6 +88,8 @@ APPEARANCE
 ```
 
 `TAGS` is metadata for selector matching, not a declaration. The index already tags every file with its own filename, and a selector resolves to _one_ match chosen at random, so `TAGS` names only the sets a file can be drawn from interchangeably: a role (`character`, `apparel`, `style`, `environment`) and any collection it shares with siblings (`npc`, `crew`). Never tag a file with its own name, never tag its content, and expect one or two tags — none is fine. See §5.
+
+`?` is the file's **default value** — what the subject wears, or where it is, when nobody said otherwise. It's a real statement that yields, not scaffolding. Decide it by asking why someone selected the file: a character file's `APPEARANCE` is explicit and its `APPAREL` is usually `?` (nobody selects a character to get their trousers), while a location file's `ENVIRONMENT` is explicit and never `?`. See §5.1.
 
 Comments are optional and default to none — see §2. Never open a file with a header restating what it is, what it contains, or how to invoke it.
 
