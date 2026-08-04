@@ -28,6 +28,9 @@ PERSONALITY
 BACKSTORY
     Washed up on the pier as a hatchling.
 
+VOICE
+    low alto, slight rasp
+
 APPEARANCE
     (smooth violet skin:1.25)
 

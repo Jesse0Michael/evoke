@@ -19,13 +19,14 @@ func TestRenderPromptData(t *testing.T) {
 		expected promptData
 	}{
 		{
-			name: "chat-only declarations are excluded from the image prompt",
+			name: "declarations no diffusion model can render are excluded from the image prompt",
 			doc: &evoke.Composition{
 				Name:        "test-character",
 				Character:   []string{"test-character-description"},
 				Personality: evoke.Prompt{Positive: []string{"test-personality"}, Negative: []string{"test-personality-negative"}},
 				Backstory:   []string{"test-backstory"},
 				Scenario:    "test-scenario",
+				Voice:       evoke.Prompt{Positive: []string{"test-voice"}, Negative: []string{"test-voice-negative"}},
 				Appearance:  evoke.Prompt{Positive: []string{"test-appearance"}, Negative: []string{"test-appearance-negative"}},
 				Apparel:     evoke.Prompt{Positive: []string{"test-apparel"}, Negative: []string{"test-apparel-negative"}},
 				Environment: evoke.Prompt{Positive: []string{"test-environment"}, Negative: []string{"test-environment-negative"}},

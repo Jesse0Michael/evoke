@@ -1,21 +1,9 @@
-# chat — a minimal, self-contained chat pipeline: a basic AI assistant.
-#
-#   evoke chat chat
-#
-# Evoke starts a llama.cpp backend for the session and shuts it down on exit.
-# `model` names a GGUF file (like an IMAGE checkpoint); Evoke finds it in the
-# directories set under chat.model_paths in ~/.evoke/settings.json, so this file
-# stays portable — it names the model, not a machine path. The free-text lines
-# are the system prompt.
-
 TAGS
-    chat
     assistant
 
 CHAT
     backend = llama.cpp
     model = qwen2.5.gguf
-
     context_window = 8192
     gpu_layers = 99
     max_output_tokens = 512

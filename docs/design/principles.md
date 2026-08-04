@@ -34,8 +34,8 @@ The syntax may resemble a Dockerfile, but entries are **declarations**, not exec
 
 ```text
 PERSONALITY
-    warm
-    mischievous
+    greets a stranger's question with a better one
+    hides a favor inside a joke so it can be refused without anyone losing face
 ```
 
 This declares traits; it does not execute an operation. Internally the code may call these nodes or statements, but project-facing language prefers **declaration**.

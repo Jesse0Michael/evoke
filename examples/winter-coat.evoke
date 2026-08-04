@@ -1,18 +1,8 @@
-# A cold-weather outfit. Composes with any character.
-#
-#   evoke image sumi winter
-
 TAGS
-    apparel
-    winter
-    cold-weather
+    apparel, winter
 
 APPAREL
-    heavy green winter coat
-    thick quilted fabric
-    black boots
+    heavy green winter coat, thick quilted fabric, black boots
 
 !APPAREL
-    sandals
-    short sleeves
-    bare arms
+    sandals, short sleeves, bare arms

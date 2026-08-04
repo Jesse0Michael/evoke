@@ -55,6 +55,7 @@ type Composition struct {
 	Character   []string
 	Personality Prompt
 	Backstory   []string
+	Voice       Prompt
 	Appearance  Prompt
 	Apparel     Prompt
 	Environment Prompt
@@ -110,6 +111,7 @@ func Merge(docs []*Document) *Composition {
 		Character:   acc("CHARACTER", false),
 		Personality: Prompt{Positive: acc("PERSONALITY", false), Negative: acc("PERSONALITY", true)},
 		Backstory:   acc("BACKSTORY", false),
+		Voice:       Prompt{Positive: acc("VOICE", false), Negative: acc("VOICE", true)},
 		Appearance:  Prompt{Positive: acc("APPEARANCE", false), Negative: acc("APPEARANCE", true)},
 		Apparel:     Prompt{Positive: acc("APPAREL", false), Negative: acc("APPAREL", true)},
 		Environment: Prompt{Positive: acc("ENVIRONMENT", false), Negative: acc("ENVIRONMENT", true)},

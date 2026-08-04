@@ -40,8 +40,7 @@ An accumulating declaration combines every contribution, in source order.
 
 ```text
 APPEARANCE
-    violet skin
-    glowing speckles
+    violet skin, glowing speckles
 ```
 
 ```text
@@ -52,21 +51,21 @@ APPEARANCE
 → resolves to:
 
 ```text
-violet skin
-glowing speckles
-green eyes
+APPEARANCE
+    violet skin, glowing speckles, green eyes
 ```
 
 Exact duplicates are removed after trimming surrounding whitespace. Deduplication is purely textual — `violet skin` and `  violet skin  ` collapse to one, but no *semantic* deduplication is attempted. `violet skin` and `purple skin` are kept as two distinct values; the compiler never tries to decide that two different phrasings mean the same thing.
 
-Most declarations are accumulating: `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, and `PROMPT`.
+Most declarations are accumulating: `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `VOICE`, `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, and `PROMPT`.
 
 ## Structured: field-level overlay
 
 `IMAGE`, `LORA`, `DETAILER`, `CHAT`, and `KNOWLEDGE` are singular **per argument**, but they do not follow the all-or-nothing rule above. Their values are `key = value` settings, and every block contributing to the same declaration and argument merges **setting by setting**:
 
+A character file carries the canonical face detailer:
+
 ```text
-# sumi.evoke — the character's canonical face detailer
 ?DETAILER face
     clear visible irises, defined iris ring
     detector = bbox/face_yolov8m.pt
@@ -75,8 +74,9 @@ Most declarations are accumulating: `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `AP
     max_detection = 1
 ```
 
+A two-subject shot file changes one setting:
+
 ```text
-# two-subject.evoke — a shot that only needs to change one setting
 DETAILER face
     max_detection = 2
 ```

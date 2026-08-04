@@ -70,7 +70,7 @@ positive:  IMAGE text → APPEARANCE → PROMPT → APPAREL → ENVIRONMENT
 negative:  !IMAGE text → !APPEARANCE → !PROMPT → !APPAREL → !ENVIRONMENT
 ```
 
-`CHARACTER`, `PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **not** included — they carry identity, disposition, history, and narrative situation, which a diffusion model cannot render. They are consumed by [`evoke chat`](chat.md) instead. `NAME` is used for the output directory, not the prompt. Everything drawable about a subject belongs in `APPEARANCE`.
+`CHARACTER`, `PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **not** included — they carry identity, disposition, history, and narrative situation, which a diffusion model cannot render. They are consumed by [`evoke chat`](chat.md) instead. `VOICE` is not included either, and no command reads it yet — it describes how a subject sounds. `NAME` is used for the output directory, not the prompt. Everything drawable about a subject belongs in `APPEARANCE`.
 
 Order is significant. CLIP processes roughly 75 tokens per chunk and dilutes what comes later, so material near the front of the positive prompt carries more weight than material near the end. `IMAGE` text leads, which makes it the right place for quality tags and the wrong place for character detail.
 

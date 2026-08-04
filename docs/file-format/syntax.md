@@ -5,14 +5,14 @@ Evoke syntax is line-oriented and block-structured. The parser scans the source 
 ## Anatomy of a block
 
 ```text
-?APPAREL
-    green shirt
-    blue jeans
+?APPEARANCE
+    (smooth violet skin:1.25)
+    octopus humanoid, small round body, large luminous eyes
 ```
 
 - **`?`** — an optional [prefix](prefixes.md) (`!`, `?`, or `?!`).
-- **`APPAREL`** — the declaration name, at column 1 (no indentation).
-- **`green shirt` / `blue jeans`** — indented value lines belonging to the header above them.
+- **`APPEARANCE`** — the declaration name, at column 1 (no indentation).
+- The two indented lines are **value lines** belonging to the header above them. A line is one value: `octopus humanoid, small round body, large luminous eyes` is a single value that happens to contain commas, and most blocks are written as exactly one such line. Split onto separate lines only when you have a reason to edit them separately — here, a weighted trait you will tune on its own.
 
 ## The rules
 
@@ -45,9 +45,9 @@ Any line whose first non-whitespace character is `#` is a comment, at any indent
 ```text
 # a top-level comment
 PERSONALITY
-    warm
+    goes quiet and clipped when worried, which reads as anger to strangers
     # this line is a comment, not a value
-    playful
+    keeps promises she should never have made rather than admit she misjudged
 ```
 
 ### Files must be UTF-8

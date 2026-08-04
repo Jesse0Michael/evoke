@@ -190,7 +190,9 @@ func renderPromptData(doc *evoke.Composition) promptData {
 	// diffusion model can render. Feeding them here spent prompt tokens on
 	// unrenderable text and — because APPAREL and ENVIRONMENT are appended last —
 	// diluted the parts that do render. Everything drawable about a subject belongs
-	// in APPEARANCE.
+	// in APPEARANCE. VOICE is excluded for the same reason from the other side: it
+	// describes how the subject sounds, which is a future audio target's input, not
+	// a diffusion model's.
 	pd.Positive = joinValues(doc.Appearance.Positive, doc.Prompt.Positive)
 	pd.Negative = joinValues(doc.Appearance.Negative, doc.Prompt.Negative)
 	pd.Apparel.Positive = joinAll(doc.Apparel.Positive)

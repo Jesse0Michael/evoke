@@ -1,6 +1,6 @@
 # Declarations
 
-Every declaration has a registered definition that fixes its **merge mode**, whether it supports the **`!` negative channel**, whether it supports the **`?` default**, and its canonical **render order**. The thirteen declarations below are the implemented set.
+Every declaration has a registered definition that fixes its **merge mode**, whether it supports the **`!` negative channel**, whether it supports the **`?` default**, and its canonical **render order**. The fifteen declarations below are the implemented set.
 
 ## The built-in declarations
 
@@ -10,6 +10,7 @@ Every declaration has a registered definition that fixes its **merge mode**, whe
 | `CHARACTER`   | accumulating  | — | — | — | 20 |
 | `PERSONALITY` | accumulating  | ✓ | ✓ | — | 30 |
 | `BACKSTORY`   | accumulating  | — | — | — | 40 |
+| `VOICE`       | accumulating  | ✓ | ✓ | — | 45 |
 | `APPEARANCE`  | accumulating  | ✓ | ✓ | — | 50 |
 | `APPAREL`     | accumulating  | ✓ | ✓ | — | 60 |
 | `ENVIRONMENT` | accumulating  | ✓ | ✓ | — | 70 |
@@ -36,6 +37,7 @@ A declaration is only meaningful to the commands that read it. `image` and `chat
 | `CHARACTER`   | — | identity |
 | `PERSONALITY` | — | personality, plus "traits to avoid" from the `!` channel |
 | `BACKSTORY`   | — | backstory |
+| `VOICE`       | — | — |
 | `APPEARANCE`  | positive / negative prompt | — |
 | `APPAREL`     | apparel conditioning | — |
 | `ENVIRONMENT` | environment conditioning | — |
@@ -48,6 +50,8 @@ A declaration is only meaningful to the commands that read it. `image` and `chat
 | `KNOWLEDGE`   | — | retrieval sources |
 
 `CHARACTER`, `PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **chat-only**. They describe identity, disposition, history, and narrative situation — none of which a diffusion model can render — so the image pipeline does not put them in the prompt. This means a character file can carry a full identity and backstory without it competing for the image prompt's limited attention. Everything drawable about a subject belongs in `APPEARANCE`.
+
+`VOICE` is read by **no command yet** — see [VOICE](#voice). It parses, validates, merges, and shows up in `evoke inspect` like any other declaration, so a character file can carry its voice today; nothing renders it until an audio target exists. A declaration no command reads costs its composition nothing, which is exactly what makes adding a target cheap.
 
 For guidance on writing the content of these blocks well, see the style guide at `skills/evoke-authoring/references/style-guide.md`.
 
@@ -68,8 +72,8 @@ A stable factual description of who the character is. **Accumulating**; positive
 
 ```text
 CHARACTER
-    an adult emergency-room nurse
-    the most senior person on the night shift
+    Ashley is an emergency-room nurse and the most senior person on the night shift.
+    She trains every new hire on the ward, which is why she is the one paged when a case goes wrong.
 ```
 
 ### PERSONALITY
@@ -78,13 +82,12 @@ Behavioral tendencies and traits. **Accumulating**; supports the negative channe
 
 ```text
 PERSONALITY
-    warm
-    competent
-    easily flustered by direct flirting
+    explains each procedure while she performs it, so nobody has to ask what is happening
+    goes brisk and formal the moment a case turns serious, and stays that way until it is over
+    deflects direct flirting by handing the patient a task
 
 !PERSONALITY
-    cruel
-    emotionally detached
+    cruel, emotionally detached
 ```
 
 ### BACKSTORY
@@ -96,21 +99,35 @@ BACKSTORY
     Trained in Milwaukee, moved to Chicago for her first hospital job.
 ```
 
+### VOICE
+
+What the subject **sounds** like — timbre, pitch, pace, accent, and vocal texture. **Accumulating**, with `?` default support.
+
+```text
+VOICE
+    low alto, slight rasp, unhurried cadence
+```
+
+**No command consumes `VOICE` yet.** It is a place to record a character's voice alongside the rest of the character, so the information is captured, versioned, and pushed to the registry with the file rather than living in someone's notes until an audio target arrives. Until then it is inert: absent from image prompts, absent from the chat system prompt, and absent from `knowledge.db`.
+
+Two boundaries keep it that way when a target does appear:
+
+- **`VOICE` describes the voice, not the words.** How the character sounds is `VOICE`; what they say and how they phrase it is `PERSONALITY` and the `CHAT` instructions. "Rarely uses contractions" is a language trait that a text model can act on today — it belongs there, not here.
+- **`VOICE` is content, not engine configuration.** A synthesis engine, model, and its sampling settings are to `VOICE` what `IMAGE` is to `APPEARANCE`: a separate structured declaration, added when there is a backend to configure. `VOICE` will not grow `key = value` settings.
+
+Write it as short comma-separated phrases, the way `APPEARANCE` is written. The plausible first consumer is a synthesis target conditioned on a voice description, which cannot read prose; a language target reads phrases perfectly well, so phrases are the form that survives either outcome.
+
 ### APPEARANCE
 
 General visible physical traits. **Accumulating**; supports the negative channel and defaults.
 
 ```text
 APPEARANCE
-    small
-    round
-    violet skin
-    glowing speckles
+    (violet skin:1.25)
+    small round body, glowing speckles, large luminous eyes
 
 !APPEARANCE
-    scary
-    slimy
-    monstrous
+    scary, slimy, monstrous
 ```
 
 ### APPAREL
@@ -119,12 +136,10 @@ Clothing and accessories. **Accumulating**; supports the negative channel and de
 
 ```text
 ?APPAREL
-    green shirt
-    blue jeans
+    green shirt, blue jeans
 
 APPAREL
-    heavy green winter coat
-    black boots
+    heavy green winter coat, black boots
 ```
 
 The `?` default apparel is used only when no explicit `APPAREL` appears in the composition.
@@ -135,9 +150,7 @@ Scene and setting details. **Accumulating**; supports the negative channel and d
 
 ```text
 ENVIRONMENT
-    pine forest
-    tall evergreen trees
-    soft morning mist
+    pine forest, tall evergreen trees, soft morning mist
 ```
 
 ### SCENARIO
@@ -158,8 +171,7 @@ PROMPT
     cinematic portrait composition
 
 !PROMPT
-    blurry
-    deformed hands
+    blurry, deformed hands
 ```
 
 ### IMAGE
@@ -259,10 +271,9 @@ Build the database from a directory of markdown and `.evoke` files with [`evoke 
 
 ## Disabling a stage
 
-`IMAGE`, `LORA`, and `DETAILER` accept a `disabled` setting, so a composition can switch off a pass that another file supplied:
+`IMAGE`, `LORA`, and `DETAILER` accept a `disabled` setting, so a composition can switch off a pass that another file supplied. A `no-upscale.evoke` holding just this is enough for a quick draft pass:
 
 ```text
-# no-upscale.evoke — a quick draft pass
 IMAGE upscale
     disabled = true
 ```
@@ -295,4 +306,4 @@ Both come up when hunting down a detailer that never ran:
 
 ## What isn't here
 
-The fourteen declarations above are the complete set. Using any other name is an *unknown declaration* validation error. Namespaced/dotted extension names (`FOO.BAR`) are also rejected.
+The fifteen declarations above are the complete set. Using any other name is an *unknown declaration* validation error. Namespaced/dotted extension names (`FOO.BAR`) are also rejected.

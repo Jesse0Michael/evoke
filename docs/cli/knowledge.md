@@ -54,10 +54,10 @@ A `.evoke` file in the corpus is parsed and re-rendered as markdown before chunk
 |:--------|:--------|
 | `NAME` — the heading anchor | every `!` negative channel |
 | `CHARACTER` | `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `PROMPT` |
-| `PERSONALITY` | `IMAGE`, `LORA`, `DETAILER` |
+| `PERSONALITY` | `IMAGE`, `LORA`, `DETAILER`, `VOICE` |
 | `BACKSTORY` | `CHAT`, `KNOWLEDGE`, `TAGS`, `SCENARIO` |
 
-The dropped set is everything that is *input to a generator* rather than a statement about the world — tag soup, prompt weights, sampler settings, and runtime config. `SCENARIO` is excluded because it is a transient situation rather than canon; embedding it would make a momentary scene setup permanently retrievable as fact.
+The dropped set is everything that is *input to a generator* rather than a statement about the world — tag soup, prompt weights, sampler settings, and runtime config. `VOICE` falls on the generator side of that line for the same reason `APPEARANCE` does: it describes a voice to be rendered, not something the character should recite as fact. `SCENARIO` is excluded because it is a transient situation rather than canon; embedding it would make a momentary scene setup permanently retrievable as fact.
 
 Negatives are dropped rather than relabeled. `!PERSONALITY cruel` means "not this," and a retrieved chunk carries no frame that preserves the inversion — stored as-is it would feed the model the opposite of canon. (`evoke chat` can keep them because it relabels them "Traits to avoid:" for a live model.)
 

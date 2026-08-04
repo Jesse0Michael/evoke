@@ -44,7 +44,7 @@ The parser accumulates all of them with line numbers rather than stopping at the
 
 ## TAGS
 
-`TAGS` is a metadata block, not a declaration: one tag per indented line, used by the selector system to find the file. It accepts no prefixes and contributes nothing to any prompt.
+`TAGS` is a metadata block, not a declaration: the tags used by the selector system to find the file. It accepts no prefixes and contributes nothing to any prompt. **Write them as one comma-separated line** — the parser splits on commas and newlines both, and a two-tag block spread over two lines is three lines of file for nothing.
 
 ```text
 TAGS
@@ -97,7 +97,7 @@ Each channel resolves independently.
 
 Resolution, per declaration and channel: collect explicit → collect defaults → if any explicit exists, ignore all defaults → apply the merge mode → dedup exact normalized values → report singular conflicts.
 
-## The fourteen declarations
+## The fifteen declarations
 
 `IDENTITY` is a migration alias for `CHARACTER`. Any other name is an *unknown declaration* validation error.
 
@@ -107,6 +107,7 @@ Resolution, per declaration and channel: collect explicit → collect defaults �
 | `CHARACTER`   | accumulating |  —  |  —  |    —     |  20   |
 | `PERSONALITY` | accumulating |  ✓  |  ✓  |    —     |  30   |
 | `BACKSTORY`   | accumulating |  —  |  —  |    —     |  40   |
+| `VOICE`       | accumulating |  ✓  |  ✓  |    —     |  45   |
 | `APPEARANCE`  | accumulating |  ✓  |  ✓  |    —     |  50   |
 | `APPAREL`     | accumulating |  ✓  |  ✓  |    —     |  60   |
 | `ENVIRONMENT` | accumulating |  ✓  |  ✓  |    —     |  70   |
@@ -123,6 +124,7 @@ Resolution, per declaration and channel: collect explicit → collect defaults �
 Notes on the non-obvious ones:
 
 - `CHARACTER` is **positive only**. An identity has no meaningful "not this"; contradictions go in `!PERSONALITY`. Drawable detail goes in `APPEARANCE`.
+- `VOICE` is read by **no target yet** — see [Style Guide](style-guide.md) §1. It parses, merges, and inspects like any other block; nothing renders it. Write it only when asked for it, and never to carry material that belongs in `PERSONALITY`.
 - `SCENARIO` is **singular** — only one file in a composition may supply it.
 - `PROMPT` is an escape hatch for material no specific declaration fits, not the preferred representation.
 - `APPAREL` is deliberately broad (no `OUTFIT`/`FOOTWEAR`); `ENVIRONMENT` carries the whole scene/setting role (no `LOCATION`).
@@ -131,8 +133,9 @@ Notes on the non-obvious ones:
 
 `IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE`. Singular **per argument**, values a mix of `key = value` settings and free prompt text where the declaration accepts it. They do **not** follow the all-or-nothing singular rule — every block contributing to the same declaration and argument merges **setting by setting**:
 
+The character file carries the canonical configuration:
+
 ```text
-# character file — the canonical configuration
 DETAILER face
     clear visible irises, defined iris ring
     detector = bbox/face_yolov8m.pt
@@ -141,8 +144,9 @@ DETAILER face
     max_detection = 1
 ```
 
+The shot file changes one setting and inherits the rest:
+
 ```text
-# shot file — change one setting, inherit the rest
 DETAILER face
     max_detection = 2
 ```
@@ -252,8 +256,9 @@ KNOWLEDGE lore
 
 `IMAGE`, `LORA`, and `DETAILER` accept `disabled`, so a composition can switch off a pass another file supplied:
 
+A `no-upscale.evoke` holding only this is enough:
+
 ```text
-# no-upscale.evoke
 IMAGE upscale
     disabled = true
 ```

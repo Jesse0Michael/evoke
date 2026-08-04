@@ -140,6 +140,9 @@ func TestValidate(t *testing.T) {
 		{name: "negative on supported declaration", src: "!APPEARANCE\n    tall\n"},
 		{name: "unknown declaration is invalid", src: "LOCATION\n    forest\n", wantError: true},
 		{name: "negative on NAME is invalid", src: "!NAME\n    Sumi\n", wantError: true},
+		{name: "VOICE supports the negative channel", src: "!VOICE\n    shrill\n"},
+		{name: "VOICE supports defaults", src: "?VOICE\n    low alto\n"},
+		{name: "VOICE with argument is invalid", src: "VOICE narration\n    low alto\n", wantError: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -227,6 +230,21 @@ func TestMerge(t *testing.T) {
 				{Declarations: []*evoke.Declaration{{Name: "APPEARANCE", Values: []string{"dark hair", "brown eyes"}}}},
 			},
 			want: evoke.Composition{Appearance: evoke.Prompt{Positive: []string{"dark hair", "tall", "brown eyes"}}},
+		},
+		{
+			name: "VOICE accumulates in both channels and defaults yield",
+			docs: []*evoke.Document{
+				{Declarations: []*evoke.Declaration{{Name: "VOICE", Default: true, Values: []string{"neutral mid-range"}}}},
+				{Declarations: []*evoke.Declaration{
+					{Name: "VOICE", Values: []string{"low alto", "slight rasp"}},
+					{Name: "VOICE", Negative: true, Values: []string{"shrill"}},
+				}},
+				{Declarations: []*evoke.Declaration{{Name: "VOICE", Values: []string{"slight rasp", "unhurried"}}}},
+			},
+			want: evoke.Composition{Voice: evoke.Prompt{
+				Positive: []string{"low alto", "slight rasp", "unhurried"},
+				Negative: []string{"shrill"},
+			}},
 		},
 	}
 	for _, tt := range tests {

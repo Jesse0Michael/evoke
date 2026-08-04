@@ -26,55 +26,43 @@ A `.evoke` file is a list of **declaration blocks**. A declaration name sits at 
 Create `sumi.evoke`:
 
 ```text
-# Sumi — our octopus mascot
-
 TAGS
     character
-    mascot
-    octopus
 
 NAME
     Sumi
 
 CHARACTER
-    an octopus humanoid, and the mascot of this project
+    Sumi is an octopus humanoid and the mascot of the Evoke project.
 
 PERSONALITY
-    curious
-    playful
-    endlessly helpful
+    asks what a thing is for before asking what it does
+    volunteers help before anyone has finished explaining the problem
 
 APPEARANCE
-    octopus humanoid
-    small round body
-    smooth violet skin
-    eight tapering tentacles
-    large luminous eyes
+    (smooth violet skin:1.25)
+    (eight tapering tentacles:1.2)
+    octopus humanoid, small round body, large luminous eyes
 
 ?APPAREL
-    little teal explorer's vest
+    teal explorer vest
 ```
 
 A file does not have to be complete. A file with only an `APPAREL` block is just as valid as a full character — validation only rejects declarations that are *illegal*, never files that are *partial*.
 
 ## Compose files
 
-The whole point of Evoke is that small files combine. You never reference one file from another; instead the caller selects files to compose via selectors, paths, or registry references. Add an apparel file:
+The whole point of Evoke is that small files combine. You never reference one file from another; instead the caller selects files to compose via selectors, paths, or registry references. Add an apparel file, `winter-coat.evoke`:
 
 ```text
-# winter-coat.evoke
 TAGS
-    apparel
-    winter
-    cold-weather
+    apparel, winter
 
 APPAREL
-    heavy green winter coat
-    black boots
+    heavy green winter coat, black boots
 
 !APPAREL
-    sandals
-    short sleeves
+    sandals, short sleeves
 ```
 
 The `!` prefix routes those values to the **negative** channel (things to exclude — for an image target, a negative prompt). See [Prefixes & Channels](file-format/prefixes.md).
@@ -100,6 +88,6 @@ In the example above, `character` matches `sumi.evoke` (it has the `character` t
 ## Learn the format
 
 - [Syntax](file-format/syntax.md) — the exact line-oriented rules the parser enforces
-- [Declarations](file-format/declarations.md) — the nine built-in declarations
+- [Declarations](file-format/declarations.md) — the fifteen built-in declarations
 - [Prefixes & Channels](file-format/prefixes.md) — what `!` and `?` mean
 - [Merge Modes](file-format/merge-modes.md) — how repeated values combine

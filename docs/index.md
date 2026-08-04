@@ -10,37 +10,34 @@ A declarative, composable source format and CLI for AI characters, scenes, promp
 
 Instead of maintaining one large image prompt or character card, you author small reusable `.evoke` files of structured declarations. The CLI merges any selection of them — resolved by tag-based selectors, local paths, or registry references — and sends the composition through a generation pipeline.
 
+A character file, `sumi.evoke`:
+
 ```text
-# sumi.evoke
 TAGS
     character
-    mascot
 
 NAME
     Sumi
 
 CHARACTER
-    an octopus humanoid, and the mascot of this project
+    Sumi is an octopus humanoid and the mascot of the Evoke project.
 
 APPEARANCE
-    octopus humanoid
-    small round body
-    smooth violet skin
-    large luminous eyes
+    (smooth violet skin:1.25)
+    octopus humanoid, small round body, large luminous eyes
 
 ?APPAREL
-    little teal explorer's vest
+    teal explorer vest
 ```
 
+An apparel file, `winter-coat.evoke`:
+
 ```text
-# winter-coat.evoke
 TAGS
-    apparel
-    winter
+    apparel, winter
 
 APPAREL
-    heavy green winter coat
-    black boots
+    heavy green winter coat, black boots
 ```
 
 ```console

@@ -14,7 +14,9 @@ import (
 // Everything the image pipeline reads is dropped. APPEARANCE/APPAREL/
 // ENVIRONMENT/PROMPT are generator input — tag soup, weights, and camera
 // directives — and IMAGE/LORA/DETAILER are sampler configuration; none of it is
-// prose a retrieval answer should quote. CHAT and KNOWLEDGE are runtime config,
+// prose a retrieval answer should quote. VOICE is dropped by the same rule: it
+// describes a rendered voice for an audio target, not a fact a character should
+// recite. CHAT and KNOWLEDGE are runtime config,
 // and TAGS is selector metadata. SCENARIO is excluded because it is a transient
 // situation rather than canon: embedding it would make a momentary scene setup
 // permanently retrievable as world fact.

@@ -21,7 +21,7 @@ $ evoke chat roleplay yasmin beach
 ```
 
 - `roleplay` carries the `CHAT` declaration (model, context size, sampling).
-- `yasmin` supplies identity, personality, appearance, and backstory.
+- `yasmin` supplies identity, personality, and backstory.
 - `beach` supplies the starting `SCENARIO` (its `ENVIRONMENT`/`APPAREL` are for image generation and are ignored by chat).
 
 ## Backend: managed llama.cpp
@@ -36,9 +36,9 @@ Only one backend driver is supported: `llama.cpp`. `llama-server` must be instal
 
 The compiler renders resolved declarations into a deterministic prompt, and separates permanent facts from the opening scene:
 
-- **System prompt (persistent):** `NAME`, `CHARACTER`, `PERSONALITY` (positive traits, plus a "traits to avoid" line from the `!` channel), `BACKSTORY`, `APPEARANCE`, and any free-text lines on the `CHAT` block. This carries only what is true for the whole conversation, so re-sending it every turn never re-asserts a scene.
+- **System prompt (persistent):** `NAME`, `CHARACTER`, `PERSONALITY` (positive traits, plus a "traits to avoid" line from the `!` channel), `BACKSTORY`, and any free-text lines on the `CHAT` block. This carries only what is true for the whole conversation, so re-sending it every turn never re-asserts a scene.
 - **Opening turn (seeded once):** `SCENARIO` is framed as the first user turn — the character responds to it — instead of living in the always-resent system prompt. The scene sets the stage, then ages out of the context window naturally rather than being repeated on every request.
-- **Excluded:** `APPAREL` and `ENVIRONMENT` are image-generation concerns and do not enter the chat prompt at all; likewise image-only content (`PROMPT`, `IMAGE`, `LORA`, `DETAILER` and sampler settings).
+- **Excluded:** `APPEARANCE`, `APPAREL`, and `ENVIRONMENT` are image-generation concerns and do not enter the chat prompt at all; likewise image-only content (`PROMPT`, `IMAGE`, `LORA`, `DETAILER` and sampler settings). `VOICE` is also excluded — it describes how the character sounds, which no target reads yet; speech habits a text model can act on belong in `PERSONALITY` or the `CHAT` instructions.
 
 When a `SCENARIO` is present the character speaks first (its response to the seeded scene); otherwise the user sends the first message.
 

@@ -200,6 +200,7 @@ func TestCompileSystemPrompt(t *testing.T) {
 		Personality: evoke.Prompt{Positive: []string{"confident", "playful"}, Negative: []string{"cruel"}},
 		Backstory:   []string{"Grew up on the coast.", "Studies coral reefs."},
 		Appearance:  evoke.Prompt{Positive: []string{"long dark hair"}},
+		Voice:       evoke.Prompt{Positive: []string{"low alto, slight rasp"}},
 		Apparel:     evoke.Prompt{Positive: []string{"a wetsuit"}},
 		Environment: evoke.Prompt{Positive: []string{"a sunny beach"}},
 		Scenario:    "You just surfaced from a dive.",

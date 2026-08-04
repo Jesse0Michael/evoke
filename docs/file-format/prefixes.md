@@ -28,8 +28,7 @@ The `!` prefix routes values into a separate **negative** channel — the "avoid
 
 ```text
 !APPAREL
-    sneakers
-    jeans
+    sneakers, jeans
 ```
 
 Different targets interpret the negative channel differently: an image target turns it into a negative prompt; a language target might turn it into natural-language avoidance instructions.
@@ -46,30 +45,28 @@ The positive and negative channels are resolved independently. A declaration can
 
 ```text
 APPEARANCE
-    small
-    violet skin
+    small round body, violet skin
 
 !APPEARANCE
-    scary
-    monstrous
+    scary, monstrous
 ```
 
 ## `?` — defaults
 
 The `?` prefix marks a **default**: a value used only when no explicit contribution supplies the same thing. This gives source content canonical fallbacks without needing a replacement operator.
 
-```text
-# sumi.evoke — the character's canonical outfit
-?APPAREL
-    green shirt
-    blue jeans
-```
+A character file carries the outfit its subject wears when nobody dressed them:
 
 ```text
-# winter-coat.evoke — an explicit choice
+?APPAREL
+    green shirt, blue jeans
+```
+
+An apparel file makes an explicit choice:
+
+```text
 APPAREL
-    heavy green winter coat
-    black boots
+    heavy green winter coat, black boots
 ```
 
 Compose both and the result uses the winter coat. The moment *any* explicit `APPAREL` contribution appears, every `?APPAREL` default is suppressed. With no explicit apparel anywhere, the default green-shirt outfit is used instead.

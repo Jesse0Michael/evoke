@@ -34,6 +34,8 @@ func Render(c *Composition) string {
 	writeBlock("PERSONALITY", c.Personality.Positive)
 	writeBlock("!PERSONALITY", c.Personality.Negative)
 	writeBlock("BACKSTORY", c.Backstory)
+	writeBlock("VOICE", c.Voice.Positive)
+	writeBlock("!VOICE", c.Voice.Negative)
 	writeBlock("APPEARANCE", c.Appearance.Positive)
 	writeBlock("!APPEARANCE", c.Appearance.Negative)
 	writeBlock("APPAREL", c.Apparel.Positive)

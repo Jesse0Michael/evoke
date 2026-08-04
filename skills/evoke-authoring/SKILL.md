@@ -1,6 +1,6 @@
 ---
 name: evoke-authoring
-description: Write, fix, and review `.evoke` files — the declarative source format for AI characters and generative assets. Use for any work on a `.evoke` file, or when authoring content for the declarations it holds (NAME, CHARACTER, PERSONALITY, BACKSTORY, APPEARANCE, APPAREL, ENVIRONMENT, SCENARIO, PROMPT, IMAGE, LORA, DETAILER, CHAT, KNOWLEDGE) — characters, apparel, environments, styles, or collections consumed by `evoke image` and `evoke chat`.
+description: Write, fix, and review `.evoke` files — the declarative source format for AI characters and generative assets. Use for any work on a `.evoke` file, or when authoring content for the declarations it holds (NAME, CHARACTER, PERSONALITY, BACKSTORY, VOICE, APPEARANCE, APPAREL, ENVIRONMENT, SCENARIO, PROMPT, IMAGE, LORA, DETAILER, CHAT, KNOWLEDGE) — characters, apparel, environments, styles, or collections consumed by `evoke image` and `evoke chat`.
 ---
 
 # Authoring `.evoke` files
@@ -39,6 +39,7 @@ Route by the declaration you are writing, not by the file:
 | :------------------------------------------------------------------------------- | :------------------------------------------------ |
 | `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `PROMPT`, `IMAGE`/`DETAILER` prompt text | `references/style-guide.md` §2 and **§3**         |
 | `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `SCENARIO`, `CHAT` instructions         | `references/style-guide.md` §2 and **§4**         |
+| `VOICE` — read by no target yet                                                  | `references/style-guide.md` §2 and **§1**         |
 | Both kinds in one file                                                           | §2, §3, and §4 — apply each only to its own block |
 | Deciding what goes in which file, tags, `?` defaults                             | `references/style-guide.md` §5                    |
 | Syntax, prefixes, merge modes, `key = value` settings                            | `references/file-format.md`                       |
@@ -49,6 +50,7 @@ The one-line version of each, which is _not_ a substitute for reading them:
 
 - **§3 rendering** — short comma-separated Danbooru-style phrases, never prose. Nothing negated, abstract, instructional, or emotional. Exclusions go in the matching `!BLOCK`. Numeric weights only, 1.1–1.3, 1–3 per character, and only on traits that failed unweighted.
 - **§4 language** — prose. Negation and abstraction are necessary. Name the behavior, never the impression. Third person for `CHARACTER`/`PERSONALITY`/`BACKSTORY`/`SCENARIO`; second person only for `CHAT` instructions.
+- **`VOICE`** — what the character _sounds_ like, in §3's comma-joined phrase form, and only when a voice was asked for or described. No command reads it yet, so a wrong value never shows up in an output. Speech habits and word choice are `PERSONALITY`/`CHAT`, not `VOICE`.
 
 ## Invariants
 

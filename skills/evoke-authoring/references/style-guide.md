@@ -8,6 +8,7 @@ Rules for writing the _content_ of `.evoke` files. Format mechanics live in [Fil
 | :---------------------------------------------------------------------------- | :-------- |
 | `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `PROMPT`, `IMAGE`, `LORA`, `DETAILER` | §2 and §3 |
 | `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `SCENARIO`, `CHAT` instructions      | §2 and §4 |
+| `VOICE`                                                                       | §2 and §1's `VOICE` note — no target reads it yet |
 
 §3 and §4 give opposite advice on purpose. Applying §3's rules to a chat block, or §4's to an image block, produces confidently wrong output both times.
 
@@ -35,6 +36,7 @@ Ground truth from `internal/generate/comfyui/comfyui.go` and `internal/chat/prom
 | `PERSONALITY` / `!PERSONALITY` | —                                           | `"Personality:"` / `"Traits to avoid:"` |
 | `BACKSTORY`                    | —                                           | `"Backstory:"`                          |
 | `SCENARIO`                     | —                                           | opening turn                            |
+| `VOICE`                        | — (see below)                               | — (see below)                           |
 | `APPEARANCE` / `!`             | positive / negative                         | —                                       |
 | `APPAREL` / `!`                | apparel conditioning                        | —                                       |
 | `ENVIRONMENT` / `!`            | environment conditioning                    | —                                       |
@@ -49,6 +51,19 @@ Ground truth from `internal/generate/comfyui/comfyui.go` and `internal/chat/prom
 - `CHARACTER`/`PERSONALITY`/`BACKSTORY`/`SCENARIO` cost the image prompt nothing. Write them as long as the character needs.
 - Chat can't see `APPEARANCE`/`APPAREL`/`ENVIRONMENT`/`PROMPT`. Anything the character should _know_ about itself goes in `CHARACTER` or `BACKSTORY`.
 - The image prompt has no "who" block. Everything drawable about a subject — species, build, apparent age, features — goes in `APPEARANCE`.
+
+### `VOICE` — a block with no target
+
+`VOICE` records what a character **sounds** like: timbre, pitch, pace, accent, vocal texture. No command reads it. It parses, merges, and appears in `evoke inspect`, and then nothing renders it — there is no audio target yet.
+
+That does not make it scratch space. Three rules:
+
+- **Write it only when the user asks for a voice, or the source describes one.** §2 applies unchanged, and applies harder here: nothing renders `VOICE`, so an invented one is never caught by a bad output. It sits in the file looking sourced until someone builds the target and ships it.
+- **Sound, not speech.** How the character sounds is `VOICE`. What they say and how they word it is `PERSONALITY` and the `CHAT` instructions — and only those reach a model today. "Rarely uses contractions," "trails off mid-sentence," "answers questions with questions" are language traits; putting them in `VOICE` means no target reads them at all, which is the one genuinely silent failure in this format.
+- **§3 form, phrases not prose.** `low alto, slight rasp, unhurried cadence`, one comma-joined line, no trailing period. The likely first consumer is a synthesis target conditioned on a description, which reads phrases and not prose, and a language target reads phrases fine — so phrases are the form that survives either outcome. Skip weights: there is no model whose prior you are fighting.
+- **Positive only.** Describe the voice the character has. There is no exclusion list to write here — a voice has one description, and "not shrill" is not a thing to say about it.
+
+Engine configuration is not this block's job. A synthesis backend, model, and its settings belong in a structured declaration of their own when one exists — `VOICE` is to that what `APPEARANCE` is to `IMAGE`.
 
 ### Render order
 
@@ -490,6 +505,7 @@ CHAT
 - **Name the thing, not the type** — `winter-coat.evoke`, not `apparel-winter.evoke`.
 - **The filename is already a tag.** The index carries every file's base name as an implicit tag, so `leotorin.evoke` answers `evoke image leotorin` with no `TAGS` block at all. Never tag a file with its own name.
 - **Tags name the sets you'd draw from at random**, because that is literally what they do: a selector resolves to _one_ matching file, picked at random when several match, and re-picked per image in a batch. A tag earns its place when you'd accept any file carrying it — a role (`character`, `apparel`, `style`, `environment`) and the collections the file is drawn from alongside siblings (`npc`, `party`, `crew`). A tag only one file carries is its filename spelled longer.
+- **`TAGS` is one comma-separated line.** `TAGS\n    apparel, winter`. The parser splits on commas and newlines alike, so a stacked block is extra lines for an identical result — and since one or two tags is the whole expected budget, a multi-line `TAGS` block is a visual claim that the file has more discovery surface than it does.
 - **Content is not tags.** `firbolg`, `druid`, `farmer`, `balance` restate declarations in a namespace that exists to pick substitutes. A descriptor tag is worth writing only when several files share it and you'd ask for any of them (`winter` across coats). Lowercase kebab-case; one or two tags is normal and none is fine.
 - **`?` is the default value** — a real statement about the subject that yields. `?APPAREL` is what the character wears when nobody dressed them; `?ENVIRONMENT` is where they are when nobody placed them. Not "optional," not scaffolding to make a file render alone: it is the file's answer, offered until a caller supplies a different one. On declarations with `key = value` settings it yields per key, so `?IMAGE` keeps the `checkpoint` a later file never mentioned while giving up the `steps` it did. See §5.1.
 - **Keep singular declarations out of shared files.** `NAME`, `SCENARIO`, `IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE` conflict when two files provide one (warns, takes the first). `IMAGE` in a character file breaks the first two-character composition.
@@ -504,7 +520,7 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 
 | File kind        | Explicit                                                      | `?` default                                                                       |
 | :--------------- | :------------------------------------------------------------ | :-------------------------------------------------------------------------------- |
-| Character        | `APPEARANCE`/`!`, `CHARACTER`, `PERSONALITY`/`!`, `BACKSTORY` | `?APPAREL`; `?ENVIRONMENT` only when the source establishes a home, shop, or city |
+| Character        | `APPEARANCE`/`!`, `CHARACTER`, `PERSONALITY`/`!`, `BACKSTORY`, `VOICE` when asked for | `?APPAREL`; `?ENVIRONMENT` only when the source establishes a home, shop, or city |
 | Apparel          | `APPAREL`/`!`                                                 | —                                                                                 |
 | Place / location | `ENVIRONMENT`/`!`                                             | —                                                                                 |
 | Style / pipeline | `IMAGE`, `PROMPT`, quality anchors                            | settings a shot file should be free to raise                                      |
@@ -547,6 +563,12 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 - [ ] Any block repeating what another already established?
 - [ ] `SCENARIO` has an objective, a complication, and a reason to keep talking — and decides nothing about what the user says, feels, or wants?
 - [ ] Rules about output length or format in `CHAT`, not `PERSONALITY`?
+
+**`VOICE` (§1)**
+
+- [ ] Written because a voice was asked for or described, not because the character felt unfinished without one?
+- [ ] Only what the character sounds like — nothing about word choice or phrasing, which no target would then read?
+- [ ] Comma-joined phrases, no prose, no weights?
 
 **Both**
 

@@ -30,24 +30,20 @@ A `.evoke` file is a list of declaration blocks:
 ```text
 TAGS
     character
-    mascot
-    octopus
 
 NAME
     Sumi
 
 CHARACTER
-    an octopus humanoid, and the mascot of this project
+    Sumi is an octopus humanoid and the mascot of the Evoke project.
 
 APPEARANCE
-    octopus humanoid
-    small round body
-    smooth violet skin
-    eight tapering tentacles
-    large luminous eyes
+    (smooth violet skin:1.25)
+    (eight tapering tentacles:1.2)
+    octopus humanoid, small round body, large luminous eyes
 
 ?APPAREL
-    little teal explorer's vest
+    teal explorer vest
 ```
 
 The `image` command resolves inputs — tag-based selectors like `character`, local file paths, or registry references like `@namespace/name` — merges the matching `.evoke` files, and submits the composition to ComfyUI for image generation.
