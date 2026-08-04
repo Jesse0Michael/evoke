@@ -127,6 +127,27 @@ After editing `.go` files, run `goimports -w` on them and `golangci-lint run --f
 
 After finishing a change to the `evoke` CLI (anything under `cmd/evoke` or `internal/cli`), run `make install` so the installed `evoke` on `PATH` reflects the change.
 
+## CI and commit messages
+
+Two GitHub Actions workflows live in `.github/workflows/`:
+
+- `test.yaml` — lint + vulncheck + tests, on pull requests and pushes to `main`. It runs **`go tool golangci-lint` / `go tool govulncheck`**, not `golangci/golangci-lint-action`, so CI uses the exact versions pinned in the go.mod `tool` block and can't drift from `make lint`. Don't swap in the marketplace lint action — it installs its own binary and would silently disagree with local runs. Go version comes from `go-version-file: go.mod`. `CGO_ENABLED: "1"` is explicit on the test job because the store/handler tests use `enttest` over `github.com/mattn/go-sqlite3`; with cgo off they fail rather than skip.
+- `tag.yaml` — `ridedott/release-me-action` (semantic-release) on pushes to `main`, pinned to the floating `@v3` major tag. `fetch-depth: 0` is required: semantic-release reads the whole tag + commit history to pick the next version. `permissions: contents: write` is load-bearing — the repo's default workflow token is read-only, and the action both pushes a `chore(release): vX.Y.Z` commit (regenerated `CHANGELOG.md`) and creates the release. `node-module` is left at its default `false`, so no npm publish and no `package.json` is needed.
+
+`.golangci.yml` is on **golangci-lint v2** config (`version: "2"`). v2 dropped v1's built-in default exclusions, which is why the file enables the `std-error-handling` preset — without it the CLI's unchecked `fmt.Fprint*`-to-terminal calls produce ~9 findings that have no meaningful recovery path. Don't delete the preset to "get stricter"; if those errors ever matter, handle them at the call site instead. Generated trees (`internal/ent`, `internal/client`) are excluded by path. Verify config changes with `go tool golangci-lint config verify`.
+
+**Commit messages must follow Conventional Commits.** This is not style preference — `tag.yaml` derives the version from these prefixes, so a plain subject line like `Add VOICE declaration` cuts no release and the change ships untagged. Earlier history is mixed; everything from here on is conventional. Note that release-me-action *overrides* the angular preset's defaults with its own rules, so nearly every type releases: `feat:` → minor; `fix:`/`perf:` → patch; and `build:`/`chore:`/`ci:`/`docs:`/`refactor:`/`improvement:` → **patch** as well. A docs-only commit therefore cuts a version. To land something with no release, put `[skip release]` in the subject.
+
+### `pkg/evoke` is a consumed library — version discipline
+
+`pkg/evoke` (the parser/schema/merge/selector core) is imported by other projects, so tags are a public API contract. It is **stdlib-only** — keep it that way; a dependency added here lands in every consumer.
+
+**The repo stays on 0.x while the format is experimental, and that is a safety mechanism, not just modesty.** Go requires any major version ≥ 2 to carry a `/v2` suffix *in the module path* (`module github.com/jesse0michael/evoke/v2`). semantic-release knows nothing about this rule, so once the repo is at 1.x a single `feat!:` would tag a `v2.0.0` that no one can `go get`. Module proxy tags are immutable and permanently cached — a bad tag cannot be deleted, only `retract`ed. While in 0.x the worst automatic outcome is `v1.0.0`, which is a valid Go path, so the trap cannot spring.
+
+Therefore: **do not write `!` or `BREAKING CHANGE:` in a commit footer.** In 0.x a breaking change is an ordinary `feat:` (semver permits this below 1.0.0). Before anything ever bumps to 2.x, the module path and every internal import must be renamed first, deliberately, in the same commit.
+
+One consequence worth knowing when a consumer adopts this: the module's `go` directive is `1.26.5`, and it cannot go lower — `go mod tidy` pulls it back up to `1.26.2` because the CLI/registry dependency tree (ent, grpc, bubbletea) requires it. `pkg/evoke` itself compiles at `go 1.23`, so if a consumer is stuck on an older toolchain the fix is to split `pkg/evoke` into its own nested module, not to fight the directive. That split would need new tagging (nested modules tag as `pkg/evoke/vX.Y.Z`, which is not what semantic-release produces) — don't do it preemptively.
+
 When you add or change an `evoke` subcommand that composes `.evoke` inputs (tag selectors, local paths, `@namespace/name` refs — e.g. `image`, `chat`, `inspect`), wire it into tab-completion: add it to the `__complete` dispatch in `internal/cli/completion.go` and to all three shell scripts in `internal/cli/completion_script.go` (zsh, bash, fish). Completion changes only take effect after the user regenerates and re-sources the script (`evoke completion zsh`).
 
 ## Writing `.evoke` content

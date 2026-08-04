@@ -1,0 +1,43 @@
+name: Lint And Test Code Base
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint Code Base
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Lint Code Base
+        run: go tool golangci-lint run ./...
+
+      - name: Check Vulnerabilities
+        run: go tool govulncheck ./...
+
+  test:
+    name: Test Code Base
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Run Unit Test
+        env:
+          CGO_ENABLED: "1"
+        run: go test -cover ./... -timeout 60s
