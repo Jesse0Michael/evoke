@@ -20,32 +20,40 @@ import (
 // ViewCmd launches the interactive image viewer for recent output.
 func ViewCmd(args []string, _ bool) int {
 	fs := flag.NewFlagSet("view", flag.ContinueOnError)
-	maxItems := fs.Int("n", 100, "max images to load")
+	pageSize := fs.Int("n", 0, "images navigable at a time; navigating past the end reveals the next page (0 = all)")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	if err := runViewer(context.Background(), *maxItems); err != nil {
+	if err := runViewer(context.Background(), *pageSize); err != nil {
 		fmt.Fprintf(os.Stderr, "evoke view: %v\n", err)
 		return 1
 	}
 	return 0
 }
 
-func runViewer(_ context.Context, maxItems int) error {
+func runViewer(_ context.Context, pageSize int) error {
 	outputDir := resolveOutputDir()
 	if outputDir == "" {
 		return fmt.Errorf("could not resolve output directory (set EVOKE_OUTPUT_DIR)")
 	}
 
-	images, err := loadImages(outputDir, maxItems)
+	// The full scan is cheap (a stat walk); metadata parsing and rendering are
+	// per-displayed-image, so nothing is gained by capping what we load.
+	images, err := loadImages(outputDir)
 	if err != nil {
 		return err
 	}
 	if len(images) == 0 {
 		fmt.Println("No image files found.")
 		return nil
+	}
+
+	// shown bounds navigation; extendOlder raises it toward len(images).
+	shown := len(images)
+	if pageSize > 0 && pageSize < shown {
+		shown = pageSize
 	}
 
 	fd := int(os.Stdin.Fd())
@@ -59,15 +67,17 @@ func runViewer(_ context.Context, maxItems int) error {
 
 	var show func()
 	var refreshNewer func()
-	var refreshOlder func()
+	var extendOlder func()
 
+	// refreshNewer rescans for images generated since the viewer opened and
+	// prepends them, so navigating left off the head picks up new output.
 	refreshNewer = func() {
 		topPath := ""
 		if len(images) > 0 {
 			topPath = images[0].path
 		}
 		_ = term.Restore(fd, oldState)
-		fresh, rerr := loadImages(outputDir, maxItems)
+		fresh, rerr := loadImages(outputDir)
 		_, _ = term.MakeRaw(fd)
 		if rerr != nil || len(fresh) == 0 {
 			return
@@ -83,33 +93,25 @@ func runViewer(_ context.Context, maxItems int) error {
 			return
 		}
 		images = append(fresh[:splitAt], images...)
+		shown += splitAt
 		idx = splitAt - 1
 		show()
 	}
 
-	refreshOlder = func() {
-		tailPath := ""
-		if len(images) > 0 {
-			tailPath = images[len(images)-1].path
-		}
-		_ = term.Restore(fd, oldState)
-		fresh, rerr := loadImages(outputDir, maxItems)
-		_, _ = term.MakeRaw(fd)
-		if rerr != nil || len(fresh) == 0 {
+	// extendOlder reveals the next page from the already-scanned list.
+	extendOlder = func() {
+		if shown >= len(images) {
 			return
 		}
-		splitAt := -1
-		for i, img := range fresh {
-			if img.path == tailPath {
-				splitAt = i
-				break
-			}
+		step := pageSize
+		if step <= 0 {
+			step = len(images)
 		}
-		if splitAt < 0 || splitAt >= len(fresh)-1 {
-			return
+		shown += step
+		if shown > len(images) {
+			shown = len(images)
 		}
-		images = append(images, fresh[splitAt+1:]...)
-		idx = len(images) - len(fresh) + splitAt + 1
+		idx++
 		show()
 	}
 
@@ -165,7 +167,11 @@ func runViewer(_ context.Context, maxItems int) error {
 			label = filepath.Base(images[idx].subfolder) + "/" + images[idx].filename
 		}
 		debugAvail := len(findDebugImages(outputDir, images[idx].filename)) > 0
-		fmt.Printf("\033[%d;1H\033[1m[%d/%d]\033[0m  %s", h-1, idx+1, len(images), label)
+		count := fmt.Sprintf("%d/%d", idx+1, shown)
+		if shown < len(images) {
+			count += "+"
+		}
+		fmt.Printf("\033[%d;1H\033[1m[%s]\033[0m  %s", h-1, count, label)
 		hints := []string{"← → navigate"}
 		if debugAvail {
 			hints = append(hints, "t debug")
@@ -188,11 +194,11 @@ func runViewer(_ context.Context, maxItems int) error {
 				fmt.Print("\033[2J\033[H")
 				return nil
 			case 'l', 'n', ' ':
-				if idx < len(images)-1 {
+				if idx < shown-1 {
 					idx++
 					show()
 				} else {
-					refreshOlder()
+					extendOlder()
 				}
 			case 'h', 'p':
 				if idx > 0 {
@@ -211,14 +217,21 @@ func runViewer(_ context.Context, maxItems int) error {
 				if cn, cerr := os.Stdin.Read(confirm); cn == 1 && cerr == nil && (confirm[0] == 'd' || confirm[0] == 'D') {
 					_ = os.Remove(images[idx].path)
 					images = append(images[:idx], images[idx+1:]...)
+					shown--
 					if len(images) == 0 {
 						fmt.Print("\033[2J\033[H")
 						_ = term.Restore(fd, oldState)
 						fmt.Println("No images remaining.")
 						return nil
 					}
-					if idx >= len(images) {
-						idx = len(images) - 1
+					if shown > len(images) {
+						shown = len(images)
+					}
+					if shown == 0 {
+						shown = 1
+					}
+					if idx >= shown {
+						idx = shown - 1
 					}
 				}
 				show()
@@ -242,16 +255,27 @@ func runViewer(_ context.Context, maxItems int) error {
 				show()
 			case 'B': // down — jump 50 right
 				idx += 50
-				if idx >= len(images) {
-					idx = len(images) - 1
+				// A jump past the visible window pulls in enough pages to land.
+				for shown < len(images) && idx >= shown {
+					step := pageSize
+					if step <= 0 {
+						step = len(images)
+					}
+					shown += step
+				}
+				if shown > len(images) {
+					shown = len(images)
+				}
+				if idx >= shown {
+					idx = shown - 1
 				}
 				show()
 			case 'C': // right
-				if idx < len(images)-1 {
+				if idx < shown-1 {
 					idx++
 					show()
 				} else {
-					refreshOlder()
+					extendOlder()
 				}
 			case 'D': // left
 				if idx > 0 {
@@ -379,7 +403,8 @@ type viewImage struct {
 	subfolder string
 }
 
-func loadImages(outputDir string, maxItems int) ([]viewImage, error) {
+// loadImages returns every image under outputDir, newest first.
+func loadImages(outputDir string) ([]viewImage, error) {
 	type fileEntry struct {
 		path    string
 		modTime int64
@@ -404,10 +429,6 @@ func loadImages(outputDir string, maxItems int) ([]viewImage, error) {
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].modTime > files[j].modTime
 	})
-
-	if maxItems > 0 && len(files) > maxItems {
-		files = files[:maxItems]
-	}
 
 	var imgs []viewImage
 	for _, f := range files {
