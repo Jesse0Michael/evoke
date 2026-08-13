@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/Jesse0Michael/evoke/compare/v1.0.0...v1.0.1) (2026-08-13)
+
+### Bug Fixes
+
+- evoke view pagination ([b2a2ac5](https://github.com/Jesse0Michael/evoke/commit/b2a2ac5b3d8c74958cbf082ef8f07282895c26cc))
+
 # 1.0.0 (2026-08-04)
 
 ### Code Refactoring
