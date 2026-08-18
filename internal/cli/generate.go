@@ -46,12 +46,12 @@ func Image(args []string, verbose bool) int {
 		return 1
 	}
 
-	// Classify all args and extract any xN batch shorthands.
+	// Classify all args and extract the xN batch count and xall enumeration marker.
 	var classified []classifiedInput
 	for _, raw := range fs.Args() {
 		classified = append(classified, classifyInput(raw))
 	}
-	classified, inlineBatch := extractBatch(classified)
+	classified, inlineBatch, enumerate := extractBatch(classified)
 	if inlineBatch > 0 {
 		*batch = inlineBatch
 	}
@@ -100,13 +100,28 @@ func Image(args []string, verbose bool) int {
 	gen := comfyui.New(cfg.ComfyURL)
 	gen.Verbose = verbose
 
-	for i := range *batch {
-		if *batch > 1 {
-			fmt.Printf("\n--- batch %d/%d ---\n", i+1, *batch)
+	// By default every generation re-resolves selectors in CLI order, re-rolling
+	// random picks for variety. With xall the selector picks are enumerated up
+	// front instead, and the batch count becomes a per-combination multiplier.
+	total := *batch
+	docsFor := func(int) ([]*evoke.Document, error) { return res.documents(ctx) }
+
+	if enumerate {
+		variants, err := res.variants(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
+			return 1
+		}
+		total = len(variants) * *batch
+		docsFor = func(i int) ([]*evoke.Document, error) { return res.documentsFor(variants[i / *batch]) }
+	}
+
+	for i := range total {
+		if total > 1 {
+			fmt.Printf("\n--- batch %d/%d ---\n", i+1, total)
 		}
 
-		// Resolve selectors in CLI order (re-rolled per batch for variety).
-		docs, err := res.documents(ctx)
+		docs, err := docsFor(i)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
 			return 1
@@ -332,16 +347,27 @@ func pullFromRegistry(ctx context.Context, registryURL, namespace, name, libPath
 	return doc, sha, nil
 }
 
-// resolveSelector resolves a tag/declaration selector through the index and cwd.
+// resolveSelector resolves a tag/declaration selector through the index and cwd,
+// choosing one of the matching files.
 func resolveSelector(ctx context.Context, raw string, idx *sqliteIndex, roots []sourceRoot, affinityTags []string) (*evoke.Document, string, error) {
-	sel, err := evoke.ParseSelector(raw)
+	candidates, sel, err := selectorCandidates(ctx, raw, idx, roots)
 	if err != nil {
 		return nil, "", err
+	}
+	return pickCandidate(candidates, sel, raw, affinityTags, idx, ctx)
+}
+
+// selectorCandidates resolves a selector to every .evoke file that matches it,
+// refreshing the index once when the first lookup finds nothing.
+func selectorCandidates(ctx context.Context, raw string, idx *sqliteIndex, roots []sourceRoot) ([]indexCandidate, evoke.Selector, error) {
+	sel, err := evoke.ParseSelector(raw)
+	if err != nil {
+		return nil, sel, err
 	}
 
 	candidates, err := idx.find(ctx, roots, sel.Tags)
 	if err != nil {
-		return nil, "", fmt.Errorf("index lookup failed: %w", err)
+		return nil, sel, fmt.Errorf("index lookup failed: %w", err)
 	}
 
 	// Also check .evoke files in the immediate working directory.
@@ -357,14 +383,14 @@ func resolveSelector(ctx context.Context, raw string, idx *sqliteIndex, roots []
 		}
 		candidates, err = idx.find(ctx, roots, sel.Tags)
 		if err != nil {
-			return nil, "", fmt.Errorf("index lookup failed after refresh: %w", err)
+			return nil, sel, fmt.Errorf("index lookup failed after refresh: %w", err)
 		}
 		if len(candidates) == 0 {
-			return nil, "", fmt.Errorf("no files match selector %q", raw)
+			return nil, sel, fmt.Errorf("no files match selector %q", raw)
 		}
 	}
 
-	return pickCandidate(candidates, sel, raw, affinityTags, idx, ctx)
+	return candidates, sel, nil
 }
 
 // pickCandidate selects a candidate (weighted by affinity tag overlap if provided),
@@ -379,6 +405,13 @@ func pickCandidate(candidates []indexCandidate, sel evoke.Selector, raw string, 
 		chosen = pickByAffinity(ctx, candidates, affinityTags, idx)
 	}
 
+	return loadCandidate(chosen, sel, raw)
+}
+
+// loadCandidate reads, parses, and validates a chosen file, applying the
+// implicit base-name tag the indexer adds and confirming the file still matches
+// the selector it was found by.
+func loadCandidate(chosen indexCandidate, sel evoke.Selector, raw string) (*evoke.Document, string, error) {
 	data, err := os.ReadFile(chosen.Path)
 	if err != nil {
 		return nil, "", fmt.Errorf("selected file %s is no longer accessible: %w", chosen.Path, err)

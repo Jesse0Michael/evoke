@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	evoke "github.com/jesse0michael/evoke/pkg/evoke"
@@ -160,6 +161,96 @@ func (r *resolution) documents(ctx context.Context) ([]*evoke.Document, error) {
 			}
 		}
 		affinityTags = append(affinityTags, doc.Metadata.Tags...)
+	}
+	return docs, nil
+}
+
+// variantPick is one selector input paired with the file chosen to fill it.
+type variantPick struct {
+	input     string
+	selector  evoke.Selector
+	candidate indexCandidate
+}
+
+// variants enumerates every combination of files matching the selector inputs.
+// The leftmost selector varies slowest and candidates are ordered by path, so
+// the sequence is reproducible across runs. Static inputs are shared by every
+// combination, so inputs with no selectors yield exactly one. Enumerating more
+// than maxBatch combinations is an error rather than a silent truncation: a
+// caller asking for every variation should not quietly receive a subset.
+func (r *resolution) variants(ctx context.Context) ([][]variantPick, error) {
+	slots := make([][]variantPick, 0, len(r.selectorInputs))
+	total := 1
+
+	for _, ci := range r.selectorInputs {
+		candidates, sel, err := selectorCandidates(ctx, ci.Raw, r.idx, r.roots)
+		if err != nil {
+			return nil, err
+		}
+		slices.SortFunc(candidates, func(a, b indexCandidate) int {
+			return strings.Compare(a.Path, b.Path)
+		})
+
+		slot := make([]variantPick, 0, len(candidates))
+		for _, c := range candidates {
+			slot = append(slot, variantPick{input: ci.Raw, selector: sel, candidate: c})
+		}
+		slots = append(slots, slot)
+		total *= len(slot)
+	}
+
+	if total > maxBatch {
+		return nil, fmt.Errorf("xall would generate %d combinations (%s), more than the limit of %d; narrow the selection or drop xall",
+			total, describeSlots(slots), maxBatch)
+	}
+
+	return crossProduct(slots), nil
+}
+
+// crossProduct builds every combination of one pick per slot, with the leftmost
+// slot varying slowest. With no slots it yields a single empty combination.
+func crossProduct(slots [][]variantPick) [][]variantPick {
+	combos := [][]variantPick{{}}
+	for _, slot := range slots {
+		next := make([][]variantPick, 0, len(combos)*len(slot))
+		for _, combo := range combos {
+			for _, pick := range slot {
+				row := make([]variantPick, len(combo), len(combo)+1)
+				copy(row, combo)
+				next = append(next, append(row, pick))
+			}
+		}
+		combos = next
+	}
+	return combos
+}
+
+// describeSlots renders per-selector match counts for the enumeration limit
+// error, e.g. "character 12 x pose 40".
+func describeSlots(slots [][]variantPick) string {
+	parts := make([]string, 0, len(slots))
+	for _, slot := range slots {
+		if len(slot) == 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s %d", slot[0].input, len(slot)))
+	}
+	return strings.Join(parts, " x ")
+}
+
+// documentsFor loads the document set for one enumerated combination, ordered
+// the same way documents orders it: static inputs first, then selector inputs.
+func (r *resolution) documentsFor(picks []variantPick) ([]*evoke.Document, error) {
+	docs := make([]*evoke.Document, len(r.staticDocs), len(r.staticDocs)+len(picks))
+	copy(docs, r.staticDocs)
+
+	for _, p := range picks {
+		doc, path, err := loadCandidate(p.candidate, p.selector, p.input)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Printf("%s => %s\n", p.input, displayPath(path, r.roots))
+		docs = append(docs, doc)
 	}
 	return docs, nil
 }

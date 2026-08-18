@@ -26,7 +26,7 @@ parse  →  schema lookup  →  validate  →  merge  →  generate
 | Look up declaration definitions | `pkg/evoke/schema.go` | Built-in declaration registry, aliases |
 | Per-file semantic validation | `pkg/evoke/validate.go` | Unknown declarations, unsupported prefix checks |
 | Merge/resolve documents | `pkg/evoke/merge.go` | Channels, conflicts, defaults, accumulation, dedup → `Composition` |
-| Select by tag | `pkg/evoke/selector.go` | Facet/tag matching, random selection |
+| Select by tag | `pkg/evoke/selector.go` | Tag matching, random selection |
 | Generate output | `internal/generate/comfyui` | Convert composition to ComfyUI workflow |
 
 ## In this section

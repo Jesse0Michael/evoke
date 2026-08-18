@@ -190,7 +190,9 @@ IMAGE upscale
     denoise = 0.3
 ```
 
-Settings: `checkpoint`, `steps`, `cfg`, `sampler_name`, `scheduler`, `width`, `height`, `denoise`, `disabled`. For `IMAGE upscale`: `upscale_model`, `factor`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `tile_width`, `tile_height`, `disabled`.
+Settings: `checkpoint`, `group`, `steps`, `cfg`, `sampler_name`, `scheduler`, `width`, `height`, `denoise`, `disabled`. For `IMAGE upscale`: `upscale_model`, `factor`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `tile_width`, `tile_height`, `disabled`.
+
+`group` on the base `IMAGE` stage nests the output directory under a shared one: images land in `<group>/<NAME>/` instead of `<NAME>/`. It layers like any other setting, so a collection file holding only a `group` shelves every render it takes part in, and leaving that file out of the command restores the normal path.
 
 ### LORA
 

@@ -98,6 +98,21 @@ func TestClassifyInput(t *testing.T) {
 			raw:      "x0",
 			wantKind: inputSelector,
 		},
+		{
+			name:     "enumeration marker lowercase",
+			raw:      "xall",
+			wantKind: inputAll,
+		},
+		{
+			name:     "enumeration marker uppercase",
+			raw:      "XALL",
+			wantKind: inputAll,
+		},
+		{
+			name:     "not enumeration: xalls",
+			raw:      "xalls",
+			wantKind: inputSelector,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -188,6 +203,7 @@ func TestExtractBatch(t *testing.T) {
 		inputs    []classifiedInput
 		wantRaws  []string
 		wantBatch int
+		wantAll   bool
 	}{
 		{
 			name: "no batch arg",
@@ -197,6 +213,28 @@ func TestExtractBatch(t *testing.T) {
 			},
 			wantRaws:  []string{"character", "shot"},
 			wantBatch: 0,
+		},
+		{
+			name: "enumeration marker",
+			inputs: []classifiedInput{
+				{Raw: "character", Kind: inputSelector},
+				{Raw: "xall", Kind: inputAll},
+				{Raw: "shot", Kind: inputSelector},
+			},
+			wantRaws:  []string{"character", "shot"},
+			wantBatch: 0,
+			wantAll:   true,
+		},
+		{
+			name: "enumeration marker with batch multiplier",
+			inputs: []classifiedInput{
+				{Raw: "xall", Kind: inputAll},
+				{Raw: "character", Kind: inputSelector},
+				{Raw: "x3", Kind: inputBatch},
+			},
+			wantRaws:  []string{"character"},
+			wantBatch: 3,
+			wantAll:   true,
 		},
 		{
 			name: "single batch arg",
@@ -230,13 +268,14 @@ func TestExtractBatch(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filtered, batch := extractBatch(tt.inputs)
+			filtered, batch, all := extractBatch(tt.inputs)
 			var raws []string
 			for _, ci := range filtered {
 				raws = append(raws, ci.Raw)
 			}
 			require.Equal(t, tt.wantRaws, raws)
 			require.Equal(t, tt.wantBatch, batch)
+			require.Equal(t, tt.wantAll, all)
 		})
 	}
 }

@@ -633,7 +633,7 @@
   "save": {
     "class_type": "SaveImage",
     "inputs": {
-      "filename_prefix": "images/{{ .Workflow }}/{{ .Name }}",
+      "filename_prefix": "images/{{ .OutputDir }}/{{ .Name }}",
       "images": ["{{ if not .Prompt.Hand.Disabled }}hand_detail{{ else if not .Prompt.LowerBody.Disabled }}lower_body_detail{{ else if not .Prompt.UpperBody.Disabled }}upper_body_detail{{ else if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0]
     }
   }

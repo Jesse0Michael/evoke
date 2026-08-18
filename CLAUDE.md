@@ -19,7 +19,7 @@ These invariants shape almost every file and are easy to violate:
 - **Files are typeless.** A `.evoke` file never declares that it is a "character," "apparel," or "location" file. Its meaning *emerges* from the declarations it contains. Never add a `TYPE`/`FROM`/`IMPORT` mechanism.
 - **Composition is external.** Files do not reference each other. The *caller* selects which files compose together (`evoke image character shot`). File order must not silently change behavior unless the spec explicitly says so.
 - **Never concatenate early.** Parsing and merging operate on structured declarations. Flattening to a prompt string is a *rendering* concern that happens last.
-- **Tag-based discovery.** Files declare `TAGS` blocks; the selector system (`pkg/evoke/selector.go`) matches files by tag and/or facet. The SQLite index (`internal/cli/indexdb.go`) stores parsed metadata for fast selector resolution.
+- **Tag-based discovery.** Files declare `TAGS` blocks; the selector system (`pkg/evoke/selector.go`) matches files by tag — `a+b` requires both, and the indexer adds each file's base name as an implicit tag. The SQLite index (`internal/cli/indexdb.go`) stores parsed metadata for fast selector resolution. **Selectors match tags only.** There is no facet/declaration qualifier syntax (no `c:nurse`): a colon is an ordinary character in a tag name, and the index's `declarations` table is written but never read. Don't describe one as existing — if a qualifier grammar lands later, `ParseSelector` and `findInRoot` both have to grow it first.
 
 ## Declaration prefixes (channels & default)
 
@@ -175,7 +175,7 @@ Authoring `.evoke` content (characters, apparel, environments, styles, collectio
 1. ✅ **Parser** — parse `.evoke`, comments, blocks, `!`/`?` prefixes, source lines, good errors.
 2. ✅ **Declaration registry + semantic validation** — the 12-declaration schema and per-file checks (unknown declaration, unsupported `!`/`?` prefix).
 3. ✅ **Resolver** — channels, conflicts, accumulation, dedup, diagnostics → `Composition`.
-4. ✅ **Tag-based selectors + SQLite index** — facet/tag matching, source root discovery, persistent file index.
+4. ✅ **Tag-based selectors + SQLite index** — tag matching, source root discovery, persistent file index.
 5. ✅ **`image` command** — compose files by selector/path/registry-ref and submit to ComfyUI.
 6. ✅ **Registry API** — hosted push/pull/list with Google OIDC auth.
 7. ✅ **Registry client integration** — `@namespace/name` references, local library cache, manifest tracking.

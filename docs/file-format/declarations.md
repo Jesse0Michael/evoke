@@ -193,9 +193,9 @@ IMAGE upscale
     denoise = 0.3
 ```
 
-**Settings:** `checkpoint`, `steps`, `cfg`, `sampler_name`, `scheduler`, `width`, `height`, `denoise`, `disabled`. For `IMAGE upscale`: `upscale_model`, `factor`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `tile_width`, `tile_height`, `disabled`.
+**Settings:** `checkpoint`, `group`, `steps`, `cfg`, `sampler_name`, `scheduler`, `width`, `height`, `denoise`, `disabled`. For `IMAGE upscale`: `upscale_model`, `factor`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `tile_width`, `tile_height`, `disabled`.
 
-`disabled = true` switches a stage off — see [Disabling a stage](#disabling-a-stage).
+`disabled = true` switches a stage off — see [Disabling a stage](#disabling-a-stage). `group` shelves the output directory — see [Grouping output](#grouping-output).
 
 ### LORA
 
@@ -303,6 +303,26 @@ Both come up when hunting down a detailer that never ran:
 
 - **An explicit negative block with no positive contribution anywhere** disables the stage. `!DETAILER hand` on its own means "there is no hand detailer, and here is the negative prompt for it" — nothing positive ever configured it. A `?DETAILER hand` default *plus* an explicit `!DETAILER hand` means "use the default config with this negative prompt," not "disable."
 - **The generator disables anything it cannot configure**: a detailer whose resolved settings include no `detector`, or an upscale stage with no `upscale_model`. Settings alone never switch a stage *on* — some file in the composition has to supply the detector or model, so a shot file that sets only `max_detection` for a region no file has configured changes nothing.
+
+## Grouping output
+
+Generated images land in a directory named after the composition's `NAME`. The base `IMAGE` stage's `group` setting nests that directory under a shared one, so a set of characters can be shelved together without losing their individual directories:
+
+```text
+IMAGE
+    group = noir-test
+```
+
+A character whose `NAME` is `Sumi` then writes to `noir-test/sumi/` instead of `sumi/`. Because `group` layers like any other setting, a `noir-test.evoke` holding only the two lines above is enough — add it to the command and every character in the run is shelved together, leave it out and the path is back to normal:
+
+```bash
+evoke image sumi portrait noir-test
+```
+
+- **The group nests, it does not replace.** The `NAME` directory is still there underneath, so `evoke view` still shows which character a render belongs to.
+- **A group may nest further.** `group = tests/noir` writes to `tests/noir/<name>/`.
+- **It is normalized like `NAME`** — lowercased, non-alphanumeric runs collapsed to underscores, per path segment. Leading slashes and `..` normalize away rather than escaping the output root.
+- **Only the base stage's `group` is read.** Setting it on `IMAGE upscale` does nothing, and a disabled base stage drops it along with the rest of its settings.
 
 ## What isn't here
 

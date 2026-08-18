@@ -32,6 +32,7 @@ const defaultTemplate = "sdxl"
 // promptData is the ComfyUI-specific structure passed to workflow templates.
 type promptData struct {
 	Checkpoint  string   `json:"checkpoint"`
+	Group       string   `json:"group"`
 	Positive    string   `json:"positive"`
 	Negative    string   `json:"negative"`
 	Loras       []lora   `json:"loras"`
@@ -106,12 +107,13 @@ type detailer struct {
 
 // templateData is the top-level structure passed to the workflow template.
 type templateData struct {
-	Workflow string
-	Prompt   promptData
-	Time     int64
-	Index    int
-	Debug    bool
-	Name     string
+	// OutputDir is the save path under the images root; it may contain slashes.
+	OutputDir string
+	Prompt    promptData
+	Time      int64
+	Index     int
+	Debug     bool
+	Name      string
 }
 
 // Client implements generate.Generator by submitting to a ComfyUI instance.
@@ -234,6 +236,9 @@ func renderPromptData(doc *evoke.Composition) promptData {
 func applyImageSettings(pd *promptData, stage *evoke.ImageStage) {
 	if v, ok := stage.Settings["checkpoint"]; ok {
 		pd.Checkpoint = v
+	}
+	if v, ok := stage.Settings["group"]; ok {
+		pd.Group = v
 	}
 	if v, ok := stage.Settings["steps"]; ok {
 		pd.Sampler.Steps = parseInt(v)
@@ -466,6 +471,8 @@ func renderTemplate(data promptData, compositionName string, sources []string, d
 		return nil, fmt.Errorf("template %q not found: %w", defaultTemplate, err)
 	}
 
+	group := sanitizeGroup(data.Group)
+
 	data = escapePromptData(data)
 
 	// Use the composition NAME as the output directory, falling back to "evoke".
@@ -474,16 +481,21 @@ func renderTemplate(data promptData, compositionName string, sources []string, d
 		dir = toSnakeCase(compositionName)
 	}
 
+	// An IMAGE group shelves the character directory under it rather than replacing it.
+	if group != "" {
+		dir = group + "/" + dir
+	}
+
 	// Build the filename prefix from source file basenames joined with underscores.
 	name := buildFilePrefix(sources)
 
 	td := templateData{
-		Workflow: dir,
-		Prompt:   data,
-		Time:     time.Now().Unix(),
-		Index:    0,
-		Debug:    debug,
-		Name:     name,
+		OutputDir: dir,
+		Prompt:    data,
+		Time:      time.Now().Unix(),
+		Index:     0,
+		Debug:     debug,
+		Name:      name,
 	}
 
 	tmpl, err := template.New("workflow").Funcs(templateFuncs()).Parse(string(raw))
@@ -535,6 +547,21 @@ func buildFilePrefix(sources []string) string {
 		parts = append(parts, toSnakeCase(base))
 	}
 	return strings.Join(parts, "_")
+}
+
+// sanitizeGroup normalizes an IMAGE group into a relative path segment list.
+// Each segment is snake-cased independently so nesting ("tests/noir") survives,
+// and segments that normalize to nothing are dropped — which is what strips
+// traversal ("..") and leading slashes, since ComfyUI resolves this prefix
+// against its own output root.
+func sanitizeGroup(s string) string {
+	parts := make([]string, 0, strings.Count(s, "/")+1)
+	for seg := range strings.SplitSeq(s, "/") {
+		if seg = toSnakeCase(seg); seg != "" {
+			parts = append(parts, seg)
+		}
+	}
+	return strings.Join(parts, "/")
 }
 
 func jsonEscape(s string) string {

@@ -8,14 +8,16 @@ $ evoke image <input>...
 
 ## Input types
 
-Each positional argument is classified as one of four input types:
+Each positional argument is classified as one of six input types:
 
 | Type | Pattern | Example |
 |:-----|:--------|:--------|
-| **Selector** | Tag or facet:tag expression | `character`, `c:nurse+modern` |
+| **Selector** | Tag expression | `character`, `nurse+modern` |
 | **Local path** | Starts with `./`, `../`, is absolute, or ends in `.evoke` | `./sumi.evoke` |
 | **Registry reference** | Starts with `@` | `@jesse/sumi` |
 | **Literal prompt** | Contains spaces | `"a scientist in a lab"` |
+| **Batch count** | `x` or `X` followed by a positive integer | `x25` |
+| **Enumeration marker** | `xall`, case-insensitive | `xall` |
 
 ### Selectors
 
@@ -26,14 +28,10 @@ Simple tag selectors:
 $ evoke image character winter
 ```
 
-Facet-qualified selectors restrict matches to files that provide a specific declaration:
+Multiple tags joined with `+` require all tags to be present:
 ```console
-$ evoke image c:nurse+modern e:forest
+$ evoke image nurse+modern forest
 ```
-
-Facet aliases: `c` = CHARACTER, `ap` = APPEARANCE, `a` = APPAREL, `e` = ENVIRONMENT, `p` = PROMPT.
-
-Multiple tags joined with `+` require all tags to be present.
 
 ### Local paths
 
@@ -70,7 +68,7 @@ positive:  IMAGE text → APPEARANCE → PROMPT → APPAREL → ENVIRONMENT
 negative:  !IMAGE text → !APPEARANCE → !PROMPT → !APPAREL → !ENVIRONMENT
 ```
 
-`CHARACTER`, `PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **not** included — they carry identity, disposition, history, and narrative situation, which a diffusion model cannot render. They are consumed by [`evoke chat`](chat.md) instead. `VOICE` is not included either, and no command reads it yet — it describes how a subject sounds. `NAME` is used for the output directory, not the prompt. Everything drawable about a subject belongs in `APPEARANCE`.
+`CHARACTER`, `PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **not** included — they carry identity, disposition, history, and narrative situation, which a diffusion model cannot render. They are consumed by [`evoke chat`](chat.md) instead. `VOICE` is not included either, and no command reads it yet — it describes how a subject sounds. `NAME` is used for the output directory, not the prompt — see [Grouping output](../file-format/declarations.md#grouping-output) to shelve several characters under a shared directory. Everything drawable about a subject belongs in `APPEARANCE`.
 
 Order is significant. CLIP processes roughly 75 tokens per chunk and dilutes what comes later, so material near the front of the positive prompt carries more weight than material near the end. `IMAGE` text leads, which makes it the right place for quality tags and the wrong place for character detail.
 
@@ -90,20 +88,66 @@ The file index is refreshed automatically before selector resolution. It is a SQ
 
 | Flag | Default | Description |
 |:-----|:--------|:------------|
-| `-b` | `1` | Number of images to generate. Each iteration re-resolves selectors independently, so when multiple files match a tag, each generation randomly picks one for variety. |
+| `-b` | `1` | Number of images to generate. Each iteration re-resolves selectors independently, so when multiple files match a tag, each generation randomly picks one for variety. Overridden by an `xN` argument. With `xall` it becomes a per-combination multiplier. |
 | `-v`, `--verbose` | `false` | Print the merged composition and ComfyUI request payload. |
 
 ## Batch mode
 
-Use `-b` to trigger multiple generations from the same set of inputs:
+Multiple generations from the same set of inputs, written either as the `-b` flag or as an `xN` argument in the input list. These two are equivalent:
 
 ```console
 $ evoke image -b 5 anime character formal
+$ evoke image anime character formal x5
 ```
 
 Each of the 5 generations independently resolves selector inputs. When a selector matches multiple files, a different random pick is made each time — so you get variety across the batch rather than 5 identical images.
 
 Static inputs (local paths, registry references, and literal prompts) are resolved once and shared across all iterations.
+
+### The `xN` shorthand
+
+`xN` may appear anywhere among the inputs — it is removed from the list before composing, so `x5 character` and `character x5` behave identically. The `x` is case-insensitive, and the count is **capped at 100**; a larger number is clamped to 100 rather than rejected.
+
+When both forms are given, `xN` wins over `-b`. When several `xN` arguments are given, the last one wins.
+
+`N` must be a positive integer. Anything else after the `x` — `x0`, `x-1`, `xfoo` — is not a batch count and falls through to selector classification, where it is looked up as an ordinary tag. A tag literally named `x5` is therefore unreachable as a bare argument; reference that file by path instead.
+
+## Enumerating every combination
+
+Batch mode *samples* the selectors — each generation makes a fresh random pick. The `xall` argument *enumerates* them instead, generating one image for every combination of matching files:
+
+```console
+$ evoke image ill character pose xall
+```
+
+If `character` matches 4 files and `pose` matches 3, that is 12 generations covering every pairing. A selector matching a single file contributes one option, so pinning part of the composition costs nothing — `ill` above resolves to one pipeline file and simply appears in all 12.
+
+The order is deterministic: files are sorted by path within each selector, and the leftmost selector varies slowest. The same command over an unchanged corpus produces the same sequence every time.
+
+Selectors are enumerated independently, so a file matching two of them can fill both slots in the same combination.
+
+### `xall` with a batch count
+
+`xall` and `xN` are separate axes and may be combined, in which case `xN` becomes a per-combination multiplier:
+
+```console
+$ evoke image ill character pose xall x3
+```
+
+That is 3 images of each of the 12 combinations — 36 total.
+
+### The combination limit
+
+The number of combinations is **capped at 100**. Unlike `xN`, which clamps a larger count, exceeding the limit is an error:
+
+```console
+$ evoke image character apparel xall
+evoke image: xall would generate 480 combinations (character 12 x apparel 40), more than the limit of 100; narrow the selection or drop xall
+```
+
+Silently generating a subset would contradict the request, so the per-selector match counts are reported instead — add tags to narrow a slot, or pin one by path.
+
+`xall` is case-insensitive and may appear anywhere among the inputs. It is not a selector: a tag literally named `xall` is unreachable as a bare argument, same as `x5`; reference that file by path instead.
 
 ## Environment variables
 

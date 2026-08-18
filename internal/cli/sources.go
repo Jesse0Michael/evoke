@@ -34,6 +34,7 @@ const (
 	inputRegistryRef
 	inputLiteral
 	inputBatch
+	inputAll
 )
 
 const maxBatch = 100
@@ -59,6 +60,9 @@ func classifyInput(raw string) classifiedInput {
 	if strings.Contains(raw, " ") {
 		return classifiedInput{Raw: raw, Kind: inputLiteral}
 	}
+	if isAllArg(raw) {
+		return classifiedInput{Raw: raw, Kind: inputAll}
+	}
 	if parseBatchArg(raw) > 0 {
 		return classifiedInput{Raw: raw, Kind: inputBatch}
 	}
@@ -81,20 +85,32 @@ func parseBatchArg(raw string) int {
 	return min(n, maxBatch)
 }
 
-// extractBatch scans classified inputs for batch shorthands (xN), removes
-// them, and returns the remaining inputs along with the batch count.
-// If multiple batch args appear, the last one wins.
-func extractBatch(inputs []classifiedInput) ([]classifiedInput, int) {
+// isAllArg reports whether raw is the enumeration marker "xall", which asks for
+// every combination of the matching files rather than one random pick per
+// selector.
+func isAllArg(raw string) bool {
+	return strings.EqualFold(raw, "xall")
+}
+
+// extractBatch scans classified inputs for the generation-count shorthands — xN
+// batch counts and the xall enumeration marker — removes them, and returns the
+// remaining inputs, the batch count, and whether every combination was asked
+// for. If multiple batch args appear, the last one wins.
+func extractBatch(inputs []classifiedInput) ([]classifiedInput, int, bool) {
 	batch := 0
+	all := false
 	filtered := make([]classifiedInput, 0, len(inputs))
 	for _, ci := range inputs {
-		if ci.Kind == inputBatch {
+		switch ci.Kind {
+		case inputBatch:
 			batch = parseBatchArg(ci.Raw)
-			continue
+		case inputAll:
+			all = true
+		default:
+			filtered = append(filtered, ci)
 		}
-		filtered = append(filtered, ci)
 	}
-	return filtered, batch
+	return filtered, batch, all
 }
 
 // parseRegistryRef splits @namespace/name into its parts.

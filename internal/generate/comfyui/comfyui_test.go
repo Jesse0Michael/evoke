@@ -74,6 +74,87 @@ func TestRenderPromptData(t *testing.T) {
 	}
 }
 
+func TestRenderTemplateOutputDir(t *testing.T) {
+	tests := []struct {
+		name     string
+		doc      *evoke.Composition
+		expected string
+	}{
+		{
+			name:     "no NAME and no sources falls back to evoke for both segments",
+			doc:      &evoke.Composition{},
+			expected: "images/evoke/evoke",
+		},
+		{
+			name:     "NAME is the output directory and sources are the filename",
+			doc:      &evoke.Composition{Name: "Test Character", Sources: []string{"/src/test-character.evoke", "/src/portrait.evoke"}},
+			expected: "images/test_character/test_character_portrait",
+		},
+		{
+			name: "an IMAGE group shelves the character directory under it",
+			doc: &evoke.Composition{
+				Name:    "Test Character",
+				Sources: []string{"/src/test-character.evoke"},
+				Images:  []evoke.ImageStage{{Settings: map[string]string{"group": "Test Cast"}}},
+			},
+			expected: "images/test_cast/test_character/test_character",
+		},
+		{
+			name: "a nested group keeps its separators",
+			doc: &evoke.Composition{
+				Name:    "test-character",
+				Sources: []string{"/src/test-character.evoke"},
+				Images:  []evoke.ImageStage{{Settings: map[string]string{"group": "tests/noir"}}},
+			},
+			expected: "images/tests/noir/test_character/test_character",
+		},
+		{
+			name: "a group that normalizes to nothing is ignored",
+			doc: &evoke.Composition{
+				Name:    "test-character",
+				Sources: []string{"/src/test-character.evoke"},
+				Images:  []evoke.ImageStage{{Settings: map[string]string{"group": "/../.."}}},
+			},
+			expected: "images/test_character/test_character",
+		},
+		{
+			name: "a group on a disabled IMAGE stage is not applied",
+			doc: &evoke.Composition{
+				Name:    "test-character",
+				Sources: []string{"/src/test-character.evoke"},
+				Images:  []evoke.ImageStage{{Disabled: true, Settings: map[string]string{"group": "test-cast"}}},
+			},
+			expected: "images/test_character/test_character",
+		},
+		{
+			name: "a group on the upscale stage does not affect the output directory",
+			doc: &evoke.Composition{
+				Name:    "test-character",
+				Sources: []string{"/src/test-character.evoke"},
+				Images:  []evoke.ImageStage{{Argument: "upscale", Settings: map[string]string{"group": "test-cast"}}},
+			},
+			expected: "images/test_character/test_character",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := renderPromptData(tt.doc)
+			applyDefaults(&data)
+
+			payload, err := renderTemplate(data, tt.doc.Name, tt.doc.Sources, false)
+			require.NoError(t, err)
+
+			var workflow map[string]struct {
+				Inputs struct {
+					FilenamePrefix string `json:"filename_prefix"`
+				} `json:"inputs"`
+			}
+			require.NoError(t, json.Unmarshal(payload, &workflow))
+			require.Equal(t, tt.expected, workflow["save"].Inputs.FilenamePrefix)
+		})
+	}
+}
+
 func TestClient_Queue(t *testing.T) {
 	tests := []struct {
 		name            string

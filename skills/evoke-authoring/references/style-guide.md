@@ -60,7 +60,8 @@ That does not make it scratch space. Three rules:
 
 - **Write it only when the user asks for a voice, or the source describes one.** §2 applies unchanged, and applies harder here: nothing renders `VOICE`, so an invented one is never caught by a bad output. It sits in the file looking sourced until someone builds the target and ships it.
 - **Sound, not speech.** How the character sounds is `VOICE`. What they say and how they word it is `PERSONALITY` and the `CHAT` instructions — and only those reach a model today. "Rarely uses contractions," "trails off mid-sentence," "answers questions with questions" are language traits; putting them in `VOICE` means no target reads them at all, which is the one genuinely silent failure in this format.
-- **§3 form, phrases not prose.** `low alto, slight rasp, unhurried cadence`, one comma-joined line, no trailing period. The likely first consumer is a synthesis target conditioned on a description, which reads phrases and not prose, and a language target reads phrases fine — so phrases are the form that survives either outcome. Skip weights: there is no model whose prior you are fighting.
+- **Character descriptors are conditioning, not leakage.** Prompt-to-voice models are conditioned on a description of the *speaker*, not on timbre words — `18 year old guy, comic relief, young, puberty, goofball, humorous, quickly delivered` is a real input to one, and every token in it shapes the output. When the source is itself a synthesis prompt, that prompt **is** the block: paste it, and strip only engine and quality configuration (`High-fidelity speech quality`, sample rate, provider, model name), which belongs to a settings block. Do not "clean it up" into `low alto, slight rasp` — translating a working synthesis prompt into pure timbre vocabulary discards the conditioning the model actually reads, and nothing downstream will ever tell you it happened. This bullet outranks the one above when the source came from a voice model.
+- **§3 form, phrases not prose.** `low alto, slight rasp, unhurried cadence`, one comma-joined line, no trailing period. The consumer is a synthesis target conditioned on a description, which reads phrases and not prose, and a language target reads phrases fine — so phrases are the form that survives either outcome. Skip weights: there is no model whose prior you are fighting.
 - **Positive only.** Describe the voice the character has. There is no exclusion list to write here — a voice has one description, and "not shrill" is not a thing to say about it.
 
 Engine configuration is not this block's job. A synthesis backend, model, and its settings belong in a structured declaration of their own when one exists — `VOICE` is to that what `APPEARANCE` is to `IMAGE`.
@@ -83,6 +84,10 @@ Bloat early and you starve `APPAREL`/`ENVIRONMENT` at the tail.
 **Write only what the source supports, and only the blocks you were asked for.** This outranks every other rule here. Each value has to trace to something the user said or the source material states. A declaration you have no material for is left out — not filled from genre convention, not extrapolated from the material you do have, not written because the block exists and looks empty. Blocks are optional. A file with four declarations is a normal file.
 
 The failure is invisible on the page: invented prose reads exactly like sourced prose, so nobody catches it at review time, and once written it becomes canon the character then asserts as fact. Thin notes produce a short file. Say in your reply what you left out and why — that is the useful answer, not a fuller-looking file.
+
+**Relocate before you drop, and never drop silently.** This rule has a symmetric failure the wording above hides: writing less than the source supports. When converting existing material — another tool's prompt, a character sheet, an export — every token in it was put there on purpose by someone. A token that doesn't belong in the block you are currently writing almost always belongs in a *different* block, and the order to check is: does it name something drawable (`APPEARANCE`), worn (`APPAREL`), a place (`ENVIRONMENT`), a medium or art style (`IMAGE`), a behavior or narrative role (`PERSONALITY`), or a thing to suppress (`!BLOCK`)? Only after all of those fail is dropping it correct — and then it goes in your reply as an explicit list, with the reason. "It didn't fit the block I was writing" is not a reason to delete an author's stated intent. A conversion that silently discards a third of its input looks identical, on the page, to one that kept everything.
+
+**Form is not fact.** §2 governs *what* a block asserts, never *how* it is worded. Rewriting terse source fragments into the prose a language block requires — `Male - Drakona - Warrior` into `Blitz is a Drakona warrior` — invents nothing and is required by §4.3. Pasting the fragments verbatim to "stay faithful" is the actual error: it puts tags in a prose block, which §4.3 forbids and a chat model reads as noise. Conversely, dropping a fact to make a sentence read better *is* a §2 violation. Change the form freely; change the facts never.
 
 Rendering blocks are the one place some invention is unavoidable: notes never specify a nose, and `APPEARANCE` cannot render an omission. There, choose the plainest values consistent with what _is_ stated, invent nothing that carries meaning — scars, tattoos, missing fingers, insignia are history and belong to whoever owns the canon — and list the choices you made in your reply. Language blocks are the opposite. An invented `PERSONALITY` pattern or `BACKSTORY` event is something the character will act on, in the voice of someone who knows their own life, contradicting the real material. Leave the block out.
 
@@ -251,6 +256,8 @@ Camera, lens, aperture, resolution, quality anchors, sampler settings → **one*
 
 `IMAGE` text lands at the prompt front — right for quality anchors, wrong for eye color.
 
+**The exception is a style the source binds to one character.** When the material says this character is rendered in this medium — a bot whose stored prompt carries `dreamworks, 3d animation, Pixar`, an existing asset you are transcribing — that is a fact about the character as authored, and it belongs in an `IMAGE` block in the character file. Do not silently relocate it to a style file the caller has to know to select, and do not drop it (§2). Say once that `IMAGE` is singular, so two such characters in one composition warn and the first wins, and let the author decide; the split into a shared style file is a refactor they may want later and never something to perform on their behalf mid-conversion.
+
 ### 3.10 Subject count and framing belong to the shot file
 
 `1girl`, `1boy`, `2girls`, `solo`, `upper body`, `full body`, `portrait`, `from below`, `from behind`, `looking at viewer`, `cowboy shot` — none of these is a trait of the character. They are instructions about the picture, and they belong to the shot/view file selected per image, exactly as camera and quality belong to the pipeline file (§3.9).
@@ -279,7 +286,7 @@ Selected with no shot file, the model picks count and framing itself. That is th
 
 ### 3.11 Words with a second, literal meaning
 
-These name an _object_ to the model. Append when you find new ones.
+To the model these name an _object_, or a tagged genre, rather than the sense you meant. Append when you find new ones.
 
 | Don't use                               | Renders                      | Use instead                                     |
 | :-------------------------------------- | :--------------------------- | :---------------------------------------------- |
@@ -301,6 +308,10 @@ These name an _object_ to the model. Append when you find new ones.
 | `jungle temple ruins` + snake character | extra snakes                 | plain background                                |
 | `olive skin`                            | green-tinted skin            | `warm tan skin`, `light brown skin`             |
 | `honey tan complexion`                  | literal honey drips          | `warm tan complexion`                           |
+| `lavender` as a color                   | fields of the flower         | `pale purple`, `light purple`                   |
+| `tendrils`                              | tentacles                    |                                                 |
+| `bound`                                 | bondage                      |                                                 |
+| `tail`                                  | an animal tail               |                                                 |
 
 ---
 
@@ -405,6 +416,8 @@ Broad qualities need their mechanism spelled out. Flirtatious, shy, arrogant, nu
 **When the source names a trait but not its mechanism**, this rule is a bar on the traits you have material for — not a license to manufacture the material. Session notes calling someone "good-humoured" record a real trait and zero behaviors; writing `greets strangers as though they are expected and offers them food before asking their business` clears §4.4 and invents three. Go back to the source for behavior it actually records — notes describe what a character _did_ far more often than they characterize them, and that is where a sourced mechanism comes from. If there is genuinely nothing, write the plain trait and flag in your reply that its mechanism is unsourced, or leave it out. A three-line sourced `PERSONALITY` beats a six-line invented one. The block is not a quota.
 
 **Traits, not rules.** `curious` is a trait. `always ask a follow-up question` is an instruction to the model and belongs in `CHAT` (§4.7).
+
+**Narrative role is a trait, and it lives here.** "the comedic relief of the story," "the party's tank," "the straight man," "the mentor" — these describe the function a character performs in a group, which shapes how they behave in every scene, so they are `PERSONALITY` and not `CHARACTER`. `CHARACTER` holds what someone *is* (species, job, age, condition); the role they play *among others* is behavior. A source that states one is handing you a real trait — keep it, in the source's own words where they work.
 
 No trailing period — lines are comma-joined onto a single `Personality:` line, so each must stand alone. `PERSONALITY` is the one comma-joined block that earns one value per line (§2): each pattern is a full clause, and they get edited individually. `!PERSONALITY` does not — it is a bare list of traits to avoid, so it goes on one line.
 
@@ -540,6 +553,9 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 - [ ] Can every value be pointed at something in the prompt or the source material?
 - [ ] Any block written because it was empty rather than because there was material for it?
 - [ ] Any declaration present that nobody asked for?
+- [ ] Converting existing material — is every token in the source either placed in some block or named in your reply as dropped, with a reason?
+- [ ] Anything dropped that would have fit `IMAGE`, `PERSONALITY`, `?APPAREL`, `?ENVIRONMENT`, or a `!BLOCK` if you had looked there?
+- [ ] Any fact lost while changing the form of a block, or any source fragment pasted verbatim into a prose block?
 
 **Rendering blocks (§3)**
 
@@ -567,7 +583,8 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 **`VOICE` (§1)**
 
 - [ ] Written because a voice was asked for or described, not because the character felt unfinished without one?
-- [ ] Only what the character sounds like — nothing about word choice or phrasing, which no target would then read?
+- [ ] Source was a prompt-to-voice prompt — is it kept intact, with only engine/quality config stripped, rather than rewritten into timbre words?
+- [ ] Nothing about word choice or phrasing, which no target would then read?
 - [ ] Comma-joined phrases, no prose, no weights?
 
 **Both**
