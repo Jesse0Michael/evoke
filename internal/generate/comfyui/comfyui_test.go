@@ -74,21 +74,42 @@ func TestRenderPromptData(t *testing.T) {
 	}
 }
 
+// saveMetadata is the subset of "Image Saver" inputs that Civitai reads back.
+type saveMetadata struct {
+	Positive      string  `json:"positive"`
+	Negative      string  `json:"negative"`
+	ModelName     string  `json:"modelname"`
+	Seed          uint64  `json:"seed_value"`
+	Steps         int     `json:"steps"`
+	CFG           float64 `json:"cfg"`
+	SamplerName   string  `json:"sampler_name"`
+	SchedulerName string  `json:"scheduler_name"`
+	Denoise       float64 `json:"denoise"`
+	Width         int     `json:"width"`
+	Height        int     `json:"height"`
+	ClipSkip      int     `json:"clip_skip"`
+}
+
+type savePath struct {
+	Path     string `json:"path"`
+	Filename string `json:"filename"`
+}
+
 func TestRenderTemplateOutputDir(t *testing.T) {
 	tests := []struct {
 		name     string
 		doc      *evoke.Composition
-		expected string
+		expected savePath
 	}{
 		{
 			name:     "no NAME and no sources falls back to evoke for both segments",
 			doc:      &evoke.Composition{},
-			expected: "images/evoke/evoke",
+			expected: savePath{Path: "images/evoke", Filename: "evoke"},
 		},
 		{
 			name:     "NAME is the output directory and sources are the filename",
 			doc:      &evoke.Composition{Name: "Test Character", Sources: []string{"/src/test-character.evoke", "/src/portrait.evoke"}},
-			expected: "images/test_character/test_character_portrait",
+			expected: savePath{Path: "images/test_character", Filename: "test_character_portrait"},
 		},
 		{
 			name: "an IMAGE group shelves the character directory under it",
@@ -97,7 +118,7 @@ func TestRenderTemplateOutputDir(t *testing.T) {
 				Sources: []string{"/src/test-character.evoke"},
 				Images:  []evoke.ImageStage{{Settings: map[string]string{"group": "Test Cast"}}},
 			},
-			expected: "images/test_cast/test_character/test_character",
+			expected: savePath{Path: "images/test_cast/test_character", Filename: "test_character"},
 		},
 		{
 			name: "a nested group keeps its separators",
@@ -106,7 +127,7 @@ func TestRenderTemplateOutputDir(t *testing.T) {
 				Sources: []string{"/src/test-character.evoke"},
 				Images:  []evoke.ImageStage{{Settings: map[string]string{"group": "tests/noir"}}},
 			},
-			expected: "images/tests/noir/test_character/test_character",
+			expected: savePath{Path: "images/tests/noir/test_character", Filename: "test_character"},
 		},
 		{
 			name: "a group that normalizes to nothing is ignored",
@@ -115,7 +136,7 @@ func TestRenderTemplateOutputDir(t *testing.T) {
 				Sources: []string{"/src/test-character.evoke"},
 				Images:  []evoke.ImageStage{{Settings: map[string]string{"group": "/../.."}}},
 			},
-			expected: "images/test_character/test_character",
+			expected: savePath{Path: "images/test_character", Filename: "test_character"},
 		},
 		{
 			name: "a group on a disabled IMAGE stage is not applied",
@@ -124,7 +145,7 @@ func TestRenderTemplateOutputDir(t *testing.T) {
 				Sources: []string{"/src/test-character.evoke"},
 				Images:  []evoke.ImageStage{{Disabled: true, Settings: map[string]string{"group": "test-cast"}}},
 			},
-			expected: "images/test_character/test_character",
+			expected: savePath{Path: "images/test_character", Filename: "test_character"},
 		},
 		{
 			name: "a group on the upscale stage does not affect the output directory",
@@ -133,7 +154,7 @@ func TestRenderTemplateOutputDir(t *testing.T) {
 				Sources: []string{"/src/test-character.evoke"},
 				Images:  []evoke.ImageStage{{Argument: "upscale", Settings: map[string]string{"group": "test-cast"}}},
 			},
-			expected: "images/test_character/test_character",
+			expected: savePath{Path: "images/test_character", Filename: "test_character"},
 		},
 	}
 	for _, tt := range tests {
@@ -145,12 +166,10 @@ func TestRenderTemplateOutputDir(t *testing.T) {
 			require.NoError(t, err)
 
 			var workflow map[string]struct {
-				Inputs struct {
-					FilenamePrefix string `json:"filename_prefix"`
-				} `json:"inputs"`
+				Inputs savePath `json:"inputs"`
 			}
 			require.NoError(t, json.Unmarshal(payload, &workflow))
-			require.Equal(t, tt.expected, workflow["save"].Inputs.FilenamePrefix)
+			require.Equal(t, tt.expected, workflow["save"].Inputs)
 		})
 	}
 }
@@ -294,6 +313,103 @@ func TestClient_ResolveOutputs(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, outputs)
+		})
+	}
+}
+
+func TestRenderTemplateCivitaiMetadata(t *testing.T) {
+	tests := []struct {
+		name     string
+		doc      *evoke.Composition
+		expected saveMetadata
+	}{
+		{
+			name: "sampler settings and checkpoint are recorded for civitai",
+			doc: &evoke.Composition{
+				Appearance: evoke.Prompt{Positive: []string{"test-appearance"}},
+				Images: []evoke.ImageStage{{Settings: map[string]string{
+					"checkpoint": "test-checkpoint.safetensors",
+					"steps":      "30",
+					"cfg":        "5",
+					"width":      "832",
+					"height":     "1216",
+				}}},
+			},
+			expected: saveMetadata{
+				Positive:      "test-appearance, , ",
+				Negative:      ", , ",
+				ModelName:     "test-checkpoint.safetensors",
+				Steps:         30,
+				CFG:           5,
+				SamplerName:   defaultSamplerName,
+				SchedulerName: defaultScheduler,
+				Denoise:       defaultDenoise,
+				Width:         832,
+				Height:        1216,
+				ClipSkip:      2,
+			},
+		},
+		{
+			name: "loras are appended as civitai tags so the saver can hash them",
+			doc: &evoke.Composition{
+				Appearance: evoke.Prompt{Positive: []string{"test-appearance"}},
+				Loras: []evoke.LoraDefinition{
+					{Argument: "test-lora", Settings: map[string]string{"model": "test-lora-1.safetensors", "strength": "0.8"}},
+				},
+				Images: []evoke.ImageStage{{Loras: []string{"test-lora"}}},
+			},
+			expected: saveMetadata{
+				Positive:      "test-appearance, ,  <lora:test-lora-1:0.8>",
+				Negative:      ", , ",
+				ModelName:     defaultCheckpoint,
+				Steps:         defaultSteps,
+				CFG:           defaultCFG,
+				SamplerName:   defaultSamplerName,
+				SchedulerName: defaultScheduler,
+				Denoise:       defaultDenoise,
+				Width:         defaultWidth,
+				Height:        defaultHeight,
+				ClipSkip:      2,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := renderPromptData(tt.doc)
+			applyDefaults(&data)
+
+			payload, err := renderTemplate(data, tt.doc.Name, tt.doc.Sources, false)
+			require.NoError(t, err)
+
+			var workflow map[string]struct {
+				ClassType string          `json:"class_type"`
+				Inputs    json.RawMessage `json:"inputs"`
+			}
+			require.NoError(t, json.Unmarshal(payload, &workflow))
+			require.Equal(t, "Image Saver", workflow["save"].ClassType)
+
+			var got saveMetadata
+			require.NoError(t, json.Unmarshal(workflow["save"].Inputs, &got))
+
+			var sampler struct {
+				Seed uint64 `json:"seed"`
+			}
+			require.NoError(t, json.Unmarshal(workflow["sampler"].Inputs, &sampler))
+
+			var encoded struct {
+				Text string `json:"text"`
+			}
+			require.NoError(t, json.Unmarshal(workflow["prompt_pos"].Inputs, &encoded))
+
+			// The seed recorded in the metadata must be the one the sampler used,
+			// or the image cannot be reproduced from what Civitai displays.
+			require.Equal(t, sampler.Seed, got.Seed)
+
+			// <lora:> tags are metadata-only and must never reach the encoded prompt.
+			require.NotContains(t, encoded.Text, "<lora:")
+
+			got.Seed = 0
+			require.Equal(t, tt.expected, got)
 		})
 	}
 }

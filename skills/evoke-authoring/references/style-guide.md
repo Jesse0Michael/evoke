@@ -312,6 +312,8 @@ To the model these name an _object_, or a tagged genre, rather than the sense yo
 | `tendrils`                              | tentacles                    |                                                 |
 | `bound`                                 | bondage                      |                                                 |
 | `tail`                                  | an animal tail               |                                                 |
+| `cuffs`                                 | handcuffs                    | `shirt cuffs`, `buttoned sleeve cuffs`          |
+| `collar`                                | a choker or dog collar       | `shirt collar`, `pointed collar`                |
 
 ---
 

@@ -1,3 +1,4 @@
+{{- $seed := RandomSeed -}}
 {
   "ckpt": {
     "class_type": "CheckpointLoaderSimple",
@@ -62,7 +63,7 @@
   "sampler": {
     "class_type": "KSampler",
     "inputs": {
-      "seed": {{ RandomSeed }},
+      "seed": {{ $seed }},
       "steps": {{ .Prompt.Sampler.Steps }},
       "cfg": {{ .Prompt.Sampler.CFG }},
       "sampler_name": "{{ .Prompt.Sampler.SamplerName }}",
@@ -631,10 +632,38 @@
 
   {{- /* ================= SAVE ================= */ -}}
   "save": {
-    "class_type": "SaveImage",
+    "class_type": "Image Saver",
     "inputs": {
-      "filename_prefix": "images/{{ .OutputDir }}/{{ .Name }}",
-      "images": ["{{ if not .Prompt.Hand.Disabled }}hand_detail{{ else if not .Prompt.LowerBody.Disabled }}lower_body_detail{{ else if not .Prompt.UpperBody.Disabled }}upper_body_detail{{ else if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0]
+      "images": ["{{ if not .Prompt.Hand.Disabled }}hand_detail{{ else if not .Prompt.LowerBody.Disabled }}lower_body_detail{{ else if not .Prompt.UpperBody.Disabled }}upper_body_detail{{ else if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "path": "images/{{ .OutputDir }}",
+      "filename": "{{ .Name }}",
+      "extension": "png",
+
+      {{- /* Metadata only: this text is never encoded, so the <lora:> tags Civitai
+             needs are appended here rather than to the CLIPTextEncode prompt. The
+             node reads LoRAs by regex over this string and cannot see the loader
+             chain; easy_remix strips the tags again once they are hashed. */}}
+      "positive": "{{ .Prompt.Positive }}, {{ .Prompt.Apparel.Positive }}, {{ .Prompt.Environment.Positive }}{{ range .Prompt.Loras }} <lora:{{ StripExt .Name }}:{{ .Strength }}>{{ end }}",
+      "negative": "{{ .Prompt.Negative }}, {{ .Prompt.Apparel.Negative }}, {{ .Prompt.Environment.Negative }}",
+
+      "modelname": "{{ .Prompt.Checkpoint }}",
+      "seed_value": {{ $seed }},
+      "steps": {{ .Prompt.Sampler.Steps }},
+      "cfg": {{ .Prompt.Sampler.CFG }},
+      "sampler_name": "{{ .Prompt.Sampler.SamplerName }}",
+      "scheduler_name": "{{ .Prompt.Sampler.Scheduler }}",
+      "denoise": {{ .Prompt.Sampler.Denoise }},
+
+      {{- /* A1111 convention records the pre-upscale latent size: it is the size
+             that reproduces the image, not the size of the file on disk. */}}
+      "width": {{ .Prompt.Sampler.Width }},
+      "height": {{ .Prompt.Sampler.Height }},
+      "clip_skip": 2,
+
+      "download_civitai_data": false,
+      "easy_remix": true,
+      "embed_workflow": true,
+      "show_preview": true
     }
   }
 }
