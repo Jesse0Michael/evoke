@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/term"
@@ -36,6 +38,12 @@ const (
 
 // wheelLines is how far one wheel notch scrolls the details pane.
 const wheelLines = 3
+
+// flashDuration is how long a confirmation glyph stays on screen. The input loop
+// is blocked for it, which is deliberate: there is nothing to do while a copy
+// confirms, and keystrokes typed meanwhile stay buffered by the tty and are
+// handled the moment it returns — so nothing is lost, it just waits.
+const flashDuration = 300 * time.Millisecond
 
 // ViewCmd launches the interactive image viewer for recent output.
 func ViewCmd(args []string, _ bool) int {
@@ -85,6 +93,10 @@ func runViewer(_ context.Context, pageSize int) error {
 	m := newViewModel(outputDir, images, pageSize)
 	m.out = os.Stdout
 	m.draw = drawImage
+	m.copyText = copyTextToClipboard
+	m.copyImage = copyImageToClipboard
+	m.reveal = revealInFinder
+	m.sleep = time.Sleep
 	m.size = func() (int, int) {
 		w, h, err := term.GetSize(fd)
 		if err != nil || w == 0 || h == 0 {
@@ -149,10 +161,26 @@ type viewModel struct {
 	paintedCols int
 	paintedRows int
 
+	// A file action reports itself in one of two places. flashKey is the action
+	// whose glyph is currently lit in the controls bar, painted and withdrawn
+	// inside the action itself so it is transient without the read loop needing a
+	// timer to wake it. errMsg is a failure, which goes to the status bar instead
+	// and persists until the next event, since it has to be readable.
+	flashKey string
+	errMsg   string
+
 	// Seams for the terminal, so tests drive the model without one.
 	draw func(path string, cols, rows int)
 	size func() (int, int)
 	out  io.Writer
+
+	// Seams for the file actions, so tests drive the keys without touching the
+	// clipboard or launching Finder.
+	copyText  func(path string) error
+	copyImage func(path string) error
+	reveal    func(path string) error
+	// sleep is a seam so tests do not wait out a confirmation glyph.
+	sleep func(time.Duration)
 
 	exitMsg string
 }
@@ -171,6 +199,10 @@ func newViewModel(outputDir string, images []viewImage, pageSize int) viewModel 
 		draw:      func(string, int, int) {},
 		size:      func() (int, int) { return 120, 40 },
 		out:       io.Discard,
+		copyText:  func(string) error { return nil },
+		copyImage: func(string) error { return nil },
+		reveal:    func(string) error { return nil },
+		sleep:     func(time.Duration) {},
 	}
 }
 
@@ -205,6 +237,9 @@ func (m *viewModel) handle(ev event) bool {
 	if len(m.images) == 0 {
 		return true
 	}
+	// The message belongs to the frame its action painted; the next event
+	// replaces it.
+	m.errMsg = ""
 	if ev.wheel != 0 {
 		m.details.scroll(ev.wheel * wheelLines)
 		return false
@@ -270,11 +305,59 @@ func (m *viewModel) handle(ev event) bool {
 			m.load()
 		}
 
+	case "c", "C":
+		if m.act(m.copyText) {
+			m.confirm("c")
+		}
+
+	case "o", "O":
+		// Not confirmed: Finder coming to the front is the confirmation.
+		m.act(m.reveal)
+
+	case "y", "Y":
+		if m.act(m.copyImage) {
+			m.confirm("y")
+		}
+
 	case "d", "D":
 		m.mode = modeConfirmDelete
 	}
 
 	return false
+}
+
+// act runs a file action against the selected file, reporting a failure in the
+// status bar. It reports whether the action ran and succeeded, so the caller
+// decides whether that is worth confirming.
+func (m *viewModel) act(fn func(string) error) bool {
+	path := m.current()
+	if path == "" {
+		return false
+	}
+	// EVOKE_OUTPUT_DIR may be relative, and a copied path that only resolves
+	// from the viewer's working directory is not much use once it is pasted.
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	if err := fn(path); err != nil {
+		m.errMsg = err.Error()
+		return false
+	}
+	return true
+}
+
+// confirm lights the glyph beside an action's own hint and withdraws it, which
+// is what makes it transient without the read loop needing a timer to wake it.
+// Only the controls row is written, so the unchanged image pane never goes near
+// chafa.
+func (m *viewModel) confirm(key string) {
+	m.flashKey = key
+	// layout has not run on a model that was never sized.
+	if m.height > 0 {
+		fmt.Fprintf(m.out, "%s\033[%d;1H\033[K%s", cursorHide, m.height, m.controlsBar())
+	}
+	m.sleep(flashDuration)
+	m.flashKey = ""
 }
 
 // forward advances by n images, revealing further pages as it goes.
@@ -431,6 +514,13 @@ func (m *viewModel) paint() {
 
 	var b strings.Builder
 
+	// The cursor is hidden on entry, but every frame re-asserts it: painting
+	// leaves the cursor wherever the last write ended, and a visible block parked
+	// beside the status row is louder than anything in it. The sequence is
+	// idempotent, so 4 bytes a frame is cheaper than tracking who turned it back
+	// on — chafa draws into the pane and restores what it found.
+	b.WriteString(cursorHide)
+
 	lines := m.details.visible()
 	for row := 1; row <= m.height-2; row++ {
 		line := ""
@@ -460,6 +550,7 @@ func (m *viewModel) paint() {
 	if redraw {
 		m.painted, m.paintedCols, m.paintedRows = path, m.imgCols, m.imgRows
 		m.draw(path, m.imgCols, m.imgRows)
+		_, _ = io.WriteString(m.out, cursorHide)
 	}
 }
 
@@ -476,13 +567,17 @@ func (m *viewModel) statusBar() string {
 	if m.shown < len(m.images) {
 		count += "+"
 	}
-	return fmt.Sprintf("\033[1m[%s]\033[0m  %s", count, m.images[m.idx].label())
+	bar := fmt.Sprintf("\033[1m[%s]\033[0m  %s", count, m.images[m.idx].label())
+	if m.errMsg != "" {
+		bar += fmt.Sprintf("   \033[1;31m%s\033[0m", m.errMsg)
+	}
+	return bar
 }
 
 func (m *viewModel) controlsBar() string {
 	switch m.mode {
 	case modeConfirmDelete:
-		return "\033[1;31m← → cancel  d again to delete\033[0m"
+		return "\033[1;31many key cancel  d again to delete\033[0m"
 	case modeDebug:
 		return "\033[2m← → navigate  q/esc back\033[0m"
 	}
@@ -491,8 +586,24 @@ func (m *viewModel) controlsBar() string {
 	if m.hasDebug {
 		hints = append(hints, "t debug")
 	}
-	hints = append(hints, "d delete", "q quit")
+	// The confirmable actions always render their marker column, lit or blank, so
+	// a confirmation cannot shift the row right and then back.
+	hints = append(hints,
+		"c copy path "+m.mark("c"),
+		"o finder",
+		"y copy image "+m.mark("y"),
+		"d delete", "q quit")
 	return "\033[2m" + strings.Join(hints, "  ") + "\033[0m"
+}
+
+// mark is the single cell beside an action's hint: the glyph while that action
+// is confirming, a blank otherwise. The glyph breaks out of the bar's dim
+// styling and hands it back, so the rest of the row is unaffected.
+func (m *viewModel) mark(key string) string {
+	if m.flashKey == key {
+		return "\033[0;1;32m" + flashGlyph + "\033[0;2m"
+	}
+	return " "
 }
 
 // pad squares a rendered line off to w columns so it overwrites whatever the

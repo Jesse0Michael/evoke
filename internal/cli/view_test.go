@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -152,7 +153,7 @@ func TestViewModelDelete(t *testing.T) {
 	// d arms the confirmation; only a second d removes the file.
 	m = press(m, keys("right", "d")...)
 	require.Equal(t, modeConfirmDelete, m.mode)
-	require.Contains(t, out.String(), "← → cancel  d again to delete")
+	require.Contains(t, out.String(), "any key cancel  d again to delete")
 
 	m = press(m, key("left"))
 	require.Equal(t, modeBrowse, m.mode)
@@ -272,21 +273,116 @@ func TestViewControlsBar(t *testing.T) {
 		name     string
 		mode     viewMode
 		hasDebug bool
+		flashKey string
 		want     string
 	}{
-		{name: "browse", mode: modeBrowse, want: "← → navigate  d delete  q quit"},
-		{name: "browse with debug frames", mode: modeBrowse, hasDebug: true, want: "← → navigate  t debug  d delete  q quit"},
-		{name: "confirming a delete", mode: modeConfirmDelete, want: "← → cancel  d again to delete"},
+		{name: "browse", mode: modeBrowse, want: "← → navigate  c copy path    o finder  y copy image    d delete  q quit"},
+		{name: "confirming a copy", mode: modeBrowse, flashKey: "c", want: "← → navigate  c copy path ✓  o finder  y copy image    d delete  q quit"},
+		{name: "browse with debug frames", mode: modeBrowse, hasDebug: true, want: "← → navigate  t debug  c copy path    o finder  y copy image    d delete  q quit"},
+		{name: "confirming a delete", mode: modeConfirmDelete, want: "any key cancel  d again to delete"},
 		{name: "stepping debug frames", mode: modeDebug, want: "← → navigate  q/esc back"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := newViewModel("/out", testImages(2), 0)
-			m.mode, m.hasDebug = tt.mode, tt.hasDebug
+			m.mode, m.hasDebug, m.flashKey = tt.mode, tt.hasDebug, tt.flashKey
 
 			// The scroll keys and the ±50 jump are deliberately unadvertised.
 			require.Equal(t, tt.want, stripSGR(m.controlsBar()))
+		})
+	}
+}
+
+// TestViewControlsBarDoesNotShift covers the reserved marker column: lighting a
+// glyph must not move anything beside it.
+func TestViewControlsBarDoesNotShift(t *testing.T) {
+	for _, key := range []string{"c", "y"} {
+		t.Run(key, func(t *testing.T) {
+			m := newViewModel("/out", testImages(2), 0)
+			idle := ansi.StringWidth(stripSGR(m.controlsBar()))
+			m.flashKey = key
+
+			require.Equal(t, idle, ansi.StringWidth(stripSGR(m.controlsBar())))
+		})
+	}
+}
+
+func TestViewFileActions(t *testing.T) {
+	// The action seams are stubbed, so nothing here reaches the clipboard or
+	// Finder; each case records the path its action was handed.
+	tests := []struct {
+		name         string
+		keys         []string
+		err          error
+		wantCalls    []string
+		wantConfirms int
+		wantErrMsg   string
+	}{
+		{name: "c copies the path", keys: []string{"c"}, wantCalls: []string{"copyText:/out/test-image-a.png"}, wantConfirms: 1},
+		{name: "y copies the image", keys: []string{"y"}, wantCalls: []string{"copyImage:/out/test-image-a.png"}, wantConfirms: 1},
+
+		// Finder coming to the front is its own confirmation.
+		{name: "o reveals without confirming", keys: []string{"o"}, wantCalls: []string{"reveal:/out/test-image-a.png"}, wantConfirms: 0},
+
+		{name: "an action applies to the selected file", keys: []string{"right", "c"}, wantCalls: []string{"copyText:/out/test-image-b.png"}, wantConfirms: 1},
+
+		// A failure has to stay readable, so it persists instead of flashing.
+		{name: "a failure is reported instead", keys: []string{"y"}, err: errors.New("only PNG images can be copied"), wantCalls: []string{"copyImage:/out/test-image-a.png"}, wantConfirms: 0, wantErrMsg: "only PNG images can be copied"},
+		{name: "the next key clears a failure", keys: []string{"y", "right"}, err: errors.New("only PNG images can be copied"), wantCalls: []string{"copyImage:/out/test-image-a.png"}, wantConfirms: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls []string
+			confirms := 0
+			record := func(label string) func(string) error {
+				return func(path string) error {
+					calls = append(calls, label+":"+path)
+					return tt.err
+				}
+			}
+
+			out := &bytes.Buffer{}
+			m := newViewModel("/out", testImages(8), 0)
+			m.out = out
+			m.copyText, m.copyImage, m.reveal = record("copyText"), record("copyImage"), record("reveal")
+			m.sleep = func(time.Duration) { confirms++ }
+			m.layout()
+			out.Reset()
+
+			m = press(m, keys(tt.keys...)...)
+
+			require.Equal(t, tt.wantCalls, calls)
+			require.Equal(t, tt.wantConfirms, confirms)
+			// The glyph is withdrawn before the loop repaints, so it survives only
+			// in what was written to the screen.
+			require.Equal(t, tt.wantConfirms > 0, strings.Contains(out.String(), flashGlyph))
+			require.Equal(t, tt.wantErrMsg, m.errMsg)
+			require.Empty(t, m.flashKey)
+			require.Equal(t, modeBrowse, m.mode)
+		})
+	}
+}
+
+func TestViewStatusBar(t *testing.T) {
+	tests := []struct {
+		name   string
+		errMsg string
+		want   string
+	}{
+		{name: "no action taken", errMsg: "", want: "[1/8]  test-image-a.png"},
+
+		// A success shows in the controls bar instead; only a failure lands here.
+		{name: "a failed action", errMsg: "only PNG images can be copied", want: "[1/8]  test-image-a.png   only PNG images can be copied"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newViewModel("/out", testImages(8), 0)
+			m.errMsg = tt.errMsg
+
+			require.Equal(t, tt.want, stripSGR(m.statusBar()))
 		})
 	}
 }
