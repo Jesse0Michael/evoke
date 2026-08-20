@@ -193,7 +193,9 @@ IMAGE upscale
     denoise = 0.3
 ```
 
-**Settings:** `checkpoint`, `group`, `steps`, `cfg`, `sampler_name`, `scheduler`, `width`, `height`, `denoise`, `disabled`. For `IMAGE upscale`: `upscale_model`, `factor`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `tile_width`, `tile_height`, `disabled`.
+**Settings:** `base`, `checkpoint`, `group`, `steps`, `cfg`, `sampler_name`, `scheduler`, `width`, `height`, `denoise`, `disabled`. Split-architecture bases load the diffusion model, text encoder, and VAE as three files instead of a checkpoint: `unet`, `clip`, `clip_type`, `vae`, `weight_dtype`, `shift`, and — where the base supports it — `nag_scale`, `nag_alpha`, `nag_tau`. For `IMAGE upscale`: `upscale_model`, `factor`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `tile_width`, `tile_height`, `disabled`.
+
+`base` on the unnamed stage names the model architecture to render — `sdxl` (the default) or `anima`. It selects which node graph the composition compiles into and which defaults it inherits, and each architecture reads only its own model settings, so a `checkpoint` means nothing under `anima`. Set it in the pipeline file that supplies the model files. A `base` on `IMAGE upscale` is ignored.
 
 `disabled = true` switches a stage off — see [Disabling a stage](#disabling-a-stage). `group` shelves the output directory — see [Grouping output](#grouping-output).
 
@@ -208,7 +210,9 @@ LORA rimix
     clip = 0.8
 ```
 
-**Settings:** `model` (required — the filename), `strength` (default 1.0), `clip` (default 1.0), `disabled`.
+**Settings:** `model` (required — the filename), `base`, `strength` (default 1.0), `clip` (default 1.0), `disabled`.
+
+`base` declares the architecture the weights were trained against, and means exactly what it does on `IMAGE` — including its default. LoRA weights cannot load into a different base model, so a `LORA` whose `base` does not match the composition's is **skipped**, not an error: one file can carry a variant per architecture and stay composable with either pipeline. Omitting it selects `sdxl`, so an untagged `LORA` is an SDXL LoRA and is skipped under any other base. Set `base` only to name an architecture that is *not* the default.
 
 ### DETAILER
 

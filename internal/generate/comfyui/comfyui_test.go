@@ -67,7 +67,7 @@ func TestRenderPromptData(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := renderPromptData(tt.doc)
+			result, _ := renderPromptData(tt.doc, DefaultBase)
 
 			require.Equal(t, tt.expected, result)
 		})
@@ -159,10 +159,12 @@ func TestRenderTemplateOutputDir(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			data := renderPromptData(tt.doc)
-			applyDefaults(&data)
+			data, _ := renderPromptData(tt.doc, DefaultBase)
+			base, raw, err := resolveBase(DefaultBase)
+			require.NoError(t, err)
+			applyDefaults(&data, defaultsFor(base))
 
-			payload, err := renderTemplate(data, tt.doc.Name, tt.doc.Sources, false)
+			payload, err := renderTemplate(data, tt.doc.Name, tt.doc.Sources, false, raw)
 			require.NoError(t, err)
 
 			var workflow map[string]struct {
@@ -341,9 +343,9 @@ func TestRenderTemplateCivitaiMetadata(t *testing.T) {
 				ModelName:     "test-checkpoint.safetensors",
 				Steps:         30,
 				CFG:           5,
-				SamplerName:   defaultSamplerName,
-				SchedulerName: defaultScheduler,
-				Denoise:       defaultDenoise,
+				SamplerName:   architectureDefaults["sdxl"].Sampler.SamplerName,
+				SchedulerName: architectureDefaults["sdxl"].Sampler.Scheduler,
+				Denoise:       architectureDefaults["sdxl"].Sampler.Denoise,
 				Width:         832,
 				Height:        1216,
 				ClipSkip:      2,
@@ -361,24 +363,26 @@ func TestRenderTemplateCivitaiMetadata(t *testing.T) {
 			expected: saveMetadata{
 				Positive:      "test-appearance, ,  <lora:test-lora-1:0.8>",
 				Negative:      ", , ",
-				ModelName:     defaultCheckpoint,
-				Steps:         defaultSteps,
-				CFG:           defaultCFG,
-				SamplerName:   defaultSamplerName,
-				SchedulerName: defaultScheduler,
-				Denoise:       defaultDenoise,
-				Width:         defaultWidth,
-				Height:        defaultHeight,
+				ModelName:     architectureDefaults["sdxl"].Checkpoint,
+				Steps:         architectureDefaults["sdxl"].Sampler.Steps,
+				CFG:           architectureDefaults["sdxl"].Sampler.CFG,
+				SamplerName:   architectureDefaults["sdxl"].Sampler.SamplerName,
+				SchedulerName: architectureDefaults["sdxl"].Sampler.Scheduler,
+				Denoise:       architectureDefaults["sdxl"].Sampler.Denoise,
+				Width:         architectureDefaults["sdxl"].Sampler.Width,
+				Height:        architectureDefaults["sdxl"].Sampler.Height,
 				ClipSkip:      2,
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			data := renderPromptData(tt.doc)
-			applyDefaults(&data)
+			data, _ := renderPromptData(tt.doc, DefaultBase)
+			base, raw, err := resolveBase(DefaultBase)
+			require.NoError(t, err)
+			applyDefaults(&data, defaultsFor(base))
 
-			payload, err := renderTemplate(data, tt.doc.Name, tt.doc.Sources, false)
+			payload, err := renderTemplate(data, tt.doc.Name, tt.doc.Sources, false, raw)
 			require.NoError(t, err)
 
 			var workflow map[string]struct {
@@ -411,5 +415,233 @@ func TestRenderTemplateCivitaiMetadata(t *testing.T) {
 			got.Seed = 0
 			require.Equal(t, tt.expected, got)
 		})
+	}
+}
+
+// fullComposition exercises every optional branch a workflow template has:
+// a lora chain, the upscale pass, and all five detailers. It carries one LORA
+// per architecture so exactly one resolves whichever base is rendered — an
+// untagged LORA is an SDXL LORA and would leave the chain empty elsewhere.
+func fullComposition() *evoke.Composition {
+	det := func(arg, detector string) evoke.DetailerConfig {
+		return evoke.DetailerConfig{
+			Argument: arg,
+			Settings: map[string]string{
+				"detector": detector, "guide_size": "1024", "max_size": "1536",
+				"steps": "20", "cfg": "4.0", "sampler_name": "euler", "scheduler": "simple",
+				"denoise": "0.3", "feather": "10", "bbox_threshold": "0.25",
+				"bbox_dilation": "10", "bbox_crop_factor": "2.0", "max_detection": "2",
+			},
+			Text: evoke.Prompt{Positive: []string{"test-detailer"}, Negative: []string{"test-detailer-negative"}},
+		}
+	}
+	return &evoke.Composition{
+		Name:        "Test Character",
+		Sources:     []string{"/src/test-character.evoke"},
+		Appearance:  evoke.Prompt{Positive: []string{`test-appearance "quoted"`}, Negative: []string{"test-appearance-negative"}},
+		Apparel:     evoke.Prompt{Positive: []string{"test-apparel"}, Negative: []string{"test-apparel-negative"}},
+		Environment: evoke.Prompt{Positive: []string{"test-environment"}, Negative: []string{"test-environment-negative"}},
+		Loras: []evoke.LoraDefinition{
+			{Argument: "test-lora-sdxl", Settings: map[string]string{"model": "test-lora-1.safetensors", "strength": "0.8", "clip": "0.7", "base": "sdxl"}},
+			{Argument: "test-lora-anima", Settings: map[string]string{"model": "test-lora-2.safetensors", "strength": "0.6", "clip": "0.5", "base": "anima"}},
+		},
+		Images: []evoke.ImageStage{
+			{Loras: []string{"test-lora-sdxl", "test-lora-anima"}, Settings: map[string]string{
+				"shift": "3.1", "nag_scale": "5.0", "nag_alpha": "0.5", "nag_tau": "1.5",
+			}},
+			{Argument: "upscale", Settings: map[string]string{
+				"upscale_model": "test-upscale.pth", "factor": "1.5", "steps": "10", "cfg": "4.0",
+				"sampler_name": "euler", "scheduler": "simple", "denoise": "0.2",
+				"tile_width": "1024", "tile_height": "1024",
+			}},
+		},
+		Detailers: []evoke.DetailerConfig{
+			det("face", "bbox/face_yolov8m.pt"), det("eye", "bbox/Eyes.pt"),
+			det("upper_body", "bbox/upper-body-v4.7.pt"), det("lower_body", "bbox/body-v4.2.pt"),
+			det("hand", "bbox/hand.pt"),
+		},
+	}
+}
+
+func TestRenderTemplateProducesValidWorkflow(t *testing.T) {
+	for _, name := range bases() {
+		t.Run(name, func(t *testing.T) {
+			for _, debug := range []bool{false, true} {
+				base, raw, err := resolveBase(name)
+				require.NoError(t, err)
+
+				data, _ := renderPromptData(fullComposition(), base)
+				applyDefaults(&data, defaultsFor(base))
+
+				payload, err := renderTemplate(data, "Test Character", []string{"/src/test-character.evoke"}, debug, raw)
+				require.NoError(t, err)
+
+				// Every value must be a node: ComfyUI rejects a graph whose links
+				// name a node the template did not emit.
+				var graph map[string]struct {
+					ClassType string                     `json:"class_type"`
+					Inputs    map[string]json.RawMessage `json:"inputs"`
+				}
+				require.NoError(t, json.Unmarshal(payload, &graph), "debug=%v: invalid JSON", debug)
+				require.NotEmpty(t, graph)
+
+				for id, node := range graph {
+					require.NotEmpty(t, node.ClassType, "node %q has no class_type", id)
+					for field, rawVal := range node.Inputs {
+						var link []json.RawMessage
+						if json.Unmarshal(rawVal, &link) != nil || len(link) != 2 {
+							continue
+						}
+						var target string
+						if json.Unmarshal(link[0], &target) != nil {
+							continue
+						}
+						require.Contains(t, graph, target, "node %q input %q links to missing node", id, field)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestResolveBase(t *testing.T) {
+	tests := []struct {
+		name      string
+		base      string
+		expected  string
+		wantError bool
+	}{
+		{name: "empty selects the default", base: "", expected: DefaultBase},
+		{name: "a known base resolves", base: "anima", expected: "anima"},
+		{name: "an unknown base is rejected", base: "test-missing", wantError: true},
+		{name: "a path is rejected", base: "../templates/sdxl", wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, raw, err := resolveBase(tt.base)
+
+			require.Equal(t, tt.wantError, err != nil)
+			require.Equal(t, tt.expected, got)
+			require.Equal(t, tt.wantError, raw == nil)
+		})
+	}
+}
+
+func TestCompositionBase(t *testing.T) {
+	tests := []struct {
+		name     string
+		doc      *evoke.Composition
+		expected string
+	}{
+		{
+			name:     "no IMAGE stage falls through to the default",
+			doc:      &evoke.Composition{},
+			expected: "",
+		},
+		{
+			name:     "an IMAGE stage without a base falls through to the default",
+			doc:      &evoke.Composition{Images: []evoke.ImageStage{{Settings: map[string]string{"checkpoint": "test-checkpoint.safetensors"}}}},
+			expected: "",
+		},
+		{
+			name:     "the unnamed IMAGE stage supplies the base",
+			doc:      &evoke.Composition{Images: []evoke.ImageStage{{Settings: map[string]string{"base": "anima"}}}},
+			expected: "anima",
+		},
+		{
+			name:     "case and whitespace are not significant",
+			doc:      &evoke.Composition{Images: []evoke.ImageStage{{Settings: map[string]string{"base": "  Anima  "}}}},
+			expected: "anima",
+		},
+		{
+			name:     "a base on the upscale stage is ignored",
+			doc:      &evoke.Composition{Images: []evoke.ImageStage{{Argument: "upscale", Settings: map[string]string{"base": "anima"}}}},
+			expected: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, compositionBase(tt.doc))
+		})
+	}
+}
+
+func TestResolveLorasBaseGuard(t *testing.T) {
+	tests := []struct {
+		name     string
+		base     string
+		expected []lora
+		skipped  []string
+	}{
+		{
+			// An untagged LORA is an SDXL LORA: base means the same thing here
+			// as it does on IMAGE, so leaving it out selects DefaultBase rather
+			// than opting out of the guard.
+			name: "the default base loads untagged weights",
+			base: "sdxl",
+			expected: []lora{
+				{Name: "untagged.safetensors", Strength: 0.4, Clip: 1.0},
+				{Name: "sdxl.safetensors", Strength: 1.0, Clip: 1.0},
+			},
+			skipped: []string{"test-lora-anima"},
+		},
+		{
+			name:     "another base skips untagged weights with the rest",
+			base:     "anima",
+			expected: []lora{{Name: "anima.safetensors", Strength: 1.0, Clip: 1.0}},
+			skipped:  []string{"test-lora-untagged", "test-lora-sdxl"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := &evoke.Composition{
+				Images: []evoke.ImageStage{{
+					Settings: map[string]string{"base": tt.base},
+					Loras:    []string{"test-lora-untagged", "test-lora-sdxl", "test-lora-anima", "test-lora-disabled"},
+				}},
+				Loras: []evoke.LoraDefinition{
+					{Argument: "test-lora-untagged", Settings: map[string]string{"model": "untagged.safetensors", "strength": "0.4"}},
+					{Argument: "test-lora-sdxl", Settings: map[string]string{"model": "sdxl.safetensors", "base": "sdxl"}},
+					{Argument: "test-lora-anima", Settings: map[string]string{"model": "anima.safetensors", "base": "Anima"}},
+					{Argument: "test-lora-disabled", Settings: map[string]string{"model": "disabled.safetensors"}, Disabled: true},
+				},
+			}
+
+			var pd promptData
+			skipped := resolveLoras(doc, tt.base, &pd)
+
+			require.Equal(t, tt.expected, pd.Loras)
+			require.Equal(t, tt.skipped, skipped)
+		})
+	}
+}
+
+func TestResolveLorasReportsOnlyReferencedSkips(t *testing.T) {
+	// A definition no stage references was never going to load, so a base
+	// mismatch on it is not something the caller needs told about.
+	doc := &evoke.Composition{
+		Images: []evoke.ImageStage{{
+			Settings: map[string]string{"base": "anima"},
+			Loras:    []string{"test-lora-referenced"},
+		}},
+		Loras: []evoke.LoraDefinition{
+			{Argument: "test-lora-referenced", Settings: map[string]string{"model": "referenced.safetensors", "base": "sdxl"}},
+			{Argument: "test-lora-orphan", Settings: map[string]string{"model": "orphan.safetensors", "base": "sdxl"}},
+		},
+	}
+
+	var pd promptData
+	skipped := resolveLoras(doc, "anima", &pd)
+
+	require.Empty(t, pd.Loras)
+	require.Equal(t, []string{"test-lora-referenced"}, skipped)
+}
+
+func TestDefaultsForMatchesEveryBase(t *testing.T) {
+	// A base with no defaults entry silently inherits SDXL's sampler, which is
+	// wrong for any other architecture.
+	for _, name := range bases() {
+		require.Contains(t, architectureDefaults, name)
 	}
 }

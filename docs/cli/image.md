@@ -91,6 +91,78 @@ The file index is refreshed automatically before selector resolution. It is a SQ
 | `-b` | `1` | Number of images to generate. Each iteration re-resolves selectors independently, so when multiple files match a tag, each generation randomly picks one for variety. Overridden by an `xN` argument. With `xall` it becomes a per-combination multiplier. |
 | `-v`, `--verbose` | `false` | Print the merged composition and ComfyUI request payload. |
 
+## Bases
+
+A **base** is the model architecture a composition targets. Each one is a ComfyUI node graph embedded in the binary, and the composition selects it with the `base` setting on its unnamed [`IMAGE`](../file-format/declarations.md#image) declaration:
+
+```text
+IMAGE
+    base = anima
+    unet = anima-base-v1.0.safetensors
+```
+
+| Base | Architecture | Notes |
+|:-----|:-------------|:------|
+| `sdxl` | SDXL / Illustrious, one checkpoint via `CheckpointLoaderSimple` | The default when no `base` is set. Reads `checkpoint`. `euler_ancestral`/`karras`, cfg 4, 40 steps, 1216x832. |
+| `anima` | [Anima](https://huggingface.co/circlestone-labs/Anima), a Qwen-Image derivative loaded as three files | Comfy-Org's `image_anima_base_v1` reference graph. Reads `unet`, `clip`, `clip_type`, `vae`, `weight_dtype`, and `shift` instead of `checkpoint`. `euler`/`simple`, cfg 4, 30 steps. |
+
+There is no flag for this. The pipeline file that supplies the checkpoint or the unet is what makes a composition SDXL or Anima, so switching architecture means composing a different pipeline file — and a flag could only ever contradict what that file already says:
+
+```console
+$ evoke image sumi anima
+```
+
+Each base carries its own defaults for anything the composition leaves unset. **Bases read different model settings and ignore each other's**: a `checkpoint` means nothing to `anima`, and `unet` means nothing to `sdxl`. Keep the settings for an architecture in the pipeline file that names it, as [`examples/anima.evoke`](https://github.com/jesse0michael/evoke/blob/main/examples/anima.evoke) does.
+
+A base no template implements is an error that lists what is available:
+
+```console
+$ evoke image sumi flux-pipeline
+evoke image: unknown IMAGE base "flux" (available: anima, sdxl)
+```
+
+Base names are matched without regard to case or surrounding whitespace.
+
+The LoRA chain, the upscale pass, the detailers, and the `Image Saver` metadata node behave identically under both.
+
+### LoRAs and bases
+
+LoRA weights are trained against one base model and cannot load into another. A [`LORA`](../file-format/declarations.md#lora) may declare the base it was built for, and one whose base does not match the active one is **skipped** rather than treated as an error:
+
+```text
+LORA sumi-illustrious
+    model = sumi_illustrious_v3.safetensors
+    strength = 0.8
+
+LORA sumi-anima
+    base = anima
+    model = sumi_anima_v1.safetensors
+    strength = 0.7
+```
+
+That lets one file carry a variant per architecture and stay composable with either pipeline. `base` defaults the same way here as on `IMAGE`, so the untagged block above is the SDXL variant and is skipped under `anima` — write `base` only for an architecture that is not the default. Skipped LoRAs are reported alongside the ComfyUI response.
+
+### Shift
+
+Anima's model config already samples at **shift 3.0**, so the `shift` setting is an *override*, not an enable. The `anima` base leaves it unset and takes the built-in value.
+
+### Negative guidance at low CFG
+
+`anima` can insert a `NAGuidance` node between the model chain and the sampler. It is off until `nag_scale` is set, so the default graph matches the reference exactly:
+
+```text
+IMAGE
+    base = anima
+    unet = anima-turbo-v1.0.safetensors
+    cfg = 1
+    steps = 10
+    nag_scale = 5.0
+```
+
+This matters only on the turbo path. At cfg 1 there is no classifier-free guidance, so the negative prompt is inert — NAG restores it through cross-attention. Above cfg ~2 it is redundant. `nag_alpha` and `nag_tau` default to 0.5 and 1.5.
+
+`anima` requires three model files that are not part of a stock ComfyUI install — `anima-base-v1.0.safetensors` in `models/diffusion_models`, `qwen_3_06b_base.safetensors` in `models/text_encoders`, and `qwen_image_vae.safetensors` in `models/vae`.
+
 ## Batch mode
 
 Multiple generations from the same set of inputs, written either as the `-b` flag or as an `xN` argument in the input list. These two are equivalent:

@@ -1,36 +1,80 @@
 {{- $seed := RandomSeed -}}
 {
-  "ckpt": {
-    "class_type": "CheckpointLoaderSimple",
+  {{- /* Anima is a Qwen-Image derivative: the diffusion model, the Qwen-3 text
+         encoder, and the VAE ship as three separate files, so there is no
+         CheckpointLoaderSimple and no CLIPSetLastLayer. The loader/sampler head
+         follows Comfy-Org's image_anima_base_v1 reference workflow; everything
+         from the upscale pass down is shared with sdxl.tmpl. */}}
+  "unet": {
+    "class_type": "UNETLoader",
     "inputs": {
-      "ckpt_name": "{{ .Prompt.Checkpoint }}"
+      "unet_name": "{{ .Prompt.Unet }}",
+      "weight_dtype": "{{ .Prompt.WeightDtype }}"
+    }
+  },
+
+  "clip": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "{{ .Prompt.Clip }}",
+      "type": "{{ .Prompt.ClipType }}",
+      "device": "default"
+    }
+  },
+
+  "vae": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "{{ .Prompt.Vae }}"
     }
   },
 
   {{- /* ================= LoRA CHAIN ================= */ -}}
-  {{- $prev := "ckpt" -}}
+  {{- /* Model-only: the text encoder is Qwen-3, not a CLIP that an SDXL-era
+         LoRA carries weights for, so there is no clip strength to apply. */}}
+  {{- $prev := "unet" -}}
   {{- range $i, $l := .Prompt.Loras }}
   "lora_{{ $i }}": {
-    "class_type": "LoraLoader",
+    "class_type": "LoraLoaderModelOnly",
     "inputs": {
       "lora_name": "{{ $l.Name }}",
       "strength_model": {{ $l.Strength }},
-      "strength_clip": {{ $l.Clip }},
-      "model": ["{{ $prev }}", 0],
-      "clip": ["{{ $prev }}", 1]
+      "model": ["{{ $prev }}", 0]
     }
   },
   {{- $prev = printf "lora_%d" $i -}}
   {{- end }}
 
-  {{- /* ================= CLIP SKIP ================= */ -}}
-  "clip_skip": {
-    "class_type": "CLIPSetLastLayer",
+  {{- /* ================= MODEL SAMPLING ================= */ -}}
+  {{- /* Absent unless a composition sets `shift`. The reference workflow samples
+         the model as shipped, and shift is not a no-op at any value. */}}
+  {{- if .Prompt.Shift }}
+  "shift": {
+    "class_type": "ModelSamplingAuraFlow",
     "inputs": {
-      "stop_at_clip_layer": -2,
-      "clip": ["{{ $prev }}", 1]
+      "shift": {{ .Prompt.Shift }},
+      "model": ["{{ $prev }}", 0]
     }
   },
+  {{- $prev = "shift" -}}
+  {{- end }}
+
+  {{- /* ================= NEGATIVE GUIDANCE ================= */ -}}
+  {{- /* At cfg 1 (turbo LoRA / distilled) CFG contributes nothing and the
+         negative prompt is inert; NAG puts it back through cross-attention.
+         Pointless above cfg ~2, so it stays off until nag_scale is set. */}}
+  {{- if .Prompt.NagScale }}
+  "nag": {
+    "class_type": "NAGuidance",
+    "inputs": {
+      "model": ["{{ $prev }}", 0],
+      "nag_scale": {{ .Prompt.NagScale }},
+      "nag_alpha": {{ .Prompt.NagAlpha }},
+      "nag_tau": {{ .Prompt.NagTau }}
+    }
+  },
+  {{- $prev = "nag" -}}
+  {{- end }}
 
   {{- /* ================= LATENT ================= */ -}}
   "latent": {
@@ -47,7 +91,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.Positive }}, {{ .Prompt.Apparel.Positive }}, {{ .Prompt.Environment.Positive }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
 
@@ -55,7 +99,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.Negative }}, {{ .Prompt.Apparel.Negative }}, {{ .Prompt.Environment.Negative }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
 
@@ -81,7 +125,7 @@
     "class_type": "VAEDecode",
     "inputs": {
       "samples": ["sampler", 0],
-      "vae": ["ckpt", 2]
+      "vae": ["vae", 0]
     }
   },
 
@@ -92,7 +136,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.Upscale.Positive }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
   {{- end }}
@@ -101,7 +145,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.Upscale.Negative }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
   {{- end }}
@@ -119,7 +163,7 @@
       "model": ["{{ $prev }}", 0],
       "positive": ["{{ if .Prompt.Upscale.Positive }}upscale_pos{{ else }}prompt_pos{{ end }}", 0],
       "negative": ["{{ if .Prompt.Upscale.Negative }}upscale_neg{{ else }}prompt_neg{{ end }}", 0],
-      "vae": ["ckpt", 2],
+      "vae": ["vae", 0],
       "upscale_model": ["upscale_model_loader", 0],
       "upscale_by": {{ .Prompt.Upscale.Factor }},
       "seed": {{ RandomSeed }},
@@ -160,7 +204,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.Face.Positive }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
 
@@ -168,7 +212,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.Face.Negative }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
 
@@ -211,8 +255,8 @@
       "image": ["{{ if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
       "segs": ["{{ if .Prompt.Face.MaxDetections }}face_filter{{ else }}face_segs{{ end }}", 0],
       "model": ["{{ $prev }}", 0],
-      "clip": ["clip_skip", 0],
-      "vae": ["ckpt", 2],
+      "clip": ["clip", 0],
+      "vae": ["vae", 0],
       "positive": ["face_pos", 0],
       "negative": ["face_neg", 0],
 
@@ -244,7 +288,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.Eye.Positive }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
 
@@ -252,7 +296,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.Eye.Negative }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
 
@@ -295,8 +339,8 @@
       "image": ["{{ if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
       "segs": ["{{ if .Prompt.Eye.MaxDetections }}eye_filter{{ else }}eye_segs{{ end }}", 0],
       "model": ["{{ $prev }}", 0],
-      "clip": ["clip_skip", 0],
-      "vae": ["ckpt", 2],
+      "clip": ["clip", 0],
+      "vae": ["vae", 0],
       "positive": ["eye_pos", 0],
       "negative": ["eye_neg", 0],
 
@@ -328,7 +372,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.UpperBody.Positive }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
 
@@ -336,7 +380,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.UpperBody.Negative }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
 
@@ -379,8 +423,8 @@
       "image": ["{{ if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
       "segs": ["{{ if .Prompt.UpperBody.MaxDetections }}upper_body_filter{{ else }}upper_body_segs{{ end }}", 0],
       "model": ["{{ $prev }}", 0],
-      "clip": ["clip_skip", 0],
-      "vae": ["ckpt", 2],
+      "clip": ["clip", 0],
+      "vae": ["vae", 0],
       "positive": ["upper_body_pos", 0],
       "negative": ["upper_body_neg", 0],
 
@@ -412,7 +456,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.LowerBody.Positive }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
 
@@ -420,7 +464,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.LowerBody.Negative }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
 
@@ -463,8 +507,8 @@
       "image": ["{{ if not .Prompt.UpperBody.Disabled }}upper_body_detail{{ else if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
       "segs": ["{{ if .Prompt.LowerBody.MaxDetections }}lower_body_filter{{ else }}lower_body_segs{{ end }}", 0],
       "model": ["{{ $prev }}", 0],
-      "clip": ["clip_skip", 0],
-      "vae": ["ckpt", 2],
+      "clip": ["clip", 0],
+      "vae": ["vae", 0],
       "positive": ["lower_body_pos", 0],
       "negative": ["lower_body_neg", 0],
 
@@ -496,7 +540,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.Hand.Positive }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
 
@@ -504,7 +548,7 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "{{ .Prompt.Hand.Negative }}",
-      "clip": ["clip_skip", 0]
+      "clip": ["clip", 0]
     }
   },
 
@@ -547,8 +591,8 @@
       "image": ["{{ if not .Prompt.LowerBody.Disabled }}lower_body_detail{{ else if not .Prompt.UpperBody.Disabled }}upper_body_detail{{ else if not .Prompt.Eye.Disabled }}eye_detail{{ else if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
       "segs": ["{{ if .Prompt.Hand.MaxDetections }}hand_filter{{ else }}hand_segs{{ end }}", 0],
       "model": ["{{ $prev }}", 0],
-      "clip": ["clip_skip", 0],
-      "vae": ["ckpt", 2],
+      "clip": ["clip", 0],
+      "vae": ["vae", 0],
       "positive": ["hand_pos", 0],
       "negative": ["hand_neg", 0],
 
@@ -655,7 +699,7 @@
       "positive": "{{ .Prompt.Positive }}, {{ .Prompt.Apparel.Positive }}, {{ .Prompt.Environment.Positive }}{{ range .Prompt.Loras }} <lora:{{ StripExt .Name }}:{{ .Strength }}>{{ end }}",
       "negative": "{{ .Prompt.Negative }}, {{ .Prompt.Apparel.Negative }}, {{ .Prompt.Environment.Negative }}",
 
-      "modelname": "{{ .Prompt.Checkpoint }}",
+      "modelname": "{{ .Prompt.Unet }}",
       "seed_value": {{ $seed }},
       "steps": {{ .Prompt.Sampler.Steps }},
       "cfg": {{ .Prompt.Sampler.CFG }},
@@ -667,7 +711,7 @@
              that reproduces the image, not the size of the file on disk. */}}
       "width": {{ .Prompt.Sampler.Width }},
       "height": {{ .Prompt.Sampler.Height }},
-      "clip_skip": 2,
+      "clip_skip": 0,
 
       "download_civitai_data": false,
       "easy_remix": true,

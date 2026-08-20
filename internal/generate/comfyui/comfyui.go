@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
@@ -27,11 +28,74 @@ import (
 //go:embed templates/*.tmpl
 var templates embed.FS
 
-const defaultTemplate = "sdxl"
+// DefaultBase is the architecture rendered when a composition names none.
+const DefaultBase = "sdxl"
+
+// bases lists the architectures that can be rendered — one embedded workflow
+// template each, named without the .tmpl extension, in sorted order.
+func bases() []string {
+	entries, err := templates.ReadDir("templates")
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if name, ok := strings.CutSuffix(e.Name(), ".tmpl"); ok {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// normalizeBase canonicalizes a base name written in a .evoke file. Base is a
+// keyword rather than a file name, so case is not significant.
+func normalizeBase(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+// compositionBase reports the architecture a composition targets, from the
+// unnamed IMAGE stage's base setting. It is a declaration setting rather than a
+// CLI flag because the pipeline file supplying the checkpoint or unet is what
+// makes a composition SDXL or Anima; a flag could only ever contradict it.
+func compositionBase(doc *evoke.Composition) string {
+	stage := doc.ImageStageByArgument("")
+	if stage == nil {
+		return ""
+	}
+	return normalizeBase(stage.Settings["base"])
+}
+
+// resolveBase loads the workflow template for a base, returning the canonical
+// base name and the template source. An empty base selects DefaultBase.
+func resolveBase(name string) (string, []byte, error) {
+	if name == "" {
+		name = DefaultBase
+	}
+	// The name comes from a .evoke file and indexes an embedded path, so reject
+	// anything that could escape rather than relying on embed.FS to catch it.
+	if strings.ContainsAny(name, "/\\") {
+		return "", nil, fmt.Errorf("invalid IMAGE base %q (available: %s)", name, strings.Join(bases(), ", "))
+	}
+	raw, err := templates.ReadFile("templates/" + name + ".tmpl")
+	if err != nil {
+		return "", nil, fmt.Errorf("unknown IMAGE base %q (available: %s)", name, strings.Join(bases(), ", "))
+	}
+	return name, raw, nil
+}
 
 // promptData is the ComfyUI-specific structure passed to workflow templates.
 type promptData struct {
 	Checkpoint  string   `json:"checkpoint"`
+	Unet        string   `json:"unet"`
+	Clip        string   `json:"clip"`
+	ClipType    string   `json:"clip_type"`
+	Vae         string   `json:"vae"`
+	WeightDtype string   `json:"weight_dtype"`
+	Shift       float64  `json:"shift"`
+	NagScale    float64  `json:"nag_scale"`
+	NagAlpha    float64  `json:"nag_alpha"`
+	NagTau      float64  `json:"nag_tau"`
 	Group       string   `json:"group"`
 	Positive    string   `json:"positive"`
 	Negative    string   `json:"negative"`
@@ -82,6 +146,10 @@ type upscale struct {
 	Denoise     float64 `json:"denoise"`
 	TileWidth   int     `json:"tile_width"`
 	TileHeight  int     `json:"tile_height"`
+	// SeamFix is UltimateSDUpscale's seam_fix_mode. Anything but "None" runs a
+	// second pass over every tile boundary, which costs more than the redraw it
+	// is fixing — so it is opt-in per architecture, not a global default.
+	SeamFix string `json:"seam_fix"`
 }
 
 type detailer struct {
@@ -134,10 +202,15 @@ func New(baseURL string) *Client {
 // Generate converts the resolved Evoke document to ComfyUI prompt data,
 // applies sane defaults for missing values, renders the template, and submits to ComfyUI.
 func (c *Client) Generate(ctx context.Context, doc *evoke.Composition) (*generate.Result, error) {
-	evokeData := renderPromptData(doc)
-	applyDefaults(&evokeData)
+	base, raw, err := resolveBase(compositionBase(doc))
+	if err != nil {
+		return nil, err
+	}
 
-	payload, err := renderTemplate(evokeData, doc.Name, doc.Sources, c.Verbose)
+	evokeData, skipped := renderPromptData(doc, base)
+	applyDefaults(&evokeData, defaultsFor(base))
+
+	payload, err := renderTemplate(evokeData, doc.Name, doc.Sources, c.Verbose, raw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render template: %w", err)
 	}
@@ -177,6 +250,9 @@ func (c *Client) Generate(ctx context.Context, doc *evoke.Composition) (*generat
 		Message:  fmt.Sprintf("ComfyUI accepted (status: %s)", resp.Status),
 		PromptID: promptResp.PromptID,
 	}
+	if len(skipped) > 0 {
+		result.Message = fmt.Sprintf("skipped LoRA %s: not built for %s\n%s", strings.Join(skipped, ", "), base, result.Message)
+	}
 	if c.Verbose {
 		result.Payload = body
 	}
@@ -184,7 +260,9 @@ func (c *Client) Generate(ctx context.Context, doc *evoke.Composition) (*generat
 	return result, nil
 }
 
-func renderPromptData(doc *evoke.Composition) promptData {
+// renderPromptData converts a composition into template data for the given
+// base, returning the names of any LoRAs skipped as incompatible with it.
+func renderPromptData(doc *evoke.Composition, base string) (promptData, []string) {
 	var pd promptData
 
 	// CHARACTER, PERSONALITY, BACKSTORY, and SCENARIO are chat-only: they carry
@@ -221,7 +299,7 @@ func renderPromptData(doc *evoke.Composition) promptData {
 	}
 
 	// Apply LORA definitions and resolve references.
-	resolveLoras(doc, &pd)
+	skipped := resolveLoras(doc, base, &pd)
 
 	// Apply DETAILER configs.
 	applyDetailer(doc, &pd, "face", &pd.Face)
@@ -230,12 +308,44 @@ func renderPromptData(doc *evoke.Composition) promptData {
 	applyDetailer(doc, &pd, "lower_body", &pd.LowerBody)
 	applyDetailer(doc, &pd, "hand", &pd.Hand)
 
-	return pd
+	return pd, skipped
 }
 
 func applyImageSettings(pd *promptData, stage *evoke.ImageStage) {
 	if v, ok := stage.Settings["checkpoint"]; ok {
 		pd.Checkpoint = v
+	}
+	// Split-architecture models (Anima and other Qwen-Image derivatives) ship the
+	// diffusion model, text encoder, and VAE as three separate files rather than
+	// one checkpoint, so they are named independently.
+	if v, ok := stage.Settings["unet"]; ok {
+		pd.Unet = v
+	}
+	if v, ok := stage.Settings["clip"]; ok {
+		pd.Clip = v
+	}
+	if v, ok := stage.Settings["clip_type"]; ok {
+		pd.ClipType = v
+	}
+	if v, ok := stage.Settings["vae"]; ok {
+		pd.Vae = v
+	}
+	if v, ok := stage.Settings["weight_dtype"]; ok {
+		pd.WeightDtype = v
+	}
+	if v, ok := stage.Settings["shift"]; ok {
+		pd.Shift = parseFloat(v)
+	}
+	// Normalized Attention Guidance restores negative prompting at cfg 1, where
+	// CFG contributes nothing — the turbo path. nag_scale is the on switch.
+	if v, ok := stage.Settings["nag_scale"]; ok {
+		pd.NagScale = parseFloat(v)
+	}
+	if v, ok := stage.Settings["nag_alpha"]; ok {
+		pd.NagAlpha = parseFloat(v)
+	}
+	if v, ok := stage.Settings["nag_tau"]; ok {
+		pd.NagTau = parseFloat(v)
 	}
 	if v, ok := stage.Settings["group"]; ok {
 		pd.Group = v
@@ -291,10 +401,43 @@ func applyUpscaleSettings(up *upscale, stage *evoke.ImageStage) {
 	if v, ok := stage.Settings["tile_height"]; ok {
 		up.TileHeight = parseInt(v)
 	}
+	if v, ok := stage.Settings["seam_fix"]; ok {
+		up.SeamFix = v
+	}
 }
 
-func resolveLoras(doc *evoke.Composition, pd *promptData) {
-	// Build a lookup from lora name to its definition settings (skip disabled).
+// resolveLoras builds the LoRA chain for the active base and returns the names
+// of the referenced LoRAs it left out.
+//
+// A LORA whose base names a different architecture is skipped rather than an
+// error: weights are trained against one base model and cannot load into
+// another, so a file carries a variant per base and only the compatible one
+// resolves. An unset base means DefaultBase, exactly as it does on IMAGE — the
+// setting has one meaning in the format, and weights that never named an
+// architecture were trained against the default one. Only a skip the caller
+// would otherwise have seen in the chain is reported — a definition no stage
+// references was never going to load, base or not.
+func resolveLoras(doc *evoke.Composition, base string, pd *promptData) []string {
+	var skipped []string
+	reported := make(map[string]bool)
+
+	// take reports whether a referenced LORA loads under the active base,
+	// recording the first skip of each name for the caller.
+	take := func(def *evoke.LoraDefinition) bool {
+		b := normalizeBase(def.Settings["base"])
+		if b == "" {
+			b = DefaultBase
+		}
+		if b != base {
+			if !reported[def.Argument] {
+				reported[def.Argument] = true
+				skipped = append(skipped, def.Argument)
+			}
+			return false
+		}
+		return true
+	}
+
 	loraDefs := make(map[string]*evoke.LoraDefinition)
 	for i := range doc.Loras {
 		if !doc.Loras[i].Disabled {
@@ -303,9 +446,9 @@ func resolveLoras(doc *evoke.Composition, pd *promptData) {
 	}
 
 	// Resolve lora references from unnamed IMAGE stage into the main lora chain.
-	if base := doc.ImageStageByArgument(""); base != nil && !base.Disabled {
-		for _, name := range base.Loras {
-			if def, ok := loraDefs[name]; ok {
+	if stage := doc.ImageStageByArgument(""); stage != nil && !stage.Disabled {
+		for _, name := range stage.Loras {
+			if def, ok := loraDefs[name]; ok && take(def) {
 				pd.Loras = append(pd.Loras, loraFromDefinition(def))
 			}
 		}
@@ -314,13 +457,15 @@ func resolveLoras(doc *evoke.Composition, pd *promptData) {
 	// Resolve lora references from IMAGE upscale into upscale loras.
 	if up := doc.ImageStageByArgument("upscale"); up != nil && !up.Disabled {
 		for _, name := range up.Loras {
-			if def, ok := loraDefs[name]; ok {
+			if def, ok := loraDefs[name]; ok && take(def) {
 				l := loraFromDefinition(def)
 				pd.Upscale.Positive = joinComma(pd.Upscale.Positive, "")
 				_ = l // Upscale loras are resolved but the template handles them through the main chain for now.
 			}
 		}
 	}
+
+	return skipped
 }
 
 func loraFromDefinition(def *evoke.LoraDefinition) lora {
@@ -407,41 +552,107 @@ func parseFloat(s string) float64 {
 	return v
 }
 
-const (
-	defaultCheckpoint  = "riMixIllustriousAnima_riMixV2.safetensors"
-	defaultSteps       = 40
-	defaultCFG         = 4.0
-	defaultSamplerName = "euler_ancestral"
-	defaultScheduler   = "karras"
-	defaultDenoise     = 1.0
-	defaultWidth       = 1216
-	defaultHeight      = 832
-)
+// A base is an architecture — one workflow template each — so the fallbacks for
+// a composition that names nothing live with the base rather than globally: Anima is a
+// Qwen-Image derivative that wants euler/simple around 1024px, while SDXL wants
+// euler_ancestral/karras at 1216x832. Model file names are included because a
+// split-architecture template has no checkpoint to fall back on.
+var architectureDefaults = map[string]promptData{
+	"sdxl": {
+		Checkpoint: "riMixIllustriousAnima_riMixV2.safetensors",
+		Upscale:    upscale{SeamFix: "Half Tile"},
+		Sampler: sampler{
+			Steps:       40,
+			CFG:         4.0,
+			SamplerName: "euler_ancestral",
+			Scheduler:   "karras",
+			Denoise:     1.0,
+			Width:       1216,
+			Height:      832,
+		},
+	},
+	"anima": {
+		Upscale:     upscale{SeamFix: "None"},
+		Unet:        "anima-base-v1.0.safetensors",
+		Clip:        "qwen_3_06b_base.safetensors",
+		ClipType:    "stable_diffusion",
+		Vae:         "qwen_image_vae.safetensors",
+		WeightDtype: "default",
+		Sampler: sampler{
+			Steps:       30,
+			CFG:         4.0,
+			SamplerName: "euler",
+			Scheduler:   "simple",
+			Denoise:     1.0,
+			Width:       1024,
+			Height:      1024,
+		},
+	},
+}
 
-func applyDefaults(data *promptData) {
+// defaultsFor returns the fallbacks for a resolved base. An unknown name cannot
+// reach here — resolveBase rejects it first — but a template added without a
+// matching entry falls back to the default architecture.
+func defaultsFor(name string) promptData {
+	if def, ok := architectureDefaults[name]; ok {
+		return def
+	}
+	return architectureDefaults[DefaultBase]
+}
+
+// applyDefaults fills every value the composition left unset from the
+// architecture defaults, then disables the optional passes that name no model.
+func applyDefaults(data *promptData, def promptData) {
 	if data.Checkpoint == "" {
-		data.Checkpoint = defaultCheckpoint
+		data.Checkpoint = def.Checkpoint
+	}
+	if data.Unet == "" {
+		data.Unet = def.Unet
+	}
+	if data.Clip == "" {
+		data.Clip = def.Clip
+	}
+	if data.ClipType == "" {
+		data.ClipType = def.ClipType
+	}
+	if data.Vae == "" {
+		data.Vae = def.Vae
+	}
+	if data.WeightDtype == "" {
+		data.WeightDtype = def.WeightDtype
+	}
+	if data.Shift == 0 {
+		data.Shift = def.Shift
+	}
+	if data.NagAlpha == 0 {
+		data.NagAlpha = def.NagAlpha
+	}
+	if data.NagTau == 0 {
+		data.NagTau = def.NagTau
 	}
 	if data.Sampler.Steps == 0 {
-		data.Sampler.Steps = defaultSteps
+		data.Sampler.Steps = def.Sampler.Steps
 	}
 	if data.Sampler.CFG == 0 {
-		data.Sampler.CFG = defaultCFG
+		data.Sampler.CFG = def.Sampler.CFG
 	}
 	if data.Sampler.SamplerName == "" {
-		data.Sampler.SamplerName = defaultSamplerName
+		data.Sampler.SamplerName = def.Sampler.SamplerName
 	}
 	if data.Sampler.Scheduler == "" {
-		data.Sampler.Scheduler = defaultScheduler
+		data.Sampler.Scheduler = def.Sampler.Scheduler
 	}
 	if data.Sampler.Denoise == 0 {
-		data.Sampler.Denoise = defaultDenoise
+		data.Sampler.Denoise = def.Sampler.Denoise
 	}
 	if data.Sampler.Width == 0 {
-		data.Sampler.Width = defaultWidth
+		data.Sampler.Width = def.Sampler.Width
 	}
 	if data.Sampler.Height == 0 {
-		data.Sampler.Height = defaultHeight
+		data.Sampler.Height = def.Sampler.Height
+	}
+	if data.Upscale.SeamFix == "" {
+		data.Upscale.SeamFix = def.Upscale.SeamFix
 	}
 
 	// Disable upscale/detailers if not explicitly configured.
@@ -465,11 +676,7 @@ func applyDefaults(data *promptData) {
 	}
 }
 
-func renderTemplate(data promptData, compositionName string, sources []string, debug bool) ([]byte, error) {
-	raw, err := templates.ReadFile("templates/" + defaultTemplate + ".tmpl")
-	if err != nil {
-		return nil, fmt.Errorf("template %q not found: %w", defaultTemplate, err)
-	}
+func renderTemplate(data promptData, compositionName string, sources []string, debug bool, raw []byte) ([]byte, error) {
 
 	group := sanitizeGroup(data.Group)
 
@@ -511,9 +718,16 @@ func renderTemplate(data promptData, compositionName string, sources []string, d
 	return buf.Bytes(), nil
 }
 
+// maxSeed bounds a generated seed to the largest integer that survives a
+// float64 round-trip. ComfyUI itself accepts the full uint64 range, but the
+// workflow travels as JSON through consumers whose numbers are float64 — the
+// ComfyUI web UI's JSON.parse among them — and a seed above 2^53 reads back
+// rounded, so reloading the embedded workflow no longer reproduces the image.
+const maxSeed = 1 << 53
+
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"RandomSeed": func() uint64 { return rand.Uint64() },
+		"RandomSeed": func() uint64 { return rand.Uint64N(maxSeed) },
 		"StripExt":   stripExt,
 	}
 }

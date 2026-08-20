@@ -4,10 +4,10 @@ Rules for writing the _content_ of `.evoke` files. Format mechanics live in [Fil
 
 **Start here.** Which rules apply depends only on which declaration you are writing:
 
-| Writing…                                                                      | Read      |
-| :---------------------------------------------------------------------------- | :-------- |
-| `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `PROMPT`, `IMAGE`, `LORA`, `DETAILER` | §2 and §3 |
-| `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `SCENARIO`, `CHAT` instructions      | §2 and §4 |
+| Writing…                                                                      | Read                                              |
+| :---------------------------------------------------------------------------- | :------------------------------------------------ |
+| `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `PROMPT`, `IMAGE`, `LORA`, `DETAILER` | §2 and §3                                         |
+| `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `SCENARIO`, `CHAT` instructions      | §2 and §4                                         |
 | `VOICE`                                                                       | §2 and §1's `VOICE` note — no target reads it yet |
 
 §3 and §4 give opposite advice on purpose. Applying §3's rules to a chat block, or §4's to an image block, produces confidently wrong output both times.
@@ -60,7 +60,7 @@ That does not make it scratch space. Three rules:
 
 - **Write it only when the user asks for a voice, or the source describes one.** §2 applies unchanged, and applies harder here: nothing renders `VOICE`, so an invented one is never caught by a bad output. It sits in the file looking sourced until someone builds the target and ships it.
 - **Sound, not speech.** How the character sounds is `VOICE`. What they say and how they word it is `PERSONALITY` and the `CHAT` instructions — and only those reach a model today. "Rarely uses contractions," "trails off mid-sentence," "answers questions with questions" are language traits; putting them in `VOICE` means no target reads them at all, which is the one genuinely silent failure in this format.
-- **Character descriptors are conditioning, not leakage.** Prompt-to-voice models are conditioned on a description of the *speaker*, not on timbre words — `18 year old guy, comic relief, young, puberty, goofball, humorous, quickly delivered` is a real input to one, and every token in it shapes the output. When the source is itself a synthesis prompt, that prompt **is** the block: paste it, and strip only engine and quality configuration (`High-fidelity speech quality`, sample rate, provider, model name), which belongs to a settings block. Do not "clean it up" into `low alto, slight rasp` — translating a working synthesis prompt into pure timbre vocabulary discards the conditioning the model actually reads, and nothing downstream will ever tell you it happened. This bullet outranks the one above when the source came from a voice model.
+- **Character descriptors are conditioning, not leakage.** Prompt-to-voice models are conditioned on a description of the _speaker_, not on timbre words — `18 year old guy, comic relief, young, puberty, goofball, humorous, quickly delivered` is a real input to one, and every token in it shapes the output. When the source is itself a synthesis prompt, that prompt **is** the block: paste it, and strip only engine and quality configuration (`High-fidelity speech quality`, sample rate, provider, model name), which belongs to a settings block. Do not "clean it up" into `low alto, slight rasp` — translating a working synthesis prompt into pure timbre vocabulary discards the conditioning the model actually reads, and nothing downstream will ever tell you it happened. This bullet outranks the one above when the source came from a voice model.
 - **§3 form, phrases not prose.** `low alto, slight rasp, unhurried cadence`, one comma-joined line, no trailing period. The consumer is a synthesis target conditioned on a description, which reads phrases and not prose, and a language target reads phrases fine — so phrases are the form that survives either outcome. Skip weights: there is no model whose prior you are fighting.
 - **Positive only.** Describe the voice the character has. There is no exclusion list to write here — a voice has one description, and "not shrill" is not a thing to say about it.
 
@@ -85,9 +85,9 @@ Bloat early and you starve `APPAREL`/`ENVIRONMENT` at the tail.
 
 The failure is invisible on the page: invented prose reads exactly like sourced prose, so nobody catches it at review time, and once written it becomes canon the character then asserts as fact. Thin notes produce a short file. Say in your reply what you left out and why — that is the useful answer, not a fuller-looking file.
 
-**Relocate before you drop, and never drop silently.** This rule has a symmetric failure the wording above hides: writing less than the source supports. When converting existing material — another tool's prompt, a character sheet, an export — every token in it was put there on purpose by someone. A token that doesn't belong in the block you are currently writing almost always belongs in a *different* block, and the order to check is: does it name something drawable (`APPEARANCE`), worn (`APPAREL`), a place (`ENVIRONMENT`), a medium or art style (`IMAGE`), a behavior or narrative role (`PERSONALITY`), or a thing to suppress (`!BLOCK`)? Only after all of those fail is dropping it correct — and then it goes in your reply as an explicit list, with the reason. "It didn't fit the block I was writing" is not a reason to delete an author's stated intent. A conversion that silently discards a third of its input looks identical, on the page, to one that kept everything.
+**Relocate before you drop, and never drop silently.** This rule has a symmetric failure the wording above hides: writing less than the source supports. When converting existing material — another tool's prompt, a character sheet, an export — every token in it was put there on purpose by someone. A token that doesn't belong in the block you are currently writing almost always belongs in a _different_ block, and the order to check is: does it name something drawable (`APPEARANCE`), worn (`APPAREL`), a place (`ENVIRONMENT`), a medium or art style (`IMAGE`), a behavior or narrative role (`PERSONALITY`), or a thing to suppress (`!BLOCK`)? Only after all of those fail is dropping it correct — and then it goes in your reply as an explicit list, with the reason. "It didn't fit the block I was writing" is not a reason to delete an author's stated intent. A conversion that silently discards a third of its input looks identical, on the page, to one that kept everything.
 
-**Form is not fact.** §2 governs *what* a block asserts, never *how* it is worded. Rewriting terse source fragments into the prose a language block requires — `Male - Drakona - Warrior` into `Blitz is a Drakona warrior` — invents nothing and is required by §4.3. Pasting the fragments verbatim to "stay faithful" is the actual error: it puts tags in a prose block, which §4.3 forbids and a chat model reads as noise. Conversely, dropping a fact to make a sentence read better *is* a §2 violation. Change the form freely; change the facts never.
+**Form is not fact.** §2 governs _what_ a block asserts, never _how_ it is worded. Rewriting terse source fragments into the prose a language block requires — `Male - Drakona - Warrior` into `Blitz is a Drakona warrior` — invents nothing and is required by §4.3. Pasting the fragments verbatim to "stay faithful" is the actual error: it puts tags in a prose block, which §4.3 forbids and a chat model reads as noise. Conversely, dropping a fact to make a sentence read better _is_ a §2 violation. Change the form freely; change the facts never.
 
 Rendering blocks are the one place some invention is unavoidable: notes never specify a nose, and `APPEARANCE` cannot render an omission. There, choose the plainest values consistent with what _is_ stated, invent nothing that carries meaning — scars, tattoos, missing fingers, insignia are history and belong to whoever owns the canon — and list the choices you made in your reply. Language blocks are the opposite. An invented `PERSONALITY` pattern or `BACKSTORY` event is something the character will act on, in the voice of someone who knows their own life, contradicting the real material. Leave the block out.
 
@@ -136,6 +136,27 @@ Exclusions go in the matching `!BLOCK`.
 ### 3.2 Negatives are bare nouns
 
 Same tokenizer rule inside `!BLOCK`. Write the thing to suppress, not a negation of it: `beard`, not `no beard`. Keep negatives terser than positives. Group them densely — a negative block is a token list, not an outline, and one noun phrase per line turns 30 tokens into 30 lines for no change in output.
+
+### 3.2b A negative is a correction, not a wishlist
+
+A `!BLOCK` is the fix list for _this subject's observed failures_. It is not a list of things you don't want to see in an image.
+
+**A negative earns its place only when all three hold:**
+
+1. **Observed** — you saw it in an actual render of _this_ file. Not "the model might."
+2. **Adjacent** — it is a near-miss the positive itself invites: `brown hair` on a green-haired character, `large bow` where the bow is small, `sleeved jacket` where the garment is a sleeveless vest. If the positive could not plausibly produce it, the negative is inert.
+3. **File-specific** — if you would paste the same token into a second character file, it belongs in the one shared style file instead.
+
+**Why "just in case" is wrong, mechanically.** The negative channel is a prompt with a token budget, and it _accumulates_ across every file in a composition — an explicit positive never suppresses it (see [File Format](file-format.md), merge modes). Twenty speculative tokens dilute the three that were working, by the same relative-weight arithmetic as §3.6. **An unnecessary negative is not free; it is paid for by the necessary ones.**
+
+**Fix the positive first.** Most drift is caused by a bad positive token, not a missing negative — see §3.11. `collar` rendering a dog collar, `tail` rendering an animal tail, `bound` rendering bondage, `television` in an `ENVIRONMENT` putting the subject inside the screen. A negative that papers over a bad positive leaves the bad positive in place and spends budget hiding it. Reach for `!BLOCK` only once the positive is correct and the drift persists.
+
+| Situation                                            | Negative                                                  |
+| :--------------------------------------------------- | :-------------------------------------------------------- |
+| a green-haired character keeps rendering brown       | `brown hair, brunette` — observed, adjacent, hers alone   |
+| a character's small bow keeps rendering huge         | `large bow, oversized bow`                                |
+| a character who has never once rendered a dog collar | **nothing** — not observed, not adjacent                  |
+| "no extra fingers" across a whole cast               | **nothing here** — one style file, not 46 character files |
 
 ### 3.3 Nothing abstract, instructional, or emotional
 
@@ -256,6 +277,10 @@ Camera, lens, aperture, resolution, quality anchors, sampler settings → **one*
 
 `IMAGE` text lands at the prompt front — right for quality anchors, wrong for eye color.
 
+**The `base` setting belongs there too, and only there.** `base` names the model architecture — `sdxl` (the default, so pipeline files for it may omit it) or `anima` — and it is what makes the composition compile against that architecture's node graph and defaults. A character file that names a base has decided which model its callers may use; the pipeline file that supplies the `checkpoint` or the `unet` is the file entitled to that call.
+
+A `LORA` is the one place a base is a property of the asset rather than a choice: the weights were trained against one base model, so `base = anima` on a `LORA` means "load me only under `anima`," and a mismatch is skipped rather than warned. It defaults exactly as it does on `IMAGE` — omitted means `sdxl` — so write it only for weights built against something else, and never write `base = sdxl`. An untagged `LORA` is an SDXL `LORA`: it loads under `sdxl` and is skipped everywhere else, which is what stops SDXL weights being handed to an architecture whose keys they do not match.
+
 **The exception is a style the source binds to one character.** When the material says this character is rendered in this medium — a bot whose stored prompt carries `dreamworks, 3d animation, Pixar`, an existing asset you are transcribing — that is a fact about the character as authored, and it belongs in an `IMAGE` block in the character file. Do not silently relocate it to a style file the caller has to know to select, and do not drop it (§2). Say once that `IMAGE` is singular, so two such characters in one composition warn and the first wins, and let the author decide; the split into a shared style file is a refactor they may want later and never something to perform on their behalf mid-conversion.
 
 ### 3.10 Subject count and framing belong to the shot file
@@ -312,8 +337,8 @@ To the model these name an _object_, or a tagged genre, rather than the sense yo
 | `tendrils`                              | tentacles                    |                                                 |
 | `bound`                                 | bondage                      |                                                 |
 | `tail`                                  | an animal tail               |                                                 |
-| `cuffs`                                 | handcuffs                    | `shirt cuffs`, `buttoned sleeve cuffs`          |
-| `collar`                                | a choker or dog collar       | `shirt collar`, `pointed collar`                |
+| `cuffs`                                 | handcuffs                    |                                                 |
+| `collar`                                | a choker or dog collar       | `shirt-collar`                                  |
 
 ---
 
@@ -419,7 +444,7 @@ Broad qualities need their mechanism spelled out. Flirtatious, shy, arrogant, nu
 
 **Traits, not rules.** `curious` is a trait. `always ask a follow-up question` is an instruction to the model and belongs in `CHAT` (§4.7).
 
-**Narrative role is a trait, and it lives here.** "the comedic relief of the story," "the party's tank," "the straight man," "the mentor" — these describe the function a character performs in a group, which shapes how they behave in every scene, so they are `PERSONALITY` and not `CHARACTER`. `CHARACTER` holds what someone *is* (species, job, age, condition); the role they play *among others* is behavior. A source that states one is handing you a real trait — keep it, in the source's own words where they work.
+**Narrative role is a trait, and it lives here.** "the comedic relief of the story," "the party's tank," "the straight man," "the mentor" — these describe the function a character performs in a group, which shapes how they behave in every scene, so they are `PERSONALITY` and not `CHARACTER`. `CHARACTER` holds what someone _is_ (species, job, age, condition); the role they play _among others_ is behavior. A source that states one is handing you a real trait — keep it, in the source's own words where they work.
 
 No trailing period — lines are comma-joined onto a single `Personality:` line, so each must stand alone. `PERSONALITY` is the one comma-joined block that earns one value per line (§2): each pattern is a full clause, and they get edited individually. `!PERSONALITY` does not — it is a bare list of traits to avoid, so it goes on one line.
 
@@ -533,12 +558,12 @@ The test is **why the caller selected this file**. Explicit blocks are what the 
 
 Selecting `leotorin` asks for the character — his face is the thing you asked for, his tunic and his farm merely arrive with him. Selecting `winter-coat` or `tavern` means you wanted the outfit or the place, so nothing in those files defers to anything.
 
-| File kind        | Explicit                                                      | `?` default                                                                       |
-| :--------------- | :------------------------------------------------------------ | :-------------------------------------------------------------------------------- |
+| File kind        | Explicit                                                                              | `?` default                                                                       |
+| :--------------- | :------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------- |
 | Character        | `APPEARANCE`/`!`, `CHARACTER`, `PERSONALITY`/`!`, `BACKSTORY`, `VOICE` when asked for | `?APPAREL`; `?ENVIRONMENT` only when the source establishes a home, shop, or city |
-| Apparel          | `APPAREL`/`!`                                                 | —                                                                                 |
-| Place / location | `ENVIRONMENT`/`!`                                             | —                                                                                 |
-| Style / pipeline | `IMAGE`, `PROMPT`, quality anchors                            | settings a shot file should be free to raise                                      |
+| Apparel          | `APPAREL`/`!`                                                                         | —                                                                                 |
+| Place / location | `ENVIRONMENT`/`!`                                                                     | —                                                                                 |
+| Style / pipeline | `IMAGE`, `PROMPT`, quality anchors                                                    | settings a shot file should be free to raise                                      |
 
 - **`APPEARANCE` is never `?`.** A character's face is not a fallback — there is no composition where you want a different file's face substituted for it, and in a two-character composition accumulation is already the behavior you want.
 - **A location file never defaults its own `ENVIRONMENT`.** Its whole purpose is to assert that place; `?ENVIRONMENT` there yields to anything and asserts nothing.
