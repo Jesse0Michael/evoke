@@ -1,3 +1,17 @@
+# [1.1.0](https://github.com/Jesse0Michael/evoke/compare/v1.0.1...v1.1.0) (2026-08-20)
+
+### Bug Fixes
+
+- image base. view refactor ([3f9f9c5](https://github.com/Jesse0Michael/evoke/commit/3f9f9c5e0faed770276a6519ebf9e4df188920f0))
+
+### Features
+
+- Add xall enumeration and IMAGE output grouping ([cc03d2e](https://github.com/Jesse0Michael/evoke/commit/cc03d2e222cd219659bcde14f5f56e3ce3fb7a8b))
+
+### Other
+
+- Use Image Saver metadata ([cef283d](https://github.com/Jesse0Michael/evoke/commit/cef283dc052bd4af4a06ee66d9514d663a14c90b))
+
 ## [1.0.1](https://github.com/Jesse0Michael/evoke/compare/v1.0.0...v1.0.1) (2026-08-13)
 
 ### Bug Fixes
