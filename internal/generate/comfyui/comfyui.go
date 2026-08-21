@@ -273,8 +273,10 @@ func renderPromptData(doc *evoke.Composition, base string) (promptData, []string
 	// in APPEARANCE. VOICE is excluded for the same reason from the other side: it
 	// describes how the subject sounds, which is a future audio target's input, not
 	// a diffusion model's.
-	pd.Positive = joinValues(doc.Appearance.Positive, doc.Prompt.Positive)
-	pd.Negative = joinValues(doc.Appearance.Negative, doc.Prompt.Negative)
+	//
+	// Earlier tokens carry more weight, so composition leads appearance.
+	pd.Positive = joinValues(doc.Prompt.Positive, doc.Appearance.Positive)
+	pd.Negative = joinValues(doc.Prompt.Negative, doc.Appearance.Negative)
 	pd.Apparel.Positive = joinAll(doc.Apparel.Positive)
 	pd.Apparel.Negative = joinAll(doc.Apparel.Negative)
 	pd.Environment.Positive = joinAll(doc.Environment.Positive)

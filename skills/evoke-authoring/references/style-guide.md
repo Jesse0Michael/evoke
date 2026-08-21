@@ -40,7 +40,7 @@ Ground truth from `internal/generate/comfyui/comfyui.go` and `internal/chat/prom
 | `APPEARANCE` / `!`             | positive / negative                         | —                                       |
 | `APPAREL` / `!`                | apparel conditioning                        | —                                       |
 | `ENVIRONMENT` / `!`            | environment conditioning                    | —                                       |
-| `PROMPT` / `!`                 | positive / negative                         | —                                       |
+| `PROMPT` / `!`                 | shot composition (positive / negative)      | —                                       |
 | `IMAGE` / `!`                  | sampler settings + text at prompt **front** | —                                       |
 | `LORA`                         | LoRA chain                                  | —                                       |
 | `DETAILER` / `!`               | per-region inpaint prompts                  | —                                       |
@@ -71,8 +71,8 @@ Engine configuration is not this block's job. A synthesis backend, model, and it
 Position is weight — CLIP dilutes later tokens (~75/chunk).
 
 ```text
-positive:  IMAGE → APPEARANCE → PROMPT → APPAREL → ENVIRONMENT
-negative:  !IMAGE → !APPEARANCE → !PROMPT → !APPAREL → !ENVIRONMENT
+positive:  IMAGE → PROMPT → APPEARANCE → APPAREL → ENVIRONMENT
+negative:  !IMAGE → !PROMPT → !APPEARANCE → !APPAREL → !ENVIRONMENT
 ```
 
 Bloat early and you starve `APPAREL`/`ENVIRONMENT` at the tail.
@@ -207,7 +207,7 @@ APPEARANCE
     a young woman in her early twenties with striking bright blue eyes and fair skin with subtle freckles scattered across her nose
 ```
 
-Realistic Illustrious merges are hybrids: Danbooru structure tags (`1girl`, `upper body`, `from below` — in the shot file, §3.10) plus photographic vocabulary for light and texture (`soft diffused light`, `shallow depth of field`, `visible skin pores`). The anime quality stack (`masterpiece, best quality`) drags them back toward illustration — prefer `photorealistic`, `detailed skin texture`.
+Realistic Illustrious merges are hybrids: Danbooru structure tags (`1girl`, `upper body`, `from below` — in `PROMPT`, §3.10) plus photographic vocabulary for light and texture (`soft diffused light`, `shallow depth of field`, `visible skin pores`). The anime quality stack (`masterpiece, best quality`) drags them back toward illustration — prefer `photorealistic`, `detailed skin texture`.
 
 When the target checkpoint is unknown, use phrases. They degrade gracefully on T5; prose degrades badly on every CLIP model.
 
@@ -283,20 +283,25 @@ A `LORA` is the one place a base is a property of the asset rather than a choice
 
 **The exception is a style the source binds to one character.** When the material says this character is rendered in this medium — a bot whose stored prompt carries `dreamworks, 3d animation, Pixar`, an existing asset you are transcribing — that is a fact about the character as authored, and it belongs in an `IMAGE` block in the character file. Do not silently relocate it to a style file the caller has to know to select, and do not drop it (§2). Say once that `IMAGE` is singular, so two such characters in one composition warn and the first wins, and let the author decide; the split into a shared style file is a refactor they may want later and never something to perform on their behalf mid-conversion.
 
-### 3.10 Subject count and framing belong to the shot file
+### 3.10 Subject count and framing live in `PROMPT`, never in `APPEARANCE`
 
-`1girl`, `1boy`, `2girls`, `solo`, `upper body`, `full body`, `portrait`, `from below`, `from behind`, `looking at viewer`, `cowboy shot` — none of these is a trait of the character. They are instructions about the picture, and they belong to the shot/view file selected per image, exactly as camera and quality belong to the pipeline file (§3.9).
+`1girl`, `1boy`, `2girls`, `solo`, `upper body`, `full body`, `portrait`, `from below`, `from behind`, `looking at viewer`, `cowboy shot` — none of these is a trait of the character. They are instructions about the picture, and `PROMPT` is the channel for them.
 
-A character file that asserts `1boy` argues with every shot you ask it for. It contradicts the first two-character composition, fights `from behind` and `back turned`, and pins the subject count in a crowd scene — and because `APPEARANCE` accumulates, nothing downstream can retract it. This is the recombination invariant with teeth: the file has to be true in every composition it appears in, and a count is only true in one.
+The rule is about the **channel**, not the file. `APPEARANCE` accumulates, so a count written there is permanent: it argues with every shot you ask the character for, contradicts the first two-character composition, fights `from behind` and `back turned`, pins the subject count in a crowd scene, and nothing downstream can retract it. `PROMPT` is retractable — one explicit `PROMPT` anywhere in the composition drops every `?PROMPT` line — which is exactly what makes it the right home for a claim that is only true until a caller says otherwise.
+
+So a character file **does** get to state its default shot, as `?PROMPT`. It is the only file that knows whether the subject is a girl, a boy, or a non-human, so it is the only file that can write the count at all — a pipeline file can't, and the vague genderless composition it would have to write instead is worth nothing.
 
 ```text
-# wrong — the character file has decided the shot
+# wrong — the count is in APPEARANCE, where nothing can retract it
 APPEARANCE
     (1boy, firbolg:1.3)
     (blue-grey skin:1.2)
     male focus, very tall broad build, long pale beard, wide flat nose
 
-# right — identity only; a shot file supplies `1boy, solo, upper body`
+# right — identity in APPEARANCE, composition in ?PROMPT
+?PROMPT
+    1boy, solo
+
 APPEARANCE
     (firbolg:1.3)
     (blue-grey skin:1.2)
@@ -305,9 +310,11 @@ APPEARANCE
 
 Two weights, not five: the species and the non-human skin tone are what Illustrious averages away. The build, beard, and nose render fine flat and stay unweighted no matter how defining they feel (§3.6).
 
-**Gender belongs in `APPEARANCE` — dropping the count must not drop the gender**, or the render misgenders the character. Use the gender tag that carries no count: `male focus` / `female focus` on booru-trained checkpoints (Illustrious, Pony, NoobAI), `man` / `woman` on natural-caption ones. Those state who the subject is without deciding how many are in frame. Secondary traits — `beard`, `flat chest`, `broad shoulders`, `wide hips` — belong there too and reinforce it, but they are reinforcement, not a substitute for saying it. If a character still renders wrong, put `1boy`/`1girl` in the shot file, which is already deciding the count and is the file allowed to.
+**Keep the count-free gender tag in `APPEARANCE` as well.** This is not redundancy. Override is whole-channel, so a shot file that writes `PROMPT from behind, full body` erases the character's `1boy` along with its `solo` — and a shot file has no obligation to restate a gender it doesn't know. `male focus` / `female focus` on booru-trained checkpoints (Illustrious, Pony, NoobAI), `man` / `woman` on natural-caption ones, is the statement that survives any shot file, because it names who the subject is without deciding how many are in frame. Secondary traits — `beard`, `flat chest`, `broad shoulders`, `wide hips` — reinforce it but never replace it. The division: **`APPEARANCE` says what the subject is, `?PROMPT` says how many and how framed.**
 
-Selected with no shot file, the model picks count and framing itself. That is the intended trade, and the fix is a shot file per framing you actually use, not a count wired into the character.
+A `?PROMPT` block has to be complete on its own, like any default (§5.1). A shot file replaces the whole channel, so `?PROMPT 1girl` with the `solo` on a second line it forgot is not completed by the shot that displaces it.
+
+Shot files state `PROMPT` explicitly, and several of them accumulate with each other — explicit contributions never suppress one another, only defaults. Two shot files in one composition both apply, which is why a shot file should describe one concern.
 
 ### 3.11 Words with a second, literal meaning
 
@@ -560,12 +567,15 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 
 | File kind        | Explicit                                                                              | `?` default                                                                       |
 | :--------------- | :------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------- |
-| Character        | `APPEARANCE`/`!`, `CHARACTER`, `PERSONALITY`/`!`, `BACKSTORY`, `VOICE` when asked for | `?APPAREL`; `?ENVIRONMENT` only when the source establishes a home, shop, or city |
+| Character        | `APPEARANCE`/`!`, `CHARACTER`, `PERSONALITY`/`!`, `BACKSTORY`, `VOICE` when asked for | `?PROMPT` — its default composition; `?APPAREL`; `?ENVIRONMENT` only when the source establishes a home, shop, or city |
+| Shot / view      | `PROMPT`/`!`                                                                          | —                                                                                 |
 | Apparel          | `APPAREL`/`!`                                                                         | —                                                                                 |
 | Place / location | `ENVIRONMENT`/`!`                                                                     | —                                                                                 |
-| Style / pipeline | `IMAGE`, `PROMPT`, quality anchors                                                    | settings a shot file should be free to raise                                      |
+| Style / pipeline | `IMAGE` text, quality anchors                                                          | settings a shot file should be free to raise                                      |
 
 - **`APPEARANCE` is never `?`.** A character's face is not a fallback — there is no composition where you want a different file's face substituted for it, and in a two-character composition accumulation is already the behavior you want.
+- **`PROMPT` in a character file is always `?`; in a shot file it is never `?`.** The character's composition is a claim about the picture that holds only until a caller asks for a different picture, so it yields. A shot file exists to assert that shot, so it doesn't. This is the same test as `winter-coat` and its `APPAREL` — the block the file exists for is explicit (§3.10).
+- **A pipeline file carries no `PROMPT` at all.** It is the one file that cannot know whether the subject is a girl, a boy, or a non-human, so any composition it writes is either wrong or too vague to be worth the tokens. Camera, lighting, and quality anchors go in its `IMAGE` text (§3.9); composition belongs to the character and the shot.
 - **A location file never defaults its own `ENVIRONMENT`.** Its whole purpose is to assert that place; `?ENVIRONMENT` there yields to anything and asserts nothing.
 - **`?ENVIRONMENT` in a character file needs a source.** A farm, a shop, a home city the notes actually establish. Adding one so the file renders alone is §2 fabrication with a `?` in front of it.
 - **Override is whole-channel, not per line.** One explicit `APPAREL` anywhere in the composition drops _every_ `?APPAREL` line — you get the coat file's outfit, not the coat plus the character's trousers. That is what makes a default easy to displace, and it is why a `?` block should be complete on its own: a default outfit missing trousers is never completed by the thing that replaces it.
@@ -581,13 +591,14 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 - [ ] Any block written because it was empty rather than because there was material for it?
 - [ ] Any declaration present that nobody asked for?
 - [ ] Converting existing material — is every token in the source either placed in some block or named in your reply as dropped, with a reason?
-- [ ] Anything dropped that would have fit `IMAGE`, `PERSONALITY`, `?APPAREL`, `?ENVIRONMENT`, or a `!BLOCK` if you had looked there?
+- [ ] Anything dropped that would have fit `IMAGE`, `PERSONALITY`, `?PROMPT`, `?APPAREL`, `?ENVIRONMENT`, or a `!BLOCK` if you had looked there?
 - [ ] Any fact lost while changing the form of a block, or any source fragment pasted verbatim into a prose block?
 
 **Rendering blocks (§3)**
 
 - [ ] Every line describes something drawable?
-- [ ] Subject count or framing (`1boy`, `solo`, `upper body`, `from below`) in a character file instead of the shot file?
+- [ ] Subject count or framing (`1boy`, `solo`, `upper body`, `from below`) sitting in `APPEARANCE` instead of `PROMPT`?
+- [ ] Character file's `PROMPT` marked `?`, complete on its own, and its gender also stated count-free in `APPEARANCE` so a shot file replacing the channel can't degender it?
 - [ ] Negation words in a positive block?
 - [ ] Short phrases, no grammar words, no trailing periods?
 - [ ] Weights: numeric only, ≤1.3, 1–3 per character, identity files only, and only on traits that actually failed flat?

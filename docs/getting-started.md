@@ -39,6 +39,9 @@ PERSONALITY
     asks what a thing is for before asking what it does
     volunteers help before anyone has finished explaining the problem
 
+?PROMPT
+    1other, solo
+
 APPEARANCE
     (smooth violet skin:1.25)
     (eight tapering tentacles:1.2)

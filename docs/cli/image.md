@@ -59,13 +59,15 @@ $ evoke image sumi.evoke "a female scientist in a science lab"
 
 This merges the `sumi.evoke` file with the literal text appended to the positive prompt. Literal prompts compose with file-based PROMPT declarations — they accumulate just like any other PROMPT contribution.
 
+A literal prompt is an **explicit** contribution, so it also suppresses any `?PROMPT` default in the composition. Passing a literal string replaces a character file's default shot composition rather than adding to it.
+
 ## What ends up in the prompt
 
 Only the declarations a diffusion model can render are sent. The merged composition becomes two prompt strings, assembled in this order:
 
 ```text
-positive:  IMAGE text → APPEARANCE → PROMPT → APPAREL → ENVIRONMENT
-negative:  !IMAGE text → !APPEARANCE → !PROMPT → !APPAREL → !ENVIRONMENT
+positive:  IMAGE text → PROMPT → APPEARANCE → APPAREL → ENVIRONMENT
+negative:  !IMAGE text → !PROMPT → !APPEARANCE → !APPAREL → !ENVIRONMENT
 ```
 
 `CHARACTER`, `PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **not** included — they carry identity, disposition, history, and narrative situation, which a diffusion model cannot render. They are consumed by [`evoke chat`](chat.md) instead. `VOICE` is not included either, and no command reads it yet — it describes how a subject sounds. `NAME` is used for the output directory, not the prompt — see [Grouping output](../file-format/declarations.md#grouping-output) to shelve several characters under a shared directory. Everything drawable about a subject belongs in `APPEARANCE`.

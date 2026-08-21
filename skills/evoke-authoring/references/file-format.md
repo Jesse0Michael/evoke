@@ -119,14 +119,14 @@ Resolution, per declaration and channel: collect explicit → collect defaults �
 | `CHAT`        | singular     |  —  |  ✓  |    —     |  130  |
 | `KNOWLEDGE`   | singular     |  —  |  ✓  | required |  140  |
 
-**Order** is the canonical ascending render order, so output depends on the declaration rather than on file order. For which target reads which declaration — and why weighting `APPEARANCE` early matters — see [Style Guide](style-guide.md) §1.
+**Order** is the canonical ascending order — it makes output depend on the declaration rather than on file order, and it is what `evoke inspect` prints. It is **not** the image prompt order: that leads with `IMAGE` text, then `PROMPT`, then `APPEARANCE`, and position there is weight. For both, see [Style Guide](style-guide.md) §1.
 
 Notes on the non-obvious ones:
 
 - `CHARACTER` is **positive only**. An identity has no meaningful "not this"; contradictions go in `!PERSONALITY`. Drawable detail goes in `APPEARANCE`.
 - `VOICE` is read by **no target yet** — see [Style Guide](style-guide.md) §1. It parses, merges, and inspects like any other block; nothing renders it. Write it only when asked for it, and never to carry material that belongs in `PERSONALITY`.
 - `SCENARIO` is **singular** — only one file in a composition may supply it.
-- `PROMPT` is an escape hatch for material no specific declaration fits, not the preferred representation.
+- `PROMPT` is the **shot composition** channel — subject count, framing, and what the subject is doing. A character file carries it as a `?` default so it renders coherently alone; a shot file states it explicitly and replaces that default whole. See [Style Guide](style-guide.md) §3.10.
 - `APPAREL` is deliberately broad (no `OUTFIT`/`FOOTWEAR`); `ENVIRONMENT` carries the whole scene/setting role (no `LOCATION`).
 
 ## Structured declarations

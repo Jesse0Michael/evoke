@@ -79,7 +79,7 @@ A default steps aside for an explicit contribution of *the same thing*, and the 
 
 | The default contributes                                                                       | An explicit contribution replaces                                                                                |
 | :--------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------- |
-| **values in a channel** — `?APPAREL`, `?APPEARANCE`, `?PERSONALITY`, and the prompt text on `?IMAGE` / `?DETAILER` / `?CHAT` | **the whole channel.** One explicit line replaces every default line in it — you cannot add to an inherited list. |
+| **values in a channel** — `?PROMPT`, `?APPAREL`, `?PERSONALITY`, and the prompt text on `?IMAGE` / `?DETAILER` / `?CHAT` | **the whole channel.** One explicit line replaces every default line in it — you cannot add to an inherited list. |
 | **a `key = value` setting** on `?IMAGE`, `?LORA`, `?DETAILER`, `?CHAT`, `?KNOWLEDGE`          | **that one key.** Settings the explicit block never mentioned still apply.                                        |
 
 One rule, two granularities, because a setting is addressable by name and a prompt line is not. A shot file writing

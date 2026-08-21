@@ -22,6 +22,9 @@ NAME
 CHARACTER
     Sumi is an octopus humanoid and the mascot of the Evoke project.
 
+?PROMPT
+    1other, solo
+
 APPEARANCE
     (smooth violet skin:1.25)
     octopus humanoid, small round body, large luminous eyes

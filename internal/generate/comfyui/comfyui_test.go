@@ -33,8 +33,8 @@ func TestRenderPromptData(t *testing.T) {
 				Prompt:      evoke.Prompt{Positive: []string{"test-prompt"}, Negative: []string{"test-prompt-negative"}},
 			},
 			expected: promptData{
-				Positive:    "test-appearance, test-prompt",
-				Negative:    "test-appearance-negative, test-prompt-negative",
+				Positive:    "test-prompt, test-appearance",
+				Negative:    "test-prompt-negative, test-appearance-negative",
 				Apparel:     prompt{Positive: "test-apparel", Negative: "test-apparel-negative"},
 				Environment: prompt{Positive: "test-environment", Negative: "test-environment-negative"},
 			},

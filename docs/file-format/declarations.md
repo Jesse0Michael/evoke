@@ -25,7 +25,7 @@ Every declaration has a registered definition that fixes its **merge mode**, whe
 - **Merge** — how repeated contributions combine. See [Merge Modes](merge-modes.md). The structured declarations (`IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE`) are singular **per argument** but resolve by [field-level layering](merge-modes.md#structured-field-level-overlay), not all-or-nothing: a block only needs to name the settings it changes and inherits the rest, and for a key two files both set, the later argument wins.
 - **`!` negative** — whether values may be routed to the exclusion channel. See [Prefixes & Channels](prefixes.md).
 - **`?` default** — whether values may be marked as defaults used only when nothing more specific exists.
-- **Order** — the canonical, ascending order renderers use so output is deterministic rather than dependent on file order.
+- **Order** — the canonical, ascending order renderers use so output is deterministic rather than dependent on file order. This is not the order the image prompt is assembled in; see [the image command](../cli/image.md).
 
 ## Which command consumes which declaration
 
@@ -42,7 +42,7 @@ A declaration is only meaningful to the commands that read it. `image` and `chat
 | `APPAREL`     | apparel conditioning | — |
 | `ENVIRONMENT` | environment conditioning | — |
 | `SCENARIO`    | — | the opening turn |
-| `PROMPT`      | positive / negative prompt | — |
+| `PROMPT`      | shot composition (positive / negative) | — |
 | `IMAGE`       | sampler settings and prompt text | — |
 | `LORA`        | LoRA chain | — |
 | `DETAILER`    | per-region inpaint prompts | — |
@@ -164,15 +164,23 @@ SCENARIO
 
 ### PROMPT
 
-Direct prompt material for when no more specific declaration fits — an escape hatch, not the preferred representation. **Accumulating**; supports the negative channel and defaults.
+The shot composition — subject count, framing, and what the subject is doing. **Accumulating**; supports the negative channel and defaults.
+
+A character file states its own composition as a default, so selecting the character alone still yields a coherent single-subject shot:
+
+```text
+?PROMPT
+    1girl, solo
+```
+
+A shot file states one explicitly. Because override is whole-channel, that replaces the character's default entirely rather than adding to it:
 
 ```text
 PROMPT
-    cinematic portrait composition
-
-!PROMPT
-    blurry, deformed hands
+    1girl, 1boy, embracing, arms around waist, upper body
 ```
+
+The negative channel carries what the composition has to suppress — `!PROMPT duplicate, clone, multiple views`. Written explicitly it applies to every composition, including ones where a shot file replaced the positive channel, because a declaration's positive and negative channels resolve independently.
 
 ### IMAGE
 
