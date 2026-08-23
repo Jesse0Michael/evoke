@@ -1,3 +1,14 @@
+## [1.1.1](https://github.com/Jesse0Michael/evoke/compare/v1.1.0...v1.1.1) (2026-08-23)
+
+### Bug Fixes
+
+- update evoke view ([d030059](https://github.com/Jesse0Michael/evoke/commit/d030059e9107673f58c88317c60fda19a26f6d36))
+
+### Other
+
+- ranked tag filter ([a373276](https://github.com/Jesse0Michael/evoke/commit/a373276ae771aecb8db70e07f5d3831edc11d079))
+- repurpose PROMPT ([9350d36](https://github.com/Jesse0Michael/evoke/commit/9350d367613393d8553d0ffa3293c3cd79f9dd2d))
+
 # [1.1.0](https://github.com/Jesse0Michael/evoke/compare/v1.0.1...v1.1.0) (2026-08-20)
 
 ### Bug Fixes
