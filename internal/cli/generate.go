@@ -439,33 +439,53 @@ func loadCandidate(chosen indexCandidate, sel evoke.Selector, raw string) (*evok
 	return doc, chosen.Path, nil
 }
 
-// pickByAffinity selects a candidate by filtering to those sharing tags with the affinity set.
-// If any candidates match at least one affinity tag, pick randomly from that filtered set.
-// If none match, pick randomly from all candidates.
+// pickByAffinity selects a candidate by tag overlap with the files already
+// resolved for this composition, rolling among ties.
 func pickByAffinity(ctx context.Context, candidates []indexCandidate, affinityTags []string, idx *sqliteIndex) indexCandidate {
 	affinitySet := make(map[string]bool, len(affinityTags))
 	for _, t := range affinityTags {
 		affinitySet[t] = true
 	}
 
-	var filtered []indexCandidate
-	for _, c := range candidates {
+	return pickTopAffinity(candidates, affinitySet, func(c indexCandidate) []string {
 		tags, err := idx.tagsForFile(ctx, c.Path)
 		if err != nil {
-			continue
+			return nil
 		}
-		for _, t := range tags {
-			if affinitySet[t] {
-				filtered = append(filtered, c)
-				break
+		return tags
+	})
+}
+
+// pickTopAffinity scores each candidate by how many affinity tags it carries
+// and rolls among the highest scorers, so a file sharing a broad tag (a
+// franchise) loses to one that also shares a specific tag (the character it
+// was made for). Candidates sharing nothing are excluded entirely, unless no
+// candidate shares anything, in which case the roll covers them all.
+func pickTopAffinity(candidates []indexCandidate, affinity map[string]bool, tagsFor func(indexCandidate) []string) indexCandidate {
+	best := 0
+	var top []indexCandidate
+	for _, c := range candidates {
+		score := 0
+		for _, t := range tagsFor(c) {
+			if affinity[t] {
+				score++
 			}
+		}
+		switch {
+		case score == 0 || score < best:
+			continue
+		case score > best:
+			best = score
+			top = []indexCandidate{c}
+		default:
+			top = append(top, c)
 		}
 	}
 
-	if len(filtered) > 0 {
-		return filtered[rand.IntN(len(filtered))]
+	if len(top) == 0 {
+		return candidates[rand.IntN(len(candidates))]
 	}
-	return candidates[rand.IntN(len(candidates))]
+	return top[rand.IntN(len(top))]
 }
 
 // findInCwd checks .evoke files in the immediate working directory against a selector.
