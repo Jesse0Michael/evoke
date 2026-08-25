@@ -53,7 +53,7 @@ TAGS
 
 A selector is tags joined with `+` — `evoke image nurse+modern` matches files carrying both. When several files match, one is chosen at random.
 
-The index adds each file's base name as an **implicit tag**, so `sumi.evoke` is always reachable as `evoke image sumi` whether or not it declares any tags. A path and an `@namespace/name` registry reference also work as inputs.
+The index adds each file's base name as an **implicit tag**, so `sumi.evoke` is always reachable as `evoke image sumi` whether or not it declares any tags. A file *named* for a single-tag selector outranks files that merely carry the tag: with `sumi.evoke`, `sumi-winter.evoke`, and `sumi-beach.evoke` all tagged `sumi`, `evoke image sumi` always resolves `sumi.evoke`. Give the outfit files a shared tag that isn't a file name (`sumi-wardrobe`) when you want a roll among them. A path and an `@namespace/name` registry reference also work as inputs.
 
 ## Prefixes & channels
 

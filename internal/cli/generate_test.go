@@ -4,6 +4,7 @@ import (
 	"sort"
 	"testing"
 
+	evoke "github.com/jesse0michael/evoke/pkg/evoke"
 	"github.com/stretchr/testify/require"
 )
 
@@ -81,6 +82,98 @@ func TestPickTopAffinity(t *testing.T) {
 			sort.Strings(got)
 
 			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestPreferNameMatches(t *testing.T) {
+	tests := []struct {
+		name     string
+		selector string
+		// candidates are name/path pairs: the index stores an extension-less
+		// name, findInCwd keeps the extension, so both spellings must match.
+		candidates []indexCandidate
+		want       []indexCandidate
+	}{
+		{
+			name:     "base name outranks files carrying the tag",
+			selector: "sumi",
+			candidates: []indexCandidate{
+				{Name: "sumi", Path: "/src/sumi.evoke"},
+				{Name: "sumi-winter", Path: "/src/sumi-winter.evoke"},
+				{Name: "sumi-beach", Path: "/src/sumi-beach.evoke"},
+			},
+			want: []indexCandidate{{Name: "sumi", Path: "/src/sumi.evoke"}},
+		},
+		{
+			name:     "cwd candidates keep the extension and still match",
+			selector: "sumi",
+			candidates: []indexCandidate{
+				{Name: "sumi.evoke", Path: "/cwd/sumi.evoke"},
+				{Name: "sumi-winter", Path: "/src/sumi-winter.evoke"},
+			},
+			want: []indexCandidate{{Name: "sumi.evoke", Path: "/cwd/sumi.evoke"}},
+		},
+		{
+			name:     "name comparison ignores case",
+			selector: "sumi",
+			candidates: []indexCandidate{
+				{Name: "Sumi", Path: "/src/Sumi.evoke"},
+				{Name: "sumi-winter", Path: "/src/sumi-winter.evoke"},
+			},
+			want: []indexCandidate{{Name: "Sumi", Path: "/src/Sumi.evoke"}},
+		},
+		{
+			name:     "same base name in two roots keeps both",
+			selector: "sumi",
+			candidates: []indexCandidate{
+				{Name: "sumi", Path: "/a/sumi.evoke"},
+				{Name: "sumi", Path: "/b/sumi.evoke"},
+				{Name: "sumi-beach", Path: "/a/sumi-beach.evoke"},
+			},
+			want: []indexCandidate{
+				{Name: "sumi", Path: "/a/sumi.evoke"},
+				{Name: "sumi", Path: "/b/sumi.evoke"},
+			},
+		},
+		{
+			name:     "no base name match leaves the pool untouched",
+			selector: "apparel",
+			candidates: []indexCandidate{
+				{Name: "sumi-winter", Path: "/src/sumi-winter.evoke"},
+				{Name: "sumi-beach", Path: "/src/sumi-beach.evoke"},
+			},
+			want: []indexCandidate{
+				{Name: "sumi-winter", Path: "/src/sumi-winter.evoke"},
+				{Name: "sumi-beach", Path: "/src/sumi-beach.evoke"},
+			},
+		},
+		{
+			name:     "multi-tag selector is left alone",
+			selector: "sumi+apparel",
+			candidates: []indexCandidate{
+				{Name: "sumi", Path: "/src/sumi.evoke"},
+				{Name: "sumi-winter", Path: "/src/sumi-winter.evoke"},
+			},
+			want: []indexCandidate{
+				{Name: "sumi", Path: "/src/sumi.evoke"},
+				{Name: "sumi-winter", Path: "/src/sumi-winter.evoke"},
+			},
+		},
+		{
+			name:       "single candidate is returned unchanged",
+			selector:   "sumi-winter",
+			candidates: []indexCandidate{{Name: "sumi", Path: "/src/sumi.evoke"}},
+			want:       []indexCandidate{{Name: "sumi", Path: "/src/sumi.evoke"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sel, err := evoke.ParseSelector(tt.selector)
+			require.NoError(t, err)
+
+			require.Equal(t, tt.want, preferNameMatches(tt.candidates, sel))
 		})
 	}
 }

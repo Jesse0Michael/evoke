@@ -23,6 +23,8 @@ Each positional argument is classified as one of six input types:
 
 A selector matches files from the local index by tag. Tags are declared in the `TAGS` block of each `.evoke` file, and the index adds each file's base name as an implicit tag — `sumi.evoke` is reachable as `sumi` whether or not it declares any tags of its own.
 
+When several files match a single-tag selector and one of them is *named* for that tag, it wins outright. If `sumi.evoke`, `sumi-winter.evoke`, and `sumi-beach.evoke` all carry the tag `sumi`, then `evoke image sumi` always resolves `sumi.evoke`; the other two are reachable by their own names or by a tag they share that isn't a file name. Otherwise one of the matches is chosen at random, biased toward files that share tags with whatever the earlier selectors resolved. Base-name ranking applies to single-tag selectors only — no file is named `nurse+modern`, so matching one tag of several would let a single-facet file beat one that carries them all.
+
 Simple tag selectors:
 ```console
 $ evoke image character winter

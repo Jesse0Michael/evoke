@@ -396,6 +396,8 @@ func selectorCandidates(ctx context.Context, raw string, idx *sqliteIndex, roots
 // pickCandidate selects a candidate (weighted by affinity tag overlap if provided),
 // reads/parses/validates it, and confirms it matches.
 func pickCandidate(candidates []indexCandidate, sel evoke.Selector, raw string, affinityTags []string, idx *sqliteIndex, ctx context.Context) (*evoke.Document, string, error) {
+	candidates = preferNameMatches(candidates, sel)
+
 	var chosen indexCandidate
 	if len(candidates) == 1 {
 		chosen = candidates[0]
@@ -437,6 +439,34 @@ func loadCandidate(chosen indexCandidate, sel evoke.Selector, raw string) (*evok
 	}
 
 	return doc, chosen.Path, nil
+}
+
+// preferNameMatches narrows candidates to those whose base name is exactly the
+// requested tag, so a file named for the tag outranks files that merely carry it
+// as a tag: asking for "sumi" resolves sumi.evoke rather than rolling among
+// sumi.evoke, sumi-winter.evoke, and sumi-beach.evoke. This outranks affinity
+// because a base name is the caller naming the file, not a heuristic about which
+// file goes with the others.
+//
+// Multi-tag selectors are left alone: no file is named "sumi+winter", so
+// matching one tag of several would let a single-facet file beat one that
+// genuinely carries every requested tag.
+func preferNameMatches(candidates []indexCandidate, sel evoke.Selector) []indexCandidate {
+	if len(candidates) < 2 || len(sel.Tags) != 1 {
+		return candidates
+	}
+
+	var named []indexCandidate
+	for _, c := range candidates {
+		// Index candidates carry an extension-less name, cwd candidates keep it.
+		if strings.ToLower(strings.TrimSuffix(c.Name, ".evoke")) == sel.Tags[0] {
+			named = append(named, c)
+		}
+	}
+	if len(named) == 0 {
+		return candidates
+	}
+	return named
 }
 
 // pickByAffinity selects a candidate by tag overlap with the files already
