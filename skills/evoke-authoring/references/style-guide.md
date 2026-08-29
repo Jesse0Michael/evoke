@@ -6,7 +6,7 @@ Rules for writing the _content_ of `.evoke` files. Format mechanics live in [Fil
 
 | Writing…                                                                      | Read                                              |
 | :---------------------------------------------------------------------------- | :------------------------------------------------ |
-| `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `PROMPT`, `IMAGE`, `LORA`, `DETAILER` | §2 and §3                                         |
+| `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `PROMPT`, `IMAGE`, `LORA`, `DETAILER` | §2 and §3 — §3.12 first for `ENVIRONMENT`         |
 | `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `SCENARIO`, `CHAT` instructions      | §2 and §4                                         |
 | `VOICE`                                                                       | §2 and §1's `VOICE` note — no target reads it yet |
 
@@ -91,18 +91,19 @@ The failure is invisible on the page: invented prose reads exactly like sourced 
 
 Rendering blocks are the one place some invention is unavoidable: notes never specify a nose, and `APPEARANCE` cannot render an omission. There, choose the plainest values consistent with what _is_ stated, invent nothing that carries meaning — scars, tattoos, missing fingers, insignia are history and belong to whoever owns the canon — and list the choices you made in your reply. Language blocks are the opposite. An invented `PERSONALITY` pattern or `BACKSTORY` event is something the character will act on, in the voice of someone who knows their own life, contradicting the real material. Leave the block out.
 
-- **Never break a sentence across lines.** A newline ends a value — it is not soft wrapping. Let lines run long instead; there is no length limit. This is the only hard line rule.
-- **Comma-joined blocks default to one line.** Every rendering declaration plus `PERSONALITY` is comma-joined, so `a, b, c` on one line and `a`/`b`/`c` on three compile byte-identically — which makes layout a pure reading choice, and the compact one is the default. Split onto separate lines only when the lines earn it: weighted identity traits you'll tune one at a time, a long `APPEARANCE` grouped by facet (build / face / hair / skin), or `PERSONALITY` patterns that each run a full clause. A one-per-line list of bare nouns is an outline of nothing.
-- **Exclusion blocks are always one line.** `!APPEARANCE`, `!APPAREL`, `!ENVIRONMENT`, `!PROMPT`, `!PERSONALITY` are flat suppression lists with no internal structure and nothing to group — `human skin, pale skin, two arms, hairless`. Same for short positive lists like an `APPAREL` outfit; break that one up only when it's long enough to group by layer.
-- **One value per line in newline-joined blocks** — `CHARACTER`, `BACKSTORY`, `SCENARIO`, `CHAT` instructions. There a line _is_ a sentence, and grouping is not free.
-- **Don't restructure a file to help dedup.** Dedup is exact-match on the trimmed line, so it only fires when two files happen to write a value identically — which requires every file in the composition to group the same way. Splitting one file buys nothing, and a duplicated negative token costs almost nothing.
-- **Punctuation follows the join.** Comma-joined blocks take no trailing period: every rendering declaration, plus `PERSONALITY`/`!PERSONALITY`. Newline-joined blocks punctuate normally: `CHARACTER`, `BACKSTORY`, `SCENARIO`, `CHAT` instructions.
+- **Where the lines fall is a convention, and one of its rules has teeth** — see §2.1.
 - **Each file stays in its lane.** Character files describe characters, style files describe medium. A file that asserts a camera lens sabotages every composition.
 - **Write for recombination.** Situational detail belongs in a separate file.
 - **Comments are optional, and the default is none.** A `#` line earns its place only by carrying what the declarations cannot — why a weight sits where it does, what a partner file has to supply, a value that looks like a mistake and isn't. A header that says what the file is, summarizes its own contents, notes where the material came from, or lists example invocations is noise: the declarations already say it, and the caller decides the invocation.
 - **A comment can never qualify a value.** The parser discards comment lines before building the `Document` (`pkg/evoke/parse.go`), so `# APPEARANCE is a starting guess` reaches nothing. The values ship; the caveat doesn't. It is absent from the image prompt, absent from the chat system prompt, and absent from `knowledge.db` — where an invented `CHARACTER` or `BACKSTORY` line is retrieved and read as established fact, the same failure the format already avoids by refusing to embed `!` channels. Never write a comment that licenses content you would otherwise not write. Uncertainty goes in your reply to the user, where someone can act on it.
 
-The wrapped sentence is the easy mistake: it looks fine in the file and only misbehaves downstream. Splitting one thought over two lines makes it two values, which dedup, merge, and every join then treat as unrelated. A line may hold several sentences when they form one unit — the rule is about sentences never spanning lines, not about one sentence per line.
+### 2.1 Layout
+
+Almost none of this changes what compiles. A comma-joined block is joined with `, ` and a newline-joined one with a newline, so where the lines fall is a reading choice — which is what makes it worth making the same choice every time. The one exception is the value boundary, which is not a matter of taste at all.
+
+**A blank line between declarations.** One, every time. This is the form `evoke inspect` and `evoke render` emit, so a file written this way round-trips through the tools unchanged, and a file written without them reformats itself the moment anything writes it back out. Blank lines never end a block ([File Format](file-format.md)), so they cost nothing inside one either.
+
+**A line break is a value boundary.** Break only where a comma would go — never inside a phrase. A line ending `a tarmac road with a dashed white` above one reading `centre line in the background` is two unrelated values, not one wrapped phrase, and dedup, merge, and every join treat them as such. In a newline-joined block the same slip splits one sentence in half:
 
 ```text
 # bad — two values, and the comma-join yields "...ended her courier, work, and now..."
@@ -110,16 +111,54 @@ CHARACTER
     She lost the use of her left hand in the accident that ended her courier
     work, and now writes and fights one-handed.
 
-# good — one value, however long it runs
+# good — one value; a sentence stays whole however long it runs
 CHARACTER
     She lost the use of her left hand in the accident that ended her courier work, and now writes and fights one-handed.
 ```
+
+A line may hold several sentences when they form one unit; the rule is that a sentence never spans lines, not that a line holds one sentence.
+
+**Break long blocks for width.** A break at a phrase boundary is free, so spend it. Aim for a line you can take in at a glance — around 100 characters — breaking at the nearest comma and keeping phrases that describe the same thing together. A single phrase longer than that stays whole: the target is a reading width, not a limit to enforce.
+
+```text
+# one long line — hard to scan, and hard to edit one element of
+ENVIRONMENT
+    a roadside bus stop in autumn, a tarmac road with a dashed white centre line in the background, a paved waiting apron, a metal ticketing terminal, a bare dirt clearing, orange and deep red leaved trees, weathered wooden fence posts
+
+# identical output, grouped by what each line is describing
+ENVIRONMENT
+    a roadside bus stop in autumn, a tarmac road with a dashed white centre line in the background
+    a paved waiting apron, a metal ticketing terminal, a bare dirt clearing
+    orange and deep red leaved trees, weathered wooden fence posts
+```
+
+Short blocks stay on one line — `TAGS`, an exclusion list, a two- or three-item `APPAREL` outfit — because there is nothing to group and a one-per-line list of bare nouns is an outline of nothing. Two things take their own line regardless of width: weighted identity traits, which you tune individually, and `PERSONALITY` clauses, which each run a full sentence. `CHARACTER`, `BACKSTORY`, `SCENARIO`, and `CHAT` instructions are newline-joined, so there a line _is_ a value and grouping is not available.
+
+**No trailing comma.** The newline is already the separator, and the parser stores each line verbatim, so a trailing comma survives into the join as a doubled one — an empty token in the sequence:
+
+```text
+ENVIRONMENT
+    pale blue and white tilework, large steaming pools,
+    stone arches along the back wall
+```
+
+```text
+$ evoke inspect bathhouse
+ENVIRONMENT
+    pale blue and white tilework, large steaming pools,, stone arches along the back wall
+```
+
+It also defeats dedup, which is exact-match on the trimmed line: `warm damp air,` and `warm damp air` are two different values. No trailing period either, on any comma-joined block — every rendering declaration plus `PERSONALITY`/`!PERSONALITY`. Newline-joined blocks punctuate normally.
+
+**Don't restructure a file to help dedup.** Dedup only fires when two files happen to write a value identically, which would require every file in the composition to group the same way. Splitting one file buys nothing, and a duplicated negative token costs almost nothing.
 
 ---
 
 ## 3. Rendering targets
 
 `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `PROMPT`, `DETAILER`, and `IMAGE` text.
+
+§3.1–§3.11 govern the _form_ of a value: how to phrase it so the tokenizer reads what you meant. §3.12–§3.14 govern the _selection_: what belongs in the block at all, what the prior hands you before you write a single modifier, and what to change once you have seen a render. A block can satisfy every rule in the first group and still come back wrong; when it does, the answer is in the second.
 
 ### 3.1 Never negate in a positive block
 
@@ -139,24 +178,42 @@ Same tokenizer rule inside `!BLOCK`. Write the thing to suppress, not a negation
 
 ### 3.2b A negative is a correction, not a wishlist
 
-A `!BLOCK` is the fix list for _this subject's observed failures_. It is not a list of things you don't want to see in an image.
+A `!BLOCK` is the fix list for the ways _this file's positive_ goes wrong. It is not a list of things you don't want to see in an image.
 
-**A negative earns its place only when all three hold:**
+**The test is adjacency.** A negative earns its place when the positive itself plausibly produces it: `brown hair` on a green-haired character, `large bow` where the bow is small, `sleeved jacket` where the garment is a sleeveless vest, `modern` on a place written as pre-industrial. If nothing you wrote could drift that way, the negative is inert — it spends budget suppressing something that was never going to appear.
 
-1. **Observed** — you saw it in an actual render of _this_ file. Not "the model might."
-2. **Adjacent** — it is a near-miss the positive itself invites: `brown hair` on a green-haired character, `large bow` where the bow is small, `sleeved jacket` where the garment is a sleeveless vest. If the positive could not plausibly produce it, the negative is inert.
-3. **File-specific** — if you would paste the same token into a second character file, it belongs in the one shared style file instead.
+Two things establish adjacency, and either is sufficient:
+
+- **You saw it.** A render of this file came back with it. The strongest case, and it needs no further argument.
+- **It is the known overshoot of something the positive states.** Traits on a continuum land past where you aimed (§3.2c), and generic nouns arrive with a default register (§3.13) — both drift in a direction you can name before the first render. `young adult` overshoots young; a bare `village shop interior` renders contemporary. Writing the far end into the negative corrects a positive you just wrote, which is not a guess about what the model might do.
+
+What earns no place is the token corresponding to nothing you wrote. A generic quality or anatomy negative — `extra fingers`, `bad hands`, `watermark` — is adjacent to no particular subject and belongs in the pipeline file that owns quality (§3.9). Repetition across files is not itself the fault: if the same drift really is adjacent to ten files' positives, ten files may legitimately name it. Hoisting it into a shared file is then a convenience worth having, not a rule you were breaking.
 
 **Why "just in case" is wrong, mechanically.** The negative channel is a prompt with a token budget, and it _accumulates_ across every file in a composition — an explicit positive never suppresses it (see [File Format](file-format.md), merge modes). Twenty speculative tokens dilute the three that were working, by the same relative-weight arithmetic as §3.6. **An unnecessary negative is not free; it is paid for by the necessary ones.**
 
 **Fix the positive first.** Most drift is caused by a bad positive token, not a missing negative — see §3.11. `collar` rendering a dog collar, `tail` rendering an animal tail, `bound` rendering bondage, `television` in an `ENVIRONMENT` putting the subject inside the screen. A negative that papers over a bad positive leaves the bad positive in place and spends budget hiding it. Reach for `!BLOCK` only once the positive is correct and the drift persists.
 
-| Situation                                            | Negative                                                  |
-| :--------------------------------------------------- | :-------------------------------------------------------- |
-| a green-haired character keeps rendering brown       | `brown hair, brunette` — observed, adjacent, hers alone   |
-| a character's small bow keeps rendering huge         | `large bow, oversized bow`                                |
-| a character who has never once rendered a dog collar | **nothing** — not observed, not adjacent                  |
-| "no extra fingers" across a whole cast               | **nothing here** — one style file, not 46 character files |
+| Situation                                            | Negative                                                            |
+| :--------------------------------------------------- | :------------------------------------------------------------------ |
+| a green-haired character keeps rendering brown       | `brown hair, brunette` — observed                                   |
+| a character's small bow keeps rendering huge         | `large bow, oversized bow` — observed                               |
+| a positive stating `young adult, early twenties`     | `loli, child, teenage girl` — the overshoot of a stated trait, §3.2c |
+| a positive stating `rustic one room cabin interior`  | `modern, suburban, tidy` — the register the noun defaults to, §3.13  |
+| a character who has never once rendered a dog collar | **nothing** — nothing in the positive invites one                   |
+| `extra fingers`, `bad hands`, `watermark`            | **nothing here** — adjacent to no subject; pipeline file, §3.9      |
+
+### 3.2c Traits on a continuum: state the target, negate the overshoot
+
+Build, apparent age, hair length, bust, height, saturation, tidiness, opulence, decay. These are not categories the model selects from — they are directions it travels, and one word gives it the direction without saying where to stop. `chubby` is not a body; it is "heavier than default," and the render lands somewhere past it. `old`, `long hair`, `ornate`, `rundown` all behave the same way.
+
+Bracket the axis from both ends:
+
+- **The positive names the target with several concrete, mutually reinforcing descriptors** — enough that they only all hold at one point on the scale. Prefer shapes to judgements: `heavyset, plump, sturdy build, broad shoulders, wide hips, thick arms, soft round belly` locates a body, while `out of shape` and `husky` are opinions about one and locate nothing.
+- **The negative names the far end**, where the render would otherwise drift: `obese, morbidly obese, belly rolls, skin folds, bloated, shapeless`.
+
+The pair does the work; either half alone leaves the axis open. This is also the one negative you can write before seeing anything (§3.2b), because the overshoot direction is implied by the positive you just wrote.
+
+The same shape handles a **named tag that renders the wrong thing** — though that one you do have to observe first. Replace the name with the geometry you actually wanted, and put the name into the negative, because the geometry still invites it. A hairstyle that kept coming back as a side bun became `rolled hair ends`, `spiral curl at each side of the jaw`, `symmetrical hairstyle`, with `side bun, hair bun, updo, asymmetrical hair` suppressed.
 
 ### 3.3 Nothing abstract, instructional, or emotional
 
@@ -207,13 +264,25 @@ APPEARANCE
     a young woman in her early twenties with striking bright blue eyes and fair skin with subtle freckles scattered across her nose
 ```
 
+**A bag of words has no pronouns and no attachment.** `it`, `its`, `there`, `the same` bind to nothing at all, and an adjective attaches to whichever noun the encoder finds convenient — usually the nearest, rarely the one you meant. Repeat the noun instead of referring back to it, and repeat an attribute onto each noun that needs it rather than trusting one mention to distribute.
+
+```text
+# bad — "it" is inert, and "dark" attaches to "stone"
+a circle chalked on dark stone with red candles set around it
+
+# good
+a dark ritual pentacle chalked on the floor, red candles set around the ritual pentacle
+```
+
+This is not the decomposition §3.4 warns against. §3.4 is about spending tokens to explain a concept the model already holds; this spends them on the one link the encoder cannot make for itself.
+
 Realistic Illustrious merges are hybrids: Danbooru structure tags (`1girl`, `upper body`, `from below` — in `PROMPT`, §3.10) plus photographic vocabulary for light and texture (`soft diffused light`, `shallow depth of field`, `visible skin pores`). The anime quality stack (`masterpiece, best quality`) drags them back toward illustration — prefer `photorealistic`, `detailed skin texture`.
 
 When the target checkpoint is unknown, use phrases. They degrade gracefully on T5; prose degrades badly on every CLIP model.
 
 ### 3.6 Weights fight the model's prior
 
-SDXL — Illustrious especially — averages distinctive characters toward generic: unusual skin tones normalize, non-human features soften, atypical proportions regress. Position doesn't fix this; position controls _when_ a token is attended to, not whether it beats a prior. Weight is the right tool. Use it.
+SDXL — Illustrious especially — averages distinctive subjects toward generic: unusual skin tones normalize, non-human features soften, atypical proportions regress, and an unusual place resolves toward the commonest version of its noun (§3.13). Position doesn't fix this; position controls _when_ a token is attended to, not whether it beats a prior. Weight is the right tool. Use it.
 
 **Test: does the trait survive unweighted?** Not "is it important" — everything in a character file feels important, and weight is relative, so weighting everything is weighting nothing. Generate flat once, weight what came back wrong. `blue eyes` renders fine alone; `violet skin` doesn't.
 
@@ -223,8 +292,10 @@ The predictor, before you've tested, is **rarity, not centrality**. The prior fi
 | :----- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Form   | Numeric `(trait:1.25)` only. **Never** `(word)` or `((word))` — [multiplier and nesting order are implementation-dependent](https://www.generativelabs.com/insights/prompt-syntax-for-stable-diffusion-faq).  |
 | Range  | 1.1–1.3. Above ~1.4 gives the artifact version, not more of the trait.                                                                                                                                        |
-| Budget | 1–3 per **character**, not per file.                                                                                                                                                                          |
-| Where  | Identity only (`APPEARANCE`) — the trait should assert in every composition. Never in situational files (`APPAREL`, `ENVIRONMENT`, style), where the weight fights compositions the element is incidental to. |
+| Budget | 1–3 per **subject** — per character, per location — not per file.                                                                                                                                             |
+| Where  | The block the file exists to assert (§5.1): a character file's `APPEARANCE`, a location file's `ENVIRONMENT`, an apparel file's `APPAREL`. Not a pipeline or style file, whose anchors fight no prior.        |
+
+**Weight goes on the block the file was selected for.** Which block it sits in is what stops a weight fighting a composition the element is incidental to. A location file's `ENVIRONMENT` applies exactly when someone asked for that location, so weighting the one element that makes the place recognizable cannot distort a composition the file is absent from. What a weight must not do is shout from a block that merely came along with the subject, or from a file the caller selected for something else entirely.
 
 Needs >1.4 → out of distribution. Negate what it drifts toward, or use a `LORA`.
 
@@ -240,7 +311,7 @@ APPEARANCE
     human skin, pale skin, two arms
 ```
 
-The weighted lines sit alone because you tune them individually; everything else is one line (§2).
+The weighted lines sit alone because you tune them individually; everything else groups by width (§2.1).
 
 **Escaping is mandatory.** A Danbooru tag containing parentheses silently becomes a weight unless escaped: `vex_\(lol\)`. Evoke JSON-escapes on the way to ComfyUI, so one backslash in the file arrives correctly. (A1111 uses `/(`; ComfyUI wants `\(`.)
 
@@ -346,6 +417,64 @@ To the model these name an _object_, or a tagged genre, rather than the sense yo
 | `tail`                                  | an animal tail               |                                                 |
 | `cuffs`                                 | handcuffs                    |                                                 |
 | `collar`                                | a choker or dog collar       | `shirt-collar`                                  |
+
+**Disambiguating beats avoiding.** The right-hand column swaps the word out, but most ambiguous nouns are fixable in place with one qualifier that rules the other reading out: `a ship captain's wheel` rather than `a ship's wheel`, `a register till` rather than `a till`, `a lifesaver ring` rather than `a life ring`, `windows barred with iron` rather than `barred windows`. Swap the word when the wrong reading owns it outright (`hourglass figure`); qualify it when the word is merely underdetermined out of context.
+
+### 3.12 A rendering block describes one frame
+
+Every noun in the positive channel bids for space in a single image. There is no "off-camera," no "elsewhere in the building," and no way to say that two of the things you listed stand a hundred metres apart. The model resolves a list of unplaced nouns by picking the most photogenic and centring it — which is how a location's signature feature ends up filling the frame with the subject pushed out of it, and how two rooms become one impossible room.
+
+This is the rule good source material breaks most easily. A floor plan, a map, a wiki infobox, an architectural description, a location's entry in a setting bible — each describes **the place**, completely and from no viewpoint at all. The block describes **one view of it**. Transcribing the first into the second is the default failure, and on the page it looks like diligence.
+
+**Test: could someone standing in one spot see all of this?** If not, this is more than one file. Counting enclosures is the quick version — a block naming a kitchen, a bedroom, and a bathroom is three files, and the one that stays is the one the caller meant by selecting it. Splitting is cheap and composes; a block trying to be the whole location renders as none of it.
+
+**Place everything in depth.** Once the selection is right, say where each element sits relative to the viewer: `in the background`, `in the distance`, `along the far wall`, `overhead`, `underfoot`, `around the perimeter`, `through the window`. Lead with the frame itself — what kind of shot of what kind of place — then let each element take its position. An element you cannot place is usually an element from a different view, so this doubles as a check on the selection.
+
+**Say whether you are inside or outside, and name the enclosure.** `interior` alone hands the room's shape and scale to the prior, which returns a generic one. Give it a shape, a size, and whether it is sealed: `cylindrical stone tower interior`, `one room cabin interior`, `wide earthen cave interior`, `closed tiled bathhouse interior`. An outdoor element in an interior shot has to arrive through an opening — `a window revealing dense jungle`, never a bare `dense jungle`, which just moves the camera outside.
+
+```text
+# bad — an inventory of a place, seen from nowhere
+ENVIRONMENT
+    village house interior, a kitchen with chequered tile and a laid table, a sitting room with a lavender rug and an armchair, a hallway hung with pictures, a bedroom with pale green wallpaper, a small blue tiled bathroom, a child's room with a red bed
+
+# good — one room, staged in depth; the bedrooms are their own files
+ENVIRONMENT
+    village house interior, wooden plank floors, a kitchen with pale chequered tile and fitted counters and a cloth laid table
+    a sitting room with a lavender rug and a black armchair and a potted palm, a hallway hung with framed pictures in the background
+```
+
+`APPEARANCE` and `APPAREL` obey the same arithmetic and rarely break it, because a body is already about one frame's worth of thing. `ENVIRONMENT` breaks it constantly.
+
+### 3.13 What the prior supplies when you name something
+
+Before you write a single modifier, the noun you chose has already produced an image. Two opposite failures follow from that, and both are settled at the moment of naming.
+
+**A name with no prior renders nothing you meant.** Proper nouns, invented species, in-world objects, anything specific to one setting — the model either has no association or has the wrong one, from an unrelated sense of the word. Naming it harder does not help. Write the name _and_ a gloss of what it looks like: silhouette, colour, material, scale, how it sits. `star fruit growing in rows, yellow star shaped fruit on green stalks`. `a terminal cabinet built in the shape of a cat`. `a stone statue of a fat cat seated cross-legged`.
+
+The gloss describes your reference; it does not invent one (§2). That makes this the least speculative work in the format and the most commonly skipped — the name is right there in the source and reads as sufficient. **Test: would someone have to already know this setting to draw it?** If yes, gloss it. Keep the name as well: it costs little and anchors the gloss if the model turns out to know it after all.
+
+**A generic noun renders with a default register.** `shop interior`, `bedroom`, `village square`, `supermarket`, `cabin` — the prior for each is contemporary, tidy, well-maintained and evenly lit, because that describes most captioned photographs of them. When the thing you mean is older, poorer, rougher, dirtier, grander or emptier than that, one adjective on the noun does more than any negative: `rustic`, `low budget`, `cramped`, `derelict`, `hand-built`, `opulent`. Anchor the register first and expect to need less of the anachronism negative (§3.2b) afterwards.
+
+The two failures are one observation from opposite ends: the prior is never neutral, and every noun you write is a request for whatever it already holds.
+
+### 3.14 After the first render
+
+§3.1–§3.13 are what you can settle before generating. What remains genuinely requires looking at output, and symptom does not map to block the way intuition suggests — most wrong answers are "add a negative," which is usually the last thing that helps (§3.2b).
+
+| Symptom                                                | Look at                                                                                    |
+| :----------------------------------------------------- | :------------------------------------------------------------------------------------------ |
+| a defining trait missing, or averaged toward generic   | weight — generate flat first, then weight only what came back wrong (§3.6)                  |
+| a trait renders as the wrong _thing_ entirely          | the word, not the weight; it probably carries a second meaning (§3.11)                      |
+| a named tag renders a different shape than you meant   | replace the name with its geometry, and negate the name (§3.2c)                             |
+| the trait is right but goes too far                    | the overshoot half of the bracket (§3.2c)                                                   |
+| the subject is lost, small, or shoved off-centre       | the environment's selection and depth staging (§3.12) — not the subject                     |
+| one element renders enormous, or becomes the subject   | give it a position in depth, or move it to its own file (§3.12)                             |
+| the scene is right but the era, class or condition isn't | a register anchor on the positive noun (§3.13)                                              |
+| a specific object comes back generic or absent         | it has no prior — gloss its silhouette (§3.13)                                              |
+| elements from two views appear composited              | the block is describing a place rather than a frame (§3.12)                                 |
+| the same drift survives everything                     | out of distribution — negate what it drifts toward, or use a `LORA` (§3.6)                  |
+
+A symptom you cannot trace to anything in the merged composition is not a file problem — it is the checkpoint, the LoRA, the workflow or the sampler. Say so rather than editing declarations.
 
 ---
 
@@ -453,7 +582,7 @@ Broad qualities need their mechanism spelled out. Flirtatious, shy, arrogant, nu
 
 **Narrative role is a trait, and it lives here.** "the comedic relief of the story," "the party's tank," "the straight man," "the mentor" — these describe the function a character performs in a group, which shapes how they behave in every scene, so they are `PERSONALITY` and not `CHARACTER`. `CHARACTER` holds what someone _is_ (species, job, age, condition); the role they play _among others_ is behavior. A source that states one is handing you a real trait — keep it, in the source's own words where they work.
 
-No trailing period — lines are comma-joined onto a single `Personality:` line, so each must stand alone. `PERSONALITY` is the one comma-joined block that earns one value per line (§2): each pattern is a full clause, and they get edited individually. `!PERSONALITY` does not — it is a bare list of traits to avoid, so it goes on one line.
+No trailing period — lines are comma-joined onto a single `Personality:` line, so each must stand alone. `PERSONALITY` is the one comma-joined block that earns one value per line (§2.1): each pattern is a full clause, and they get edited individually. `!PERSONALITY` does not — it is a bare list of traits to avoid, so it goes on one line.
 
 Do not:
 
@@ -597,11 +726,18 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 **Rendering blocks (§3)**
 
 - [ ] Every line describes something drawable?
+- [ ] Does the block describe one frame someone could stand and photograph, rather than everything the place contains (§3.12)?
+- [ ] Is every element placed in depth, and does an interior name what encloses it (§3.12)?
+- [ ] Any name the model has no prior for, left without a silhouette gloss (§3.13)?
+- [ ] Any generic place noun left to the prior's contemporary, tidy default when the subject is none of those (§3.13)?
+- [ ] Any trait on a continuum given one word instead of a target bracketed against its overshoot (§3.2c)?
+- [ ] Any `it`, `its`, or `there` expected to bind to a noun (§3.5)?
 - [ ] Subject count or framing (`1boy`, `solo`, `upper body`, `from below`) sitting in `APPEARANCE` instead of `PROMPT`?
 - [ ] Character file's `PROMPT` marked `?`, complete on its own, and its gender also stated count-free in `APPEARANCE` so a shot file replacing the channel can't degender it?
 - [ ] Negation words in a positive block?
+- [ ] Every negative adjacent to something the positive states — observed, or a named overshoot — rather than a token nothing you wrote invites (§3.2b)?
 - [ ] Short phrases, no grammar words, no trailing periods?
-- [ ] Weights: numeric only, ≤1.3, 1–3 per character, identity files only, and only on traits that actually failed flat?
+- [ ] Weights: numeric only, ≤1.3, 1–3 per subject, on the block the file exists to assert, and only on traits that actually failed flat?
 - [ ] Danbooru tags with unescaped parentheses?
 - [ ] Any `or`?
 - [ ] Camera/lighting/quality directives that belong in the pipeline file?
@@ -627,9 +763,11 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 
 **Both**
 
-- [ ] Any sentence wrapped across two lines?
+- [ ] Any line broken somewhere other than a comma — a phrase or sentence split across two lines (§2.1)?
+- [ ] A blank line between every declaration (§2.1)?
+- [ ] Any line ending in a comma, or a comma-joined block ending in a period (§2.1)?
+- [ ] Long blocks broken at phrase boundaries into readable lines, and short lists left on one (§2.1)?
 - [ ] Singular declarations that will conflict with a sibling?
-- [ ] Exclusion blocks and short lists broken across lines instead of comma-joined onto one?
 - [ ] Tags naming the file itself, or restating its content, instead of sets you'd pick from at random?
 - [ ] Comments saying what the file is, what it contains, or how to invoke it?
 
