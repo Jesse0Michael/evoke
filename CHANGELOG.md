@@ -1,3 +1,17 @@
+## [1.1.2](https://github.com/Jesse0Michael/evoke/compare/v1.1.1...v1.1.2) (2026-08-30)
+
+### Bug Fixes
+
+- update style guide ([875f907](https://github.com/Jesse0Michael/evoke/commit/875f907b3846d2f5ee95927f1798e6930bf38ac7))
+
+### Documentation
+
+- Clarify authoring layout and ENVIRONMENT rules ([1cfa983](https://github.com/Jesse0Michael/evoke/commit/1cfa98314381cf12efed6abc37563656104a587f))
+
+### Other
+
+- rank name filter ([fd9b0d3](https://github.com/Jesse0Michael/evoke/commit/fd9b0d3c7fee3d1ef49c5ecf5f1f9cfa6f0ed42e))
+
 ## [1.1.1](https://github.com/Jesse0Michael/evoke/compare/v1.1.0...v1.1.1) (2026-08-23)
 
 ### Bug Fixes
