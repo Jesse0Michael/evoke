@@ -7,7 +7,7 @@ A declaration name may carry a prefix that selects a **channel** or marks a valu
 | *(none)* | positive | An explicit positive contribution. |
 | `!` | negative | Contributes to the negative / exclusion channel. |
 | `?` | default | Used only when no explicit contribution supplies the same thing — see [`?` — defaults](#--defaults). |
-| `?!` | default negative | A default contribution into the negative channel. Reserved; deferred until a real use case appears. |
+| `?!` | default negative | A default contribution into the negative channel — see [`?!` — default negative](#--default-negative). |
 
 Only declarations whose [definition](declarations.md) supports a given prefix may use it. Using an unsupported prefix is a validation error.
 
@@ -95,7 +95,16 @@ Explicit blocks then layer among *themselves* per key, with the last argument wi
 
 ## `?!` — default negative
 
-The combination — a default contribution into the negative channel — is part of the design but deliberately postponed until a concrete use case justifies it. It is not needed for the current milestones.
+A default contribution into the negative channel. It is the two prefixes composed, with no extra semantics: `?` decides *when* the value applies, `!` decides *which channel* it applies to.
+
+```text
+?!ENVIRONMENT
+    modern, suburban, power lines
+```
+
+Declaration **and** channel together are the unit of "the same thing," so those exclusions apply until some file in the composition states an explicit `!ENVIRONMENT` — at which point the whole default channel drops, exactly as `?ENVIRONMENT` would. An explicit *positive* `ENVIRONMENT` does not suppress them; the two channels resolve independently.
+
+Any declaration supporting both `!` and `?` accepts `?!`. Use it where a file's exclusions are its answer until a caller supplies different ones — a character file's habitual anachronism list, a pipeline file's quality negatives — rather than a claim the caller has no way to retract.
 
 ## Why there is no `=` / force operator
 

@@ -64,7 +64,7 @@ A prefix selects a **channel** or marks a **default**. It is never an operation.
 | *(none)* | positive         | an explicit positive contribution                                           |
 | `!`      | negative         | contributes to the negative / exclusion channel                             |
 | `?`      | default          | used only when an explicit contribution doesn't supply the same thing (see below) |
-| `?!`     | default negative | reserved; deferred until a real use case appears                            |
+| `?!`     | default negative | a default contribution into the negative channel — yields to any explicit `!` |
 
 Only declarations whose definition supports a prefix may use it — `!NAME` is a validation error.
 
@@ -80,6 +80,8 @@ A default yields to an explicit contribution of **the same thing**, and the unit
 | **a `key = value` setting** on `?IMAGE`, `?LORA`, `?DETAILER`, `?CHAT`, `?KNOWLEDGE`       | **that one key** — settings the explicit block never named still apply                   |
 
 One rule at two granularities: a setting is addressable by name, a prompt line isn't. So an explicit `IMAGE` block containing only `steps = 20` inherits the default's `checkpoint`, `cfg`, and text; add a prompt line to it and the default's text drops out entirely.
+
+**`?!` is a default in the negative channel.** Declaration *and* channel together are the unit of "the same thing," so a `?!APPEARANCE` block yields to an explicit `!APPEARANCE` anywhere in the composition and is untouched by an explicit positive `APPEARANCE`. It is the negative side of the same rule, with no extra semantics — use it where a file's exclusions are its answer until a caller supplies different ones.
 
 **There is deliberately no `=` / force / override operator.** Canonical values use `?`, which any explicit declaration already suppresses. Two *conflicting explicit* singular values are a conflict, never resolved by file order.
 
