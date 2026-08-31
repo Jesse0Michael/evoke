@@ -1,0 +1,189 @@
+{{- $seed := RandomSeed -}}
+{
+  {{- /* Anima is a Qwen-Image derivative, but not the Qwen-Image-Edit variant:
+         it has no instruction-following edit path, so this is the same redraw
+         sdxl does — encode the source, resample at partial denoise, prompt with
+         the whole composition. The loader head matches image/anima.tmpl; only
+         the latent source and the sampler settings differ. An instruction edit
+         model belongs here as its own base, not as a branch in this file. */}}
+  "unet": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "{{ .Prompt.Unet }}",
+      "weight_dtype": "{{ .Prompt.WeightDtype }}"
+    }
+  },
+
+  "clip": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "{{ .Prompt.Clip }}",
+      "type": "{{ .Prompt.ClipType }}",
+      "device": "default"
+    }
+  },
+
+  "vae": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "{{ .Prompt.Vae }}"
+    }
+  },
+
+  {{- /* ================= LoRA CHAIN ================= */ -}}
+  {{- $prev := "unet" -}}
+  {{- range $i, $l := .Prompt.Loras }}
+  "lora_{{ $i }}": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "lora_name": "{{ $l.Name }}",
+      "strength_model": {{ $l.Strength }},
+      "model": ["{{ $prev }}", 0]
+    }
+  },
+  {{- $prev = printf "lora_%d" $i -}}
+  {{- end }}
+
+  {{- /* ================= MODEL SAMPLING ================= */ -}}
+  {{- if .Prompt.Shift }}
+  "shift": {
+    "class_type": "ModelSamplingAuraFlow",
+    "inputs": {
+      "shift": {{ .Prompt.Shift }},
+      "model": ["{{ $prev }}", 0]
+    }
+  },
+  {{- $prev = "shift" -}}
+  {{- end }}
+
+  {{- /* ================= NEGATIVE GUIDANCE ================= */ -}}
+  {{- if .Prompt.NagScale }}
+  "nag": {
+    "class_type": "NAGuidance",
+    "inputs": {
+      "model": ["{{ $prev }}", 0],
+      "nag_scale": {{ .Prompt.NagScale }},
+      "nag_alpha": {{ .Prompt.NagAlpha }},
+      "nag_tau": {{ .Prompt.NagTau }}
+    }
+  },
+  {{- $prev = "nag" -}}
+  {{- end }}
+
+  {{- /* ================= SOURCE IMAGE ================= */ -}}
+  {{- /* The name is relative to ComfyUI's input directory; the CLI uploads the
+         file there first. Size comes from the image rather than the sampler,
+         so an edit inherits the dimensions of whatever it was handed. */}}
+  "input": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{ .Prompt.Edit.Image }}"
+    }
+  },
+
+  "encode": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": ["input", 0],
+      "vae": ["vae", 0]
+    }
+  },
+
+  "size": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": ["input", 0]
+    }
+  },
+
+  {{- /* ================= PROMPTS ================= */ -}}
+  "prompt_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Positive }}, {{ .Prompt.Apparel.Positive }}, {{ .Prompt.Environment.Positive }}{{ if .Prompt.Edit.Positive }}, {{ .Prompt.Edit.Positive }}{{ end }}",
+      "clip": ["clip", 0]
+    }
+  },
+
+  "prompt_neg": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Negative }}, {{ .Prompt.Apparel.Negative }}, {{ .Prompt.Environment.Negative }}{{ if .Prompt.Edit.Negative }}, {{ .Prompt.Edit.Negative }}{{ end }}",
+      "clip": ["clip", 0]
+    }
+  },
+
+  {{- /* ================= SAMPLER ================= */ -}}
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": {{ $seed }},
+      "steps": {{ .Prompt.Edit.Steps }},
+      "cfg": {{ .Prompt.Edit.CFG }},
+      "sampler_name": "{{ .Prompt.Edit.SamplerName }}",
+      "scheduler": "{{ .Prompt.Edit.Scheduler }}",
+      "denoise": {{ .Prompt.Edit.Denoise }},
+      "model": ["{{ $prev }}", 0],
+      "positive": ["prompt_pos", 0],
+      "negative": ["prompt_neg", 0],
+      "latent_image": ["encode", 0]
+    }
+  },
+
+  {{- /* ================= DECODE ================= */ -}}
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler", 0],
+      "vae": ["vae", 0]
+    }
+  },
+
+  {{- /* ================= DEBUG ================= */ -}}
+  {{- if .Debug }}
+  "debug_source": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_0_source",
+      "images": ["input", 0]
+    }
+  },
+  {{- end }}
+
+  {{- /* ================= SAVE ================= */ -}}
+  "save": {
+    "class_type": "Image Saver",
+    "inputs": {
+      "images": ["decode", 0],
+      "path": "images/{{ .OutputDir }}",
+      "filename": "{{ .Name }}",
+      "extension": "png",
+
+      {{- /* Metadata only: this text is never encoded, so the <lora:> tags Civitai
+             needs are appended here rather than to the CLIPTextEncode prompt. The
+             node reads LoRAs by regex over this string and cannot see the loader
+             chain; easy_remix strips the tags again once they are hashed. */}}
+      "positive": "{{ .Prompt.Positive }}, {{ .Prompt.Apparel.Positive }}, {{ .Prompt.Environment.Positive }}{{ if .Prompt.Edit.Positive }}, {{ .Prompt.Edit.Positive }}{{ end }}{{ range .Prompt.Loras }} <lora:{{ StripExt .Name }}:{{ .Strength }}>{{ end }}",
+      "negative": "{{ .Prompt.Negative }}, {{ .Prompt.Apparel.Negative }}, {{ .Prompt.Environment.Negative }}{{ if .Prompt.Edit.Negative }}, {{ .Prompt.Edit.Negative }}{{ end }}",
+
+      "modelname": "{{ .Prompt.Unet }}",
+      "seed_value": {{ $seed }},
+      "steps": {{ .Prompt.Edit.Steps }},
+      "cfg": {{ .Prompt.Edit.CFG }},
+      "sampler_name": "{{ .Prompt.Edit.SamplerName }}",
+      "scheduler_name": "{{ .Prompt.Edit.Scheduler }}",
+      "denoise": {{ .Prompt.Edit.Denoise }},
+
+      {{- /* The source image dictates the size, and it is only known at run
+             time, so these are links rather than the sampler's constants. */}}
+      "width": ["size", 0],
+      "height": ["size", 1],
+      "clip_skip": 0,
+
+      "download_civitai_data": false,
+      "easy_remix": true,
+      "embed_workflow": true,
+      "show_preview": true
+    }
+  }
+}

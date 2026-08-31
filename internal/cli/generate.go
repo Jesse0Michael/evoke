@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/jesse0michael/evoke/internal/client"
+	"github.com/jesse0michael/evoke/internal/generate"
 	"github.com/jesse0michael/evoke/internal/generate/comfyui"
 	evoke "github.com/jesse0michael/evoke/pkg/evoke"
 	"github.com/kelseyhightower/envconfig"
@@ -40,120 +41,16 @@ func Image(args []string, verbose bool) int {
 		return 2
 	}
 
-	var cfg generateConfig
-	if err := envconfig.Process("", &cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
-		return 1
-	}
-
-	// Classify all args and extract the xN batch count and xall enumeration marker.
-	var classified []classifiedInput
-	for _, raw := range fs.Args() {
-		classified = append(classified, classifyInput(raw))
-	}
-	classified, inlineBatch, enumerate := extractBatch(classified)
-	if inlineBatch > 0 {
-		*batch = inlineBatch
-	}
-
-	inputArgs := make([]string, 0, len(classified))
-	for _, ci := range classified {
-		inputArgs = append(inputArgs, ci.Raw)
-	}
-
-	if len(inputArgs) == 0 {
-		fmt.Fprintln(os.Stderr, "evoke image: at least one input is required")
-		return 2
-	}
-
 	ctx := context.Background()
 
-	// Load home configuration.
-	settings, err := settings()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
-		return 1
+	gen, code := comfyClient("image", verbose)
+	if code != 0 {
+		return code
 	}
 
-	manifest, err := manifest()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
-		return 1
-	}
-
-	// Resolve inputs (local paths, registry refs, literals, selectors) through
-	// the shared resolution pipeline.
-	res, err := prepareResolution(ctx, inputArgs, settings, manifest, verbose)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
-		return 1
-	}
-	defer func() { _ = res.Close() }()
-
-	if res.manifestChanged {
-		if err := saveManifest(manifest); err != nil {
-			fmt.Fprintf(os.Stderr, "evoke image: failed to save manifest: %v\n", err)
-			return 1
-		}
-	}
-
-	gen := comfyui.New(cfg.ComfyURL)
-	gen.Verbose = verbose
-
-	// By default every generation re-resolves selectors in CLI order, re-rolling
-	// random picks for variety. With xall the selector picks are enumerated up
-	// front instead, and the batch count becomes a per-combination multiplier.
-	total := *batch
-	docsFor := func(int) ([]*evoke.Document, error) { return res.documents(ctx) }
-
-	if enumerate {
-		variants, err := res.variants(ctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
-			return 1
-		}
-		total = len(variants) * *batch
-		docsFor = func(i int) ([]*evoke.Document, error) { return res.documentsFor(variants[i / *batch]) }
-	}
-
-	for i := range total {
-		if total > 1 {
-			fmt.Printf("\n--- batch %d/%d ---\n", i+1, total)
-		}
-
-		docs, err := docsFor(i)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
-			return 1
-		}
-
-		fmt.Println()
-
-		// Merge and generate.
-		composition := evoke.Merge(docs)
-		composition.Inputs = inputArgs
-
-		if verbose {
-			fmt.Println("=== Composition ===")
-			fmt.Println(evoke.Render(composition))
-		}
-
-		genResult, err := gen.Generate(ctx, composition)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "evoke image: %v\n", err)
-			return 1
-		}
-
-		if verbose && genResult.Payload != "" {
-			fmt.Println("=== ComfyUI Request ===")
-			fmt.Println(genResult.Payload)
-			fmt.Println()
-		}
-
-		fmt.Println(genResult.Message)
-	}
-
-	return 0
+	return composeAndSubmit(ctx, "image", fs.Args(), verbose, func(ctx context.Context, composition *evoke.Composition) (*generate.Result, error) {
+		return gen.Generate(ctx, composition)
+	}, *batch)
 }
 
 // resolveLocalPathDoc reads, parses, and validates a local .evoke file.
@@ -580,4 +477,126 @@ func deduplicateCandidates(candidates []indexCandidate) []indexCandidate {
 		result = append(result, c)
 	}
 	return result
+}
+
+// comfyClient builds the ComfyUI client from the environment, reporting under
+// the calling command's name. The int is the process exit code on failure.
+func comfyClient(cmd string, verbose bool) (*comfyui.Client, int) {
+	var cfg generateConfig
+	if err := envconfig.Process("", &cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "evoke %s: %v\n", cmd, err)
+		return nil, 1
+	}
+
+	gen := comfyui.New(cfg.ComfyURL)
+	gen.Verbose = verbose
+	return gen, 0
+}
+
+// composeAndSubmit resolves inputs, merges one composition per generation, and
+// hands each to submit. It is the whole body `image` and `edit` share — the two
+// commands differ only in what the backend is asked to do with a composition,
+// so selector resolution, batching, and xall enumeration are defined once.
+func composeAndSubmit(ctx context.Context, cmd string, rawArgs []string, verbose bool, submit func(context.Context, *evoke.Composition) (*generate.Result, error), batch int) int {
+	// Classify all args and extract the xN batch count and xall enumeration marker.
+	var classified []classifiedInput
+	for _, raw := range rawArgs {
+		classified = append(classified, classifyInput(raw))
+	}
+	classified, inlineBatch, enumerate := extractBatch(classified)
+	if inlineBatch > 0 {
+		batch = inlineBatch
+	}
+
+	inputArgs := make([]string, 0, len(classified))
+	for _, ci := range classified {
+		inputArgs = append(inputArgs, ci.Raw)
+	}
+
+	if len(inputArgs) == 0 {
+		fmt.Fprintf(os.Stderr, "evoke %s: at least one input is required\n", cmd)
+		return 2
+	}
+
+	settings, err := settings()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "evoke %s: %v\n", cmd, err)
+		return 1
+	}
+
+	manifest, err := manifest()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "evoke %s: %v\n", cmd, err)
+		return 1
+	}
+
+	// Resolve inputs (local paths, registry refs, literals, selectors) through
+	// the shared resolution pipeline.
+	res, err := prepareResolution(ctx, inputArgs, settings, manifest, verbose)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "evoke %s: %v\n", cmd, err)
+		return 1
+	}
+	defer func() { _ = res.Close() }()
+
+	if res.manifestChanged {
+		if err := saveManifest(manifest); err != nil {
+			fmt.Fprintf(os.Stderr, "evoke %s: failed to save manifest: %v\n", cmd, err)
+			return 1
+		}
+	}
+
+	// By default every generation re-resolves selectors in CLI order, re-rolling
+	// random picks for variety. With xall the selector picks are enumerated up
+	// front instead, and the batch count becomes a per-combination multiplier.
+	total := batch
+	docsFor := func(int) ([]*evoke.Document, error) { return res.documents(ctx) }
+
+	if enumerate {
+		variants, err := res.variants(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "evoke %s: %v\n", cmd, err)
+			return 1
+		}
+		total = len(variants) * batch
+		docsFor = func(i int) ([]*evoke.Document, error) { return res.documentsFor(variants[i/batch]) }
+	}
+
+	for i := range total {
+		if total > 1 {
+			fmt.Printf("\n--- batch %d/%d ---\n", i+1, total)
+		}
+
+		docs, err := docsFor(i)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "evoke %s: %v\n", cmd, err)
+			return 1
+		}
+
+		fmt.Println()
+
+		composition := evoke.Merge(docs)
+		composition.Inputs = inputArgs
+
+		if verbose {
+			fmt.Println("=== Composition ===")
+			fmt.Println(evoke.Render(composition))
+		}
+
+		result, err := submit(ctx, composition)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "evoke %s: %v\n", cmd, err)
+			return 1
+		}
+
+		if verbose && result.Payload != "" {
+			fmt.Println("=== ComfyUI Request ===")
+			fmt.Println(result.Payload)
+			fmt.Println()
+		}
+
+		fmt.Println(result.Message)
+	}
+
+	return 0
 }

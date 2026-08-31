@@ -67,7 +67,7 @@ func TestRenderPromptData(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, _ := renderPromptData(tt.doc, DefaultBase)
+			result, _ := renderPromptData(tt.doc, KindImage, DefaultBase)
 
 			require.Equal(t, tt.expected, result)
 		})
@@ -159,8 +159,8 @@ func TestRenderTemplateOutputDir(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			data, _ := renderPromptData(tt.doc, DefaultBase)
-			base, raw, err := resolveBase(DefaultBase)
+			data, _ := renderPromptData(tt.doc, KindImage, DefaultBase)
+			base, raw, err := resolveBase(KindImage, DefaultBase)
 			require.NoError(t, err)
 			applyDefaults(&data, defaultsFor(base))
 
@@ -377,8 +377,8 @@ func TestRenderTemplateCivitaiMetadata(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			data, _ := renderPromptData(tt.doc, DefaultBase)
-			base, raw, err := resolveBase(DefaultBase)
+			data, _ := renderPromptData(tt.doc, KindImage, DefaultBase)
+			base, raw, err := resolveBase(KindImage, DefaultBase)
 			require.NoError(t, err)
 			applyDefaults(&data, defaultsFor(base))
 
@@ -438,12 +438,14 @@ func fullComposition() *evoke.Composition {
 	return &evoke.Composition{
 		Name:        "Test Character",
 		Sources:     []string{"/src/test-character.evoke"},
+		Prompt:      evoke.Prompt{Positive: []string{"test-prompt"}, Negative: []string{"test-prompt-negative"}},
 		Appearance:  evoke.Prompt{Positive: []string{`test-appearance "quoted"`}, Negative: []string{"test-appearance-negative"}},
 		Apparel:     evoke.Prompt{Positive: []string{"test-apparel"}, Negative: []string{"test-apparel-negative"}},
 		Environment: evoke.Prompt{Positive: []string{"test-environment"}, Negative: []string{"test-environment-negative"}},
 		Loras: []evoke.LoraDefinition{
 			{Argument: "test-lora-sdxl", Settings: map[string]string{"model": "test-lora-1.safetensors", "strength": "0.8", "clip": "0.7", "base": "sdxl"}},
 			{Argument: "test-lora-anima", Settings: map[string]string{"model": "test-lora-2.safetensors", "strength": "0.6", "clip": "0.5", "base": "anima"}},
+			{Argument: "test-lora-qwen", Settings: map[string]string{"model": "test-lora-3.safetensors", "strength": "1.0", "base": "qwen"}},
 		},
 		Images: []evoke.ImageStage{
 			{Loras: []string{"test-lora-sdxl", "test-lora-anima"}, Settings: map[string]string{
@@ -454,6 +456,15 @@ func fullComposition() *evoke.Composition {
 				"sampler_name": "euler", "scheduler": "simple", "denoise": "0.2",
 				"tile_width": "1024", "tile_height": "1024",
 			}},
+			{Argument: "paint", Loras: []string{"test-lora-qwen"}, Settings: map[string]string{
+				"unet": "test-paint-unet.safetensors", "clip": "test-paint-clip.safetensors",
+				"vae": "test-paint-vae.safetensors", "shift": "3.0", "cfg_norm": "1.0",
+				"steps": "4", "cfg": "1.0", "sampler_name": "euler", "scheduler": "simple", "denoise": "1.0",
+			}, Text: evoke.Prompt{Positive: []string{"test-paint"}, Negative: []string{"test-paint-negative"}}},
+			{Argument: "edit", Settings: map[string]string{
+				"steps": "18", "cfg": "3.5", "sampler_name": "dpmpp_2m",
+				"scheduler": "karras", "denoise": "0.45",
+			}, Text: evoke.Prompt{Positive: []string{"test-edit"}, Negative: []string{"test-edit-negative"}}},
 		},
 		Detailers: []evoke.DetailerConfig{
 			det("face", "bbox/face_yolov8m.pt"), det("eye", "bbox/Eyes.pt"),
@@ -464,61 +475,66 @@ func fullComposition() *evoke.Composition {
 }
 
 func TestRenderTemplateProducesValidWorkflow(t *testing.T) {
-	for _, name := range bases() {
-		t.Run(name, func(t *testing.T) {
-			for _, debug := range []bool{false, true} {
-				base, raw, err := resolveBase(name)
-				require.NoError(t, err)
+	for _, kind := range allKinds {
+		for _, name := range bases(kind) {
+			t.Run(string(kind)+"/"+name, func(t *testing.T) {
+				for _, debug := range []bool{false, true} {
+					_, payload := renderFullWorkflow(t, kind, name, debug)
 
-				data, _ := renderPromptData(fullComposition(), base)
-				applyDefaults(&data, defaultsFor(base))
+					// Every value must be a node: ComfyUI rejects a graph whose links
+					// name a node the template did not emit.
+					var graph map[string]struct {
+						ClassType string                     `json:"class_type"`
+						Inputs    map[string]json.RawMessage `json:"inputs"`
+					}
+					require.NoError(t, json.Unmarshal([]byte(payload), &graph), "debug=%v: invalid JSON", debug)
+					require.NotEmpty(t, graph)
 
-				payload, err := renderTemplate(data, "Test Character", []string{"/src/test-character.evoke"}, debug, raw)
-				require.NoError(t, err)
-
-				// Every value must be a node: ComfyUI rejects a graph whose links
-				// name a node the template did not emit.
-				var graph map[string]struct {
-					ClassType string                     `json:"class_type"`
-					Inputs    map[string]json.RawMessage `json:"inputs"`
-				}
-				require.NoError(t, json.Unmarshal(payload, &graph), "debug=%v: invalid JSON", debug)
-				require.NotEmpty(t, graph)
-
-				for id, node := range graph {
-					require.NotEmpty(t, node.ClassType, "node %q has no class_type", id)
-					for field, rawVal := range node.Inputs {
-						var link []json.RawMessage
-						if json.Unmarshal(rawVal, &link) != nil || len(link) != 2 {
-							continue
+					for id, node := range graph {
+						require.NotEmpty(t, node.ClassType, "node %q has no class_type", id)
+						for field, rawVal := range node.Inputs {
+							var link []json.RawMessage
+							if json.Unmarshal(rawVal, &link) != nil || len(link) != 2 {
+								continue
+							}
+							var target string
+							if json.Unmarshal(link[0], &target) != nil {
+								continue
+							}
+							require.Contains(t, graph, target, "node %q input %q links to missing node", id, field)
 						}
-						var target string
-						if json.Unmarshal(link[0], &target) != nil {
-							continue
-						}
-						require.Contains(t, graph, target, "node %q input %q links to missing node", id, field)
 					}
 				}
-			}
-		})
+			})
+		}
 	}
 }
 
 func TestResolveBase(t *testing.T) {
 	tests := []struct {
 		name      string
+		kind      Kind
 		base      string
 		expected  string
 		wantError bool
 	}{
-		{name: "empty selects the default", base: "", expected: DefaultBase},
-		{name: "a known base resolves", base: "anima", expected: "anima"},
-		{name: "an unknown base is rejected", base: "test-missing", wantError: true},
-		{name: "a path is rejected", base: "../templates/sdxl", wantError: true},
+		{name: "empty selects the default", kind: KindImage, base: "", expected: DefaultBase},
+		{name: "a known base resolves", kind: KindImage, base: "anima", expected: "anima"},
+		{name: "an unknown base is rejected", kind: KindImage, base: "test-missing", wantError: true},
+		{name: "a path is rejected", kind: KindImage, base: "../image/sdxl", wantError: true},
+		// The kinds are separate template families keyed by the same names, so
+		// a base is only resolvable within the kind that has a template for it.
+		{name: "a known base resolves for edit", kind: KindEdit, base: "anima", expected: "anima"},
+		// paint is a family of one and no composition names it, so the base it
+		// renders is fixed rather than selected.
+		{name: "the paint base resolves", kind: KindPaint, base: PaintBase, expected: PaintBase},
+		{name: "an image base is not a paint base", kind: KindPaint, base: "sdxl", wantError: true},
+		{name: "a paint base is not an image base", kind: KindImage, base: PaintBase, wantError: true},
+		{name: "an unknown kind resolves nothing", kind: Kind("test-missing"), base: "sdxl", wantError: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, raw, err := resolveBase(tt.base)
+			got, raw, err := resolveBase(tt.kind, tt.base)
 
 			require.Equal(t, tt.wantError, err != nil)
 			require.Equal(t, tt.expected, got)
@@ -609,7 +625,7 @@ func TestResolveLorasBaseGuard(t *testing.T) {
 			}
 
 			var pd promptData
-			skipped := resolveLoras(doc, tt.base, &pd)
+			skipped := resolveLoras(doc, KindImage, tt.base, &pd)
 
 			require.Equal(t, tt.expected, pd.Loras)
 			require.Equal(t, tt.skipped, skipped)
@@ -632,7 +648,7 @@ func TestResolveLorasReportsOnlyReferencedSkips(t *testing.T) {
 	}
 
 	var pd promptData
-	skipped := resolveLoras(doc, "anima", &pd)
+	skipped := resolveLoras(doc, KindImage, "anima", &pd)
 
 	require.Empty(t, pd.Loras)
 	require.Equal(t, []string{"test-lora-referenced"}, skipped)
@@ -641,7 +657,28 @@ func TestResolveLorasReportsOnlyReferencedSkips(t *testing.T) {
 func TestDefaultsForMatchesEveryBase(t *testing.T) {
 	// A base with no defaults entry silently inherits SDXL's sampler, which is
 	// wrong for any other architecture.
-	for _, name := range bases() {
-		require.Contains(t, architectureDefaults, name)
+	for _, kind := range allKinds {
+		for _, name := range bases(kind) {
+			require.Contains(t, architectureDefaults, name, "kind %s", kind)
+		}
 	}
+}
+
+// TestPaintNeedsNoStage covers a composition with no IMAGE paint block at all.
+// The architecture defaults already carry every model setting, so the only
+// thing such a composition contributes is the instruction — and nesting that
+// inside the stage check painted an empty prompt instead.
+func TestPaintNeedsNoStage(t *testing.T) {
+	doc := &evoke.Composition{
+		Prompt:     evoke.Prompt{Positive: []string{"test-instruction"}},
+		Appearance: evoke.Prompt{Positive: []string{"test-appearance"}},
+	}
+
+	data, _ := renderPromptData(doc, KindPaint, PaintBase)
+	applyDefaults(&data, defaultsFor(PaintBase))
+
+	require.Equal(t, "test-instruction", data.Paint.Positive)
+	require.NotContains(t, data.Paint.Positive, "test-appearance")
+	require.Equal(t, architectureDefaults[PaintBase].Paint.Unet, data.Paint.Unet)
+	require.Equal(t, architectureDefaults[PaintBase].Paint.Steps, data.Paint.Steps)
 }

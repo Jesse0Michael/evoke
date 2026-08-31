@@ -12,19 +12,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// renderFullWorkflow renders the every-branch composition for a base and
-// returns the submitted prompt graph — byte-identical to the PNG "prompt"
-// chunk Image Saver embeds, which is what ReadPNG parses back.
-func renderFullWorkflow(t *testing.T, name string) (promptData, string) {
+// testSource is the uploaded name an edit render redraws, standing in for what
+// Client.Upload returns.
+const testSource = "evoke/test-source.png"
+
+// renderFullWorkflow renders the every-branch composition through a kind's
+// template for a base and returns the submitted prompt graph — byte-identical
+// to the PNG "prompt" chunk Image Saver embeds, which is what ReadPNG parses
+// back.
+func renderFullWorkflow(t *testing.T, kind Kind, name string, debug bool) (promptData, string) {
 	t.Helper()
 
-	base, raw, err := resolveBase(name)
+	base, raw, err := resolveBase(kind, name)
 	require.NoError(t, err)
 
-	data, _ := renderPromptData(fullComposition(), base)
+	data, _ := renderPromptData(fullComposition(), kind, base)
+	switch kind {
+	case KindEdit:
+		data.Edit.Image = testSource
+	case KindPaint:
+		data.Paint.Image = testSource
+	}
 	applyDefaults(&data, defaultsFor(base))
 
-	payload, err := renderTemplate(data, "Test Character", []string{"/src/test-character.evoke"}, false, raw)
+	payload, err := renderTemplate(data, "Test Character", []string{"/src/test-character.evoke"}, debug, raw)
 	require.NoError(t, err)
 
 	return data, string(payload)
@@ -35,9 +46,9 @@ func renderFullWorkflow(t *testing.T, name string) (promptData, string) {
 // renaming a node class in a template, or adding an architecture that loads its
 // model differently, silently empties a section of every reader otherwise.
 func TestMetadataRoundTrip(t *testing.T) {
-	for _, name := range bases() {
+	for _, name := range bases(KindImage) {
 		t.Run(name, func(t *testing.T) {
-			data, workflow := renderFullWorkflow(t, name)
+			data, workflow := renderFullWorkflow(t, KindImage, name, false)
 
 			var m Metadata
 			parseWorkflow(workflow, &m)
@@ -100,10 +111,10 @@ func TestMetadataRoundTrip(t *testing.T) {
 // TestSeedsAreIndependent covers the two ways seeds go wrong: reused within a
 // workflow, and repeated across submissions.
 func TestSeedsAreIndependent(t *testing.T) {
-	for _, name := range bases() {
+	for _, name := range bases(KindImage) {
 		t.Run(name, func(t *testing.T) {
 			var first Metadata
-			_, workflow := renderFullWorkflow(t, name)
+			_, workflow := renderFullWorkflow(t, KindImage, name, false)
 			parseWorkflow(workflow, &first)
 
 			// Each pass samples independently, so no two seeds in one workflow
@@ -123,11 +134,188 @@ func TestSeedsAreIndependent(t *testing.T) {
 
 			// Every render is a separate submission and must re-roll.
 			var second Metadata
-			_, next := renderFullWorkflow(t, name)
+			_, next := renderFullWorkflow(t, KindImage, name, false)
 			parseWorkflow(next, &second)
 			require.NotEqual(t, first.Seed, second.Seed, "consecutive renders share a base seed")
 		})
 	}
+}
+
+// TestEditMetadataRoundTrip is TestMetadataRoundTrip for the edit templates.
+// It reads back through the same parser the viewer uses, and additionally pins
+// the two ways an edit workflow can quietly stop being an edit: the source
+// image dropping out of the graph, and the sampler falling back to the base
+// stage's denoise instead of the edit stage's.
+func TestEditMetadataRoundTrip(t *testing.T) {
+	for _, name := range bases(KindEdit) {
+		t.Run(name, func(t *testing.T) {
+			data, workflow := renderFullWorkflow(t, KindEdit, name, false)
+
+			var m Metadata
+			parseWorkflow(workflow, &m)
+
+			wantModel := data.Checkpoint
+			if wantModel == "" {
+				wantModel = data.Unet
+			}
+			require.NotEmpty(t, wantModel, "test setup: no model in template data")
+			require.Equal(t, wantModel, m.Model)
+
+			// The sampler is the IMAGE edit stage's, not the base stage's.
+			require.Equal(t, data.Edit.SamplerName, m.Sampler)
+			require.Equal(t, data.Edit.Scheduler, m.Scheduler)
+			require.Equal(t, data.Edit.Steps, m.Steps)
+			require.Equal(t, data.Edit.CFG, m.CFG)
+			require.Equal(t, data.Edit.Denoise, m.Denoise)
+			require.NotEqual(t, data.Sampler.Denoise, m.Denoise,
+				"edit sampled at the base stage denoise — the source image is being discarded")
+
+			// The edit stage's own text is appended to the composition prompt:
+			// an edit redraws the whole frame, so it still needs the character.
+			require.Equal(t,
+				strings.Join([]string{data.Positive, data.Apparel.Positive, data.Environment.Positive, data.Edit.Positive}, ", "),
+				m.Positive)
+			require.Equal(t,
+				strings.Join([]string{data.Negative, data.Apparel.Negative, data.Environment.Negative, data.Edit.Negative}, ", "),
+				m.Negative)
+
+			require.NotEmpty(t, data.Loras,
+				"test setup: no LoRA resolves under %s — fullComposition needs a variant for it", name)
+			require.Len(t, m.LoRAs, len(data.Loras))
+			for i, want := range data.Loras {
+				require.Equal(t, want.Name, m.LoRAs[i].Name)
+				require.Equal(t, want.Strength, m.LoRAs[i].Model)
+			}
+
+			// An edit runs the one pass it was asked for. Upscale and detailer
+			// settings are still resolved from the pipeline file and must stay
+			// out of the graph rather than silently doubling the work.
+			require.Empty(t, m.Detailers)
+			require.Zero(t, m.Upscale)
+
+			require.NotZero(t, m.Seed)
+			require.Less(t, m.Seed, uint64(maxSeed),
+				"seed exceeds float64 precision and cannot survive a JSON round-trip")
+
+			var second Metadata
+			_, next := renderFullWorkflow(t, KindEdit, name, false)
+			parseWorkflow(next, &second)
+			require.NotEqual(t, m.Seed, second.Seed, "consecutive renders share a seed")
+		})
+	}
+}
+
+// TestPaintMetadataRoundTrip is the round trip for the instruction-edit
+// templates. It matters more than the others because paint encodes through
+// TextEncodeQwenImageEditPlus, whose text lives in a "prompt" input rather than
+// a "text" one — a reader that only knew CLIPTextEncode would show every
+// painted image with an empty prompt.
+func TestPaintMetadataRoundTrip(t *testing.T) {
+	for _, name := range bases(KindPaint) {
+		t.Run(name, func(t *testing.T) {
+			data, workflow := renderFullWorkflow(t, KindPaint, name, false)
+
+			var m Metadata
+			parseWorkflow(workflow, &m)
+
+			// The paint model, never the composition's generation model.
+			require.Equal(t, data.Paint.Unet, m.Model)
+			require.NotEqual(t, data.Checkpoint, m.Model)
+
+			require.Equal(t, data.Paint.SamplerName, m.Sampler)
+			require.Equal(t, data.Paint.Scheduler, m.Scheduler)
+			require.Equal(t, data.Paint.Steps, m.Steps)
+			require.Equal(t, data.Paint.CFG, m.CFG)
+			require.Equal(t, data.Paint.Denoise, m.Denoise)
+
+			// The instruction is PROMPT plus the paint stage's own text. The
+			// description channels are absent on purpose: telling the model what
+			// the subject looks like is what makes it change more than it was
+			// asked to.
+			require.Equal(t, data.Paint.Positive, m.Positive)
+			require.Equal(t, data.Paint.Negative, m.Negative)
+			require.NotContains(t, m.Positive, "test-appearance")
+			require.NotContains(t, m.Positive, "test-apparel")
+			require.NotContains(t, m.Positive, "test-environment")
+			require.Contains(t, m.Positive, "test-prompt", "PROMPT is the instruction")
+
+			// The chain comes from IMAGE paint under its own architecture, so
+			// the composition's SDXL and Anima LoRAs are guarded out.
+			require.Len(t, m.LoRAs, 1)
+			require.Equal(t, "test-lora-3.safetensors", m.LoRAs[0].Name)
+
+			require.Empty(t, m.Detailers)
+			require.Zero(t, m.Upscale)
+
+			require.NotZero(t, m.Seed)
+			require.Less(t, m.Seed, uint64(maxSeed))
+		})
+	}
+}
+
+// TestPaintReferencesTheSourceImage pins what makes an instruction edit an edit
+// rather than a generation: the source reaching the text encoder, where it
+// becomes vision tokens and a reference latent. A graph that lost it still
+// samples and still saves — it just invents an unrelated image.
+func TestPaintReferencesTheSourceImage(t *testing.T) {
+	for _, name := range bases(KindPaint) {
+		t.Run(name, func(t *testing.T) {
+			_, workflow := renderFullWorkflow(t, KindPaint, name, false)
+
+			var nodes map[string]workflowNode
+			require.NoError(t, json.Unmarshal([]byte(workflow), &nodes))
+
+			require.Equal(t, testSource, nodes["input"].Inputs["image"])
+			require.Equal(t, "input", link(nodes["scale"].Inputs, "image"))
+
+			for _, id := range []string{"prompt_pos", "prompt_neg"} {
+				require.Equal(t, classTextEncodeQwenEdit, nodes[id].ClassType, id)
+				require.Equal(t, "scale", link(nodes[id].Inputs, "image1"), id)
+				// Without the vae the encoder builds no reference latent, and
+				// the instruction stops being anchored to the source at all.
+				require.Equal(t, "vae", link(nodes[id].Inputs, "vae"), id)
+			}
+
+			require.Equal(t, "encode", link(nodes[samplerID(t, nodes)].Inputs, "latent_image"))
+		})
+	}
+}
+
+// TestEditLoadsTheSourceImage pins the link the whole command exists for: the
+// uploaded name reaching LoadImage and its pixels reaching the sampler's
+// latent. A graph that lost either is still valid JSON and still generates.
+func TestEditLoadsTheSourceImage(t *testing.T) {
+	for _, name := range bases(KindEdit) {
+		t.Run(name, func(t *testing.T) {
+			_, workflow := renderFullWorkflow(t, KindEdit, name, false)
+
+			var nodes map[string]workflowNode
+			require.NoError(t, json.Unmarshal([]byte(workflow), &nodes))
+
+			require.Contains(t, nodes, "input")
+			require.Equal(t, "LoadImage", nodes["input"].ClassType)
+			require.Equal(t, testSource, nodes["input"].Inputs["image"])
+
+			require.Equal(t, "VAEEncode", nodes["encode"].ClassType)
+			require.Equal(t, "input", link(nodes["encode"].Inputs, "pixels"))
+			require.Equal(t, "encode", link(nodes[samplerID(t, nodes)].Inputs, "latent_image"))
+		})
+	}
+}
+
+// samplerID returns the graph's only KSampler, failing if a template ever grows
+// a second one — the assertions above would otherwise pick one at random.
+func samplerID(t *testing.T, nodes map[string]workflowNode) string {
+	t.Helper()
+	var found string
+	for id, node := range nodes {
+		if node.ClassType == classKSampler {
+			require.Empty(t, found, "more than one KSampler in an edit workflow")
+			found = id
+		}
+	}
+	require.NotEmpty(t, found, "no KSampler in the workflow")
+	return found
 }
 
 // TestParseWorkflowPreservesLargeSeeds pins the decoding bug directly: seeds
@@ -176,7 +364,7 @@ func textChunk(key, value string) []byte {
 // TestReadPNG covers the chunk walk end to end: a real file on disk, read back
 // through the same path the viewer uses.
 func TestReadPNG(t *testing.T) {
-	_, workflow := renderFullWorkflow(t, DefaultBase)
+	_, workflow := renderFullWorkflow(t, KindImage, DefaultBase, false)
 
 	ihdr := make([]byte, 13)
 	binary.BigEndian.PutUint32(ihdr[0:4], 1216)

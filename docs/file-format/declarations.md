@@ -201,9 +201,29 @@ IMAGE upscale
     denoise = 0.3
 ```
 
-**Settings:** `base`, `checkpoint`, `group`, `steps`, `cfg`, `sampler_name`, `scheduler`, `width`, `height`, `denoise`, `disabled`. Split-architecture bases load the diffusion model, text encoder, and VAE as three files instead of a checkpoint: `unet`, `clip`, `clip_type`, `vae`, `weight_dtype`, `shift`, and — where the base supports it — `nag_scale`, `nag_alpha`, `nag_tau`. For `IMAGE upscale`: `upscale_model`, `factor`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `tile_width`, `tile_height`, `disabled`.
+**Settings:** `base`, `checkpoint`, `group`, `steps`, `cfg`, `sampler_name`, `scheduler`, `width`, `height`, `denoise`, `disabled`. Split-architecture bases load the diffusion model, text encoder, and VAE as three files instead of a checkpoint: `unet`, `clip`, `clip_type`, `vae`, `weight_dtype`, `shift`, and — where the base supports it — `nag_scale`, `nag_alpha`, `nag_tau`. For `IMAGE upscale`: `upscale_model`, `factor`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `tile_width`, `tile_height`, `disabled`. For `IMAGE edit`: `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `disabled` — no `width` or `height`, since the source image dictates the size. For `IMAGE paint`: `unet`, `clip`, `clip_type`, `vae`, `weight_dtype`, `shift`, `cfg_norm`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `disabled`.
 
-`base` on the unnamed stage names the model architecture to render — `sdxl` (the default) or `anima`. It selects which node graph the composition compiles into and which defaults it inherits, and each architecture reads only its own model settings, so a `checkpoint` means nothing under `anima`. Set it in the pipeline file that supplies the model files. A `base` on `IMAGE upscale` is ignored.
+`base` on the unnamed stage names the model architecture to render — `sdxl` (the default) or `anima`. It selects which node graph the composition compiles into and which defaults it inherits, and each architecture reads only its own model settings, so a `checkpoint` means nothing under `anima`. Set it in the pipeline file that supplies the model files. A `base` on `IMAGE upscale`, `IMAGE edit`, or `IMAGE paint` is ignored. `paint` renders one architecture and nothing selects it: an instruction-edit model has nothing to do with the one that generated the image, so the composition's `base` would be answering a different question.
+
+
+`IMAGE edit` configures [`evoke edit`](../cli/edit.md) and is read by no other command. Like `IMAGE upscale` it is a complete sampler spec rather than an adjustment of the base stage's: the base stage samples from noise at `denoise = 1.0`, and an edit that inherited that would discard the source image. Its `denoise` is what decides how much of the source survives.
+
+```text
+IMAGE edit
+    steps = 30
+    cfg = 4
+    denoise = 0.45
+```
+
+`IMAGE paint` configures [`evoke paint`](../cli/paint.md) and is read by no other command. It shares nothing with the unnamed stage or with `IMAGE edit` — an instruction-edit model has no relationship to the architecture that generated the image, so it names its own `unet`, `clip`, and `vae`, and its `?` defaults never collide with a generation pipeline's.
+
+```text
+IMAGE paint
+    unet = qwen_image_edit_2509_fp8_e4m3fn.safetensors
+    clip = qwen_2.5_vl_7b_fp8_scaled.safetensors
+    steps = 20
+    cfg = 4.0
+```
 
 `disabled = true` switches a stage off — see [Disabling a stage](#disabling-a-stage). `group` shelves the output directory — see [Grouping output](#grouping-output).
 
@@ -303,6 +323,8 @@ What each one disables:
 | Declaration            | Effect                                                                    |
 | :--------------------- | :------------------------------------------------------------------------ |
 | `IMAGE upscale`        | the upscale pass is skipped                                               |
+| `IMAGE edit`           | `evoke edit` falls back to the architecture's built-in edit defaults      |
+| `IMAGE paint`          | `evoke paint` falls back to its architecture's built-in defaults          |
 | `DETAILER <region>`    | that region's inpaint pass is skipped                                     |
 | `LORA <name>`          | dropped from the LoRA chain; references to it resolve to nothing          |
 | `IMAGE` (unnamed base) | **not** a way to skip generation — only makes the base stage's settings and prompt text be ignored, falling back to built-in defaults. Rarely what you want. |

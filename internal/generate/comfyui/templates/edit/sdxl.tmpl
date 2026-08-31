@@ -1,0 +1,157 @@
+{{- $seed := RandomSeed -}}
+{
+  {{- /* SDXL has no instruction-following edit model: an edit here is a redraw.
+         The source image is encoded to a latent and resampled at partial
+         denoise, so the prompt is still the whole composition rather than an
+         instruction, and the strength of the change is IMAGE edit's denoise.
+         Deliberately no upscale and no detailer passes — an edit is the one
+         step it was asked for, and the result can be fed back in again. */}}
+  "ckpt": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "{{ .Prompt.Checkpoint }}"
+    }
+  },
+
+  {{- /* ================= LoRA CHAIN ================= */ -}}
+  {{- $prev := "ckpt" -}}
+  {{- range $i, $l := .Prompt.Loras }}
+  "lora_{{ $i }}": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "lora_name": "{{ $l.Name }}",
+      "strength_model": {{ $l.Strength }},
+      "strength_clip": {{ $l.Clip }},
+      "model": ["{{ $prev }}", 0],
+      "clip": ["{{ $prev }}", 1]
+    }
+  },
+  {{- $prev = printf "lora_%d" $i -}}
+  {{- end }}
+
+  {{- /* ================= CLIP SKIP ================= */ -}}
+  "clip_skip": {
+    "class_type": "CLIPSetLastLayer",
+    "inputs": {
+      "stop_at_clip_layer": -2,
+      "clip": ["{{ $prev }}", 1]
+    }
+  },
+
+  {{- /* ================= SOURCE IMAGE ================= */ -}}
+  {{- /* The name is relative to ComfyUI's input directory; the CLI uploads the
+         file there first. Size comes from the image rather than the sampler,
+         so an edit inherits the dimensions of whatever it was handed. */}}
+  "input": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{ .Prompt.Edit.Image }}"
+    }
+  },
+
+  "encode": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": ["input", 0],
+      "vae": ["ckpt", 2]
+    }
+  },
+
+  "size": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": ["input", 0]
+    }
+  },
+
+  {{- /* ================= PROMPTS ================= */ -}}
+  "prompt_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Positive }}, {{ .Prompt.Apparel.Positive }}, {{ .Prompt.Environment.Positive }}{{ if .Prompt.Edit.Positive }}, {{ .Prompt.Edit.Positive }}{{ end }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  "prompt_neg": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Negative }}, {{ .Prompt.Apparel.Negative }}, {{ .Prompt.Environment.Negative }}{{ if .Prompt.Edit.Negative }}, {{ .Prompt.Edit.Negative }}{{ end }}",
+      "clip": ["clip_skip", 0]
+    }
+  },
+
+  {{- /* ================= SAMPLER ================= */ -}}
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": {{ $seed }},
+      "steps": {{ .Prompt.Edit.Steps }},
+      "cfg": {{ .Prompt.Edit.CFG }},
+      "sampler_name": "{{ .Prompt.Edit.SamplerName }}",
+      "scheduler": "{{ .Prompt.Edit.Scheduler }}",
+      "denoise": {{ .Prompt.Edit.Denoise }},
+      "model": ["{{ $prev }}", 0],
+      "positive": ["prompt_pos", 0],
+      "negative": ["prompt_neg", 0],
+      "latent_image": ["encode", 0]
+    }
+  },
+
+  {{- /* ================= DECODE ================= */ -}}
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler", 0],
+      "vae": ["ckpt", 2]
+    }
+  },
+
+  {{- /* ================= DEBUG ================= */ -}}
+  {{- if .Debug }}
+  "debug_source": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_0_source",
+      "images": ["input", 0]
+    }
+  },
+  {{- end }}
+
+  {{- /* ================= SAVE ================= */ -}}
+  "save": {
+    "class_type": "Image Saver",
+    "inputs": {
+      "images": ["decode", 0],
+      "path": "images/{{ .OutputDir }}",
+      "filename": "{{ .Name }}",
+      "extension": "png",
+
+      {{- /* Metadata only: this text is never encoded, so the <lora:> tags Civitai
+             needs are appended here rather than to the CLIPTextEncode prompt. The
+             node reads LoRAs by regex over this string and cannot see the loader
+             chain; easy_remix strips the tags again once they are hashed. */}}
+      "positive": "{{ .Prompt.Positive }}, {{ .Prompt.Apparel.Positive }}, {{ .Prompt.Environment.Positive }}{{ if .Prompt.Edit.Positive }}, {{ .Prompt.Edit.Positive }}{{ end }}{{ range .Prompt.Loras }} <lora:{{ StripExt .Name }}:{{ .Strength }}>{{ end }}",
+      "negative": "{{ .Prompt.Negative }}, {{ .Prompt.Apparel.Negative }}, {{ .Prompt.Environment.Negative }}{{ if .Prompt.Edit.Negative }}, {{ .Prompt.Edit.Negative }}{{ end }}",
+
+      "modelname": "{{ .Prompt.Checkpoint }}",
+      "seed_value": {{ $seed }},
+      "steps": {{ .Prompt.Edit.Steps }},
+      "cfg": {{ .Prompt.Edit.CFG }},
+      "sampler_name": "{{ .Prompt.Edit.SamplerName }}",
+      "scheduler_name": "{{ .Prompt.Edit.Scheduler }}",
+      "denoise": {{ .Prompt.Edit.Denoise }},
+
+      {{- /* The source image dictates the size, and it is only known at run
+             time, so these are links rather than the sampler's constants. */}}
+      "width": ["size", 0],
+      "height": ["size", 1],
+      "clip_skip": 2,
+
+      "download_civitai_data": false,
+      "easy_remix": true,
+      "embed_workflow": true,
+      "show_preview": true
+    }
+  }
+}

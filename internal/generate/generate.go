@@ -16,6 +16,23 @@ type Generator interface {
 	Generate(ctx context.Context, composition *evoke.Composition) (*Result, error)
 }
 
+// Editor is implemented by backends that can render from a source image rather
+// than from noise. Upload returns the name the backend addresses a local file
+// by; that name is what Edit takes, so the transfer happens once per command
+// rather than once per generation.
+type Editor interface {
+	Upload(ctx context.Context, path string) (string, error)
+	Edit(ctx context.Context, composition *evoke.Composition, image string) (*Result, error)
+}
+
+// Painter is implemented by backends that can render an instruction edit — a
+// targeted alteration of a source image rather than a redraw of it. Split from
+// Editor because a backend may well support one and not the other.
+type Painter interface {
+	Upload(ctx context.Context, path string) (string, error)
+	Paint(ctx context.Context, composition *evoke.Composition, image string) (*Result, error)
+}
+
 // QueueItem represents a single entry in the generation queue.
 type QueueItem struct {
 	PromptID string

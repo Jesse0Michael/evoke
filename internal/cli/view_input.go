@@ -66,6 +66,10 @@ func keyName(c byte) string {
 		return "ctrl+c"
 	case 0x0d:
 		return "enter"
+	// Terminals in raw mode send DEL for the backspace key; BS arrives from
+	// ctrl+h and from a few terminals configured the other way round.
+	case 0x08, 0x7f:
+		return "backspace"
 	case ' ':
 		return " "
 	}

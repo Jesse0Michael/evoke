@@ -33,6 +33,8 @@ _evoke() {
     commands=(
         'login:Sign in to the registry'
         'image:Compose evoke files and generate images'
+        'edit:Redraw an existing image through a composition'
+        'paint:Alter an existing image by instruction'
         'chat:Compose evoke files and chat with a local LLM'
         'inspect:List files matching a tag or show what selected files compose into'
         'knowledge:Build a RAG knowledge database from a directory of markdown'
@@ -50,6 +52,12 @@ _evoke() {
     case "${words[2]}" in
         image)
             _evoke_complete image
+            ;;
+        edit)
+            _evoke_complete edit
+            ;;
+        paint)
+            _evoke_complete paint
             ;;
         chat)
             _evoke_complete chat
@@ -83,12 +91,12 @@ const bashCompletion = `_evoke() {
     _init_completion || return
 
     if [[ ${cword} -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "login image chat inspect knowledge push pull settings completion" -- "${cur}"))
+        COMPREPLY=($(compgen -W "login image edit paint chat inspect knowledge push pull settings completion" -- "${cur}"))
         return
     fi
 
     case "${words[1]}" in
-        image|chat|inspect|knowledge|pull)
+        image|edit|paint|chat|inspect|knowledge|pull)
             local completions
             completions=$(evoke __complete "${words[1]}" "${words[@]:2:cword-2}" "${cur}" 2>/dev/null)
             COMPREPLY=($(compgen -W "${completions}" -- "${cur}"))
@@ -105,6 +113,8 @@ complete -c evoke -f
 # Subcommands
 complete -c evoke -n '__fish_use_subcommand' -a login -d 'Sign in to the registry'
 complete -c evoke -n '__fish_use_subcommand' -a image -d 'Compose evoke files and generate images'
+complete -c evoke -n '__fish_use_subcommand' -a edit -d 'Redraw an existing image through a composition'
+complete -c evoke -n '__fish_use_subcommand' -a paint -d 'Alter an existing image by instruction'
 complete -c evoke -n '__fish_use_subcommand' -a chat -d 'Compose evoke files and chat with a local LLM'
 complete -c evoke -n '__fish_use_subcommand' -a inspect -d 'List files matching a tag or show what selected files compose into'
 complete -c evoke -n '__fish_use_subcommand' -a knowledge -d 'Build a RAG knowledge database from a directory of markdown'
@@ -115,6 +125,12 @@ complete -c evoke -n '__fish_use_subcommand' -a completion -d 'Output shell comp
 
 # Generate completions
 complete -c evoke -n '__fish_seen_subcommand_from image' -a '(evoke __complete image (commandline -cop)[3..] (commandline -ct) 2>/dev/null)'
+
+# Edit completions
+complete -c evoke -n '__fish_seen_subcommand_from edit' -a '(evoke __complete edit (commandline -cop)[3..] (commandline -ct) 2>/dev/null)'
+
+# Paint completions
+complete -c evoke -n '__fish_seen_subcommand_from paint' -a '(evoke __complete paint (commandline -cop)[3..] (commandline -ct) 2>/dev/null)'
 
 # Chat completions
 complete -c evoke -n '__fish_seen_subcommand_from chat' -a '(evoke __complete chat (commandline -cop)[3..] (commandline -ct) 2>/dev/null)'

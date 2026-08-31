@@ -26,6 +26,11 @@ const (
 	classUpscale             = "UltimateSDUpscale"
 	classDetailer            = "DetailerForEach"
 	classTextEncode          = "CLIPTextEncode"
+	// The instruction-edit encoder holds its text in "prompt" rather than
+	// "text". It is a text node for this reader's purposes all the same: the
+	// paint template keys it prompt_pos/prompt_neg so the lookup below is the
+	// same one every other template answers.
+	classTextEncodeQwenEdit = "TextEncodeQwenImageEditPlus"
 )
 
 // maxChunk caps a chunk this reader will hold in memory. A workflow graph runs
@@ -180,8 +185,11 @@ func parseWorkflow(raw string, m *Metadata) {
 	// Node id -> encoded text, so a detailer can resolve its prompt links.
 	texts := make(map[string]string)
 	for id, node := range nodes {
-		if node.ClassType == classTextEncode {
+		switch node.ClassType {
+		case classTextEncode:
 			texts[id] = str(node.Inputs, "text")
+		case classTextEncodeQwenEdit:
+			texts[id] = str(node.Inputs, "prompt")
 		}
 	}
 

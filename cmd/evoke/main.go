@@ -42,6 +42,10 @@ func run(args []string) int {
 		return cli.Login(rest, verbose)
 	case "image":
 		return cli.Image(rest, verbose)
+	case "edit":
+		return cli.Edit(rest, verbose)
+	case "paint":
+		return cli.Paint(rest, verbose)
 	case "chat":
 		return cli.Chat(rest, verbose)
 	case "inspect":
@@ -84,6 +88,8 @@ Chat:
 
 Image:
     evoke image       Compose evoke files and submit to a generation pipeline
+    evoke edit        Redraw an existing image through a composition
+    evoke paint       Alter an existing image by instruction (instruction-edit model)
     evoke inspect     List files matching a tag, or show what the selected files compose into
     evoke queue       View the current generation queue
     evoke clear       Clear the generation queue

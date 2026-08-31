@@ -11,6 +11,8 @@ $ go install ./cmd/evoke
 | Command | Description |
 |:--------|:------------|
 | [`evoke image`](image.md) | Compose files by selector, path, or registry reference and submit to a generation pipeline. |
+| [`evoke edit`](edit.md) | Redraw an existing image through a composition, resolving inputs exactly as `evoke image` does. |
+| [`evoke paint`](paint.md) | Alter an existing image by instruction, through an instruction-edit model. |
 | [`evoke chat`](chat.md) | Compose files into a character and start an interactive chat with a local LLM backend. |
 | [`evoke knowledge`](knowledge.md) | Build a RAG vector database from a directory of markdown and `.evoke` files for `KNOWLEDGE` to reference. |
 | `evoke login` | Sign in to the registry via Google OAuth. |

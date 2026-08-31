@@ -96,6 +96,7 @@ func runViewer(_ context.Context, pageSize int) error {
 	m.copyText = copyTextToClipboard
 	m.copyImage = copyImageToClipboard
 	m.reveal = revealInFinder
+	m.runCommand = runEvokeImageCommand
 	m.sleep = time.Sleep
 	m.size = func() (int, int) {
 		w, h, err := term.GetSize(fd)
@@ -122,6 +123,10 @@ const (
 	modeBrowse viewMode = iota
 	modeDebug
 	modeConfirmDelete
+	// modePrompt collects the inputs for an image-in command on the controls row.
+	// The selected image is the source, so the line holds only what would follow
+	// it on a command line — selectors, paths, and quoted prompt text.
+	modePrompt
 )
 
 // metaCacheLimit bounds the parsed-metadata cache. Entries are small; the cap
@@ -138,9 +143,13 @@ type viewModel struct {
 	shown    int
 	pageSize int
 
-	mode      viewMode
-	debugImgs []string
-	debugIdx  int
+	mode viewMode
+	// promptCmd is the command modePrompt is collecting for, which is also the
+	// label on the input line.
+	promptCmd   string
+	promptInput string
+	debugImgs   []string
+	debugIdx    int
 	// hasDebug is resolved when the selection changes, not when the controls
 	// bar is painted: it reads a directory.
 	hasDebug bool
@@ -168,6 +177,9 @@ type viewModel struct {
 	// and persists until the next event, since it has to be readable.
 	flashKey string
 	errMsg   string
+	// noteMsg is the counterpart for a success worth reading rather than
+	// flashing — an edit's queue confirmation, which has no glyph to light.
+	noteMsg string
 
 	// Seams for the terminal, so tests drive the model without one.
 	draw func(path string, cols, rows int)
@@ -181,6 +193,9 @@ type viewModel struct {
 	reveal    func(path string) error
 	// sleep is a seam so tests do not wait out a confirmation glyph.
 	sleep func(time.Duration)
+	// runCommand submits an image-in command and returns what it reported. A seam
+	// so tests drive the prompt without spawning a process or reaching ComfyUI.
+	runCommand func(cmd, source string, args []string) (string, error)
 
 	exitMsg string
 }
@@ -191,18 +206,19 @@ func newViewModel(outputDir string, images []viewImage, pageSize int) viewModel 
 		shown = pageSize
 	}
 	return viewModel{
-		outputDir: outputDir,
-		images:    images,
-		shown:     shown,
-		pageSize:  pageSize,
-		meta:      map[string]comfyui.Metadata{},
-		draw:      func(string, int, int) {},
-		size:      func() (int, int) { return 120, 40 },
-		out:       io.Discard,
-		copyText:  func(string) error { return nil },
-		copyImage: func(string) error { return nil },
-		reveal:    func(string) error { return nil },
-		sleep:     func(time.Duration) {},
+		outputDir:  outputDir,
+		images:     images,
+		shown:      shown,
+		pageSize:   pageSize,
+		meta:       map[string]comfyui.Metadata{},
+		draw:       func(string, int, int) {},
+		size:       func() (int, int) { return 120, 40 },
+		out:        io.Discard,
+		copyText:   func(string) error { return nil },
+		copyImage:  func(string) error { return nil },
+		reveal:     func(string) error { return nil },
+		sleep:      func(time.Duration) {},
+		runCommand: func(string, string, []string) (string, error) { return "", nil },
 	}
 }
 
@@ -239,7 +255,7 @@ func (m *viewModel) handle(ev event) bool {
 	}
 	// The message belongs to the frame its action painted; the next event
 	// replaces it.
-	m.errMsg = ""
+	m.errMsg, m.noteMsg = "", ""
 	if ev.wheel != 0 {
 		m.details.scroll(ev.wheel * wheelLines)
 		return false
@@ -250,6 +266,26 @@ func (m *viewModel) handle(ev event) bool {
 		m.mode = modeBrowse
 		if ev.key == "d" || ev.key == "D" {
 			return m.remove()
+		}
+		return false
+
+	case modePrompt:
+		switch ev.key {
+		case "esc", "ctrl+c":
+			m.mode, m.promptInput = modeBrowse, ""
+		case "enter":
+			m.submitPrompt()
+		case "backspace":
+			if n := len(m.promptInput); n > 0 {
+				m.promptInput = m.promptInput[:n-1]
+			}
+		default:
+			// Single-byte printable only: decodeEvents splits a chunk per byte,
+			// so a multi-byte rune arrives as its individual bytes and would be
+			// appended as mojibake. Dropping it beats corrupting the line.
+			if len(ev.key) == 1 && ev.key[0] >= 0x20 && ev.key[0] < 0x7f {
+				m.promptInput += ev.key
+			}
 		}
 		return false
 
@@ -264,7 +300,7 @@ func (m *viewModel) handle(ev event) bool {
 				m.debugIdx++
 				m.load()
 			}
-		case "left", "h", "p":
+		case "left", "h":
 			if m.debugIdx > 0 {
 				m.debugIdx--
 				m.load()
@@ -280,7 +316,7 @@ func (m *viewModel) handle(ev event) bool {
 	case "right", "l", "n", " ":
 		m.forward(1)
 
-	case "left", "h", "p":
+	case "left", "h":
 		if m.idx > 0 {
 			m.idx--
 			m.load()
@@ -319,6 +355,12 @@ func (m *viewModel) handle(ev event) bool {
 			m.confirm("y")
 		}
 
+	case "e", "E":
+		m.mode, m.promptCmd, m.promptInput = modePrompt, "edit", ""
+
+	case "p", "P":
+		m.mode, m.promptCmd, m.promptInput = modePrompt, "paint", ""
+
 	case "d", "D":
 		m.mode = modeConfirmDelete
 	}
@@ -344,6 +386,56 @@ func (m *viewModel) act(fn func(string) error) bool {
 		return false
 	}
 	return true
+}
+
+// submitPrompt runs the collected command against the selected image with the
+// typed line as its remaining arguments, and reports the outcome in the status
+// bar. A blank line cancels: reaching the prompt by mistake should cost nothing.
+//
+// The input loop is blocked while this runs, as it is for a confirmation glyph.
+// Keystrokes typed meanwhile stay buffered by the tty and are handled the moment
+// it returns.
+func (m *viewModel) submitPrompt() {
+	args := splitArgs(m.promptInput)
+	cmd := m.promptCmd
+	m.mode, m.promptInput = modeBrowse, ""
+	if len(args) == 0 {
+		return
+	}
+
+	source := m.current()
+	if source == "" {
+		return
+	}
+	// EVOKE_OUTPUT_DIR may be relative, and the edit runs from wherever the
+	// viewer was launched.
+	if abs, err := filepath.Abs(source); err == nil {
+		source = abs
+	}
+
+	if m.height > 0 {
+		fmt.Fprintf(m.out, "%s\033[%d;1H\033[K\033[2msubmitting…\033[0m", cursorHide, m.height)
+	}
+
+	out, err := m.runCommand(cmd, source, args)
+	if err != nil {
+		m.errMsg = firstLine(err.Error())
+		return
+	}
+	m.noteMsg = firstLine(out)
+}
+
+// firstLine reduces a command's report to something a one-row bar can hold: the
+// last non-empty line, which is the outcome — the lines above it are the
+// per-input resolution trace.
+func firstLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if line := strings.TrimSpace(lines[i]); line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 // confirm lights the glyph beside an action's own hint and withdraws it, which
@@ -552,6 +644,13 @@ func (m *viewModel) paint() {
 		m.draw(path, m.imgCols, m.imgRows)
 		_, _ = io.WriteString(m.out, cursorHide)
 	}
+
+	// Typing is the one time the caret earns its place on screen, so it is
+	// parked at the end of the input and shown — after any redraw, since chafa
+	// leaves the cursor wherever its output ended.
+	if m.mode == modePrompt {
+		fmt.Fprintf(m.out, "\033[%d;%dH%s", m.height, m.promptCursorCol(), cursorShow)
+	}
 }
 
 func (m *viewModel) statusBar() string {
@@ -571,6 +670,9 @@ func (m *viewModel) statusBar() string {
 	if m.errMsg != "" {
 		bar += fmt.Sprintf("   \033[1;31m%s\033[0m", m.errMsg)
 	}
+	if m.noteMsg != "" {
+		bar += fmt.Sprintf("   \033[1;32m%s\033[0m", m.noteMsg)
+	}
 	return bar
 }
 
@@ -580,6 +682,8 @@ func (m *viewModel) controlsBar() string {
 		return "\033[1;31many key cancel  d again to delete\033[0m"
 	case modeDebug:
 		return "\033[2m← → navigate  q/esc back\033[0m"
+	case modePrompt:
+		return "\033[2m" + m.promptLabel() + "\033[0m" + m.promptLine()
 	}
 
 	hints := []string{"← → navigate"}
@@ -592,8 +696,34 @@ func (m *viewModel) controlsBar() string {
 		"c copy path "+m.mark("c"),
 		"o finder",
 		"y copy image "+m.mark("y"),
-		"d delete", "q quit")
+		"e edit", "p paint", "d delete", "q quit")
 	return "\033[2m" + strings.Join(hints, "  ") + "\033[0m"
+}
+
+// promptLabel names the command being collected for. Its display width is the
+// column the typed text starts in, which is what the caret is placed against.
+func (m *viewModel) promptLabel() string {
+	return m.promptCmd + " ▸ "
+}
+
+// promptLine is the typed text as it appears on the controls row, kept to the
+// space left beside the label. It truncates from the left rather than the
+// right: the tail is where the caret is, so that is the end worth keeping.
+func (m *viewModel) promptLine() string {
+	room := m.width - ansi.StringWidth(m.promptLabel()) - 1
+	if room < 1 {
+		return ""
+	}
+	line := m.promptInput
+	for ansi.StringWidth(line) > room {
+		line = line[1:]
+	}
+	return line
+}
+
+// promptCursorCol is the 1-based column the caret sits in on the controls row.
+func (m *viewModel) promptCursorCol() int {
+	return ansi.StringWidth(m.promptLabel()) + ansi.StringWidth(m.promptLine()) + 1
 }
 
 // mark is the single cell beside an action's hint: the glyph while that action

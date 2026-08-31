@@ -192,9 +192,9 @@ IMAGE upscale
     denoise = 0.3
 ```
 
-Settings: `base`, `checkpoint`, `group`, `steps`, `cfg`, `sampler_name`, `scheduler`, `width`, `height`, `denoise`, `disabled`. Split-architecture bases load the diffusion model, text encoder, and VAE as three files instead of a checkpoint: `unet`, `clip`, `clip_type`, `vae`, `weight_dtype`, `shift`, and — where the base supports it — `nag_scale`, `nag_alpha`, `nag_tau`. For `IMAGE upscale`: `upscale_model`, `factor`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `tile_width`, `tile_height`, `disabled`.
+Settings: `base`, `checkpoint`, `group`, `steps`, `cfg`, `sampler_name`, `scheduler`, `width`, `height`, `denoise`, `disabled`. Split-architecture bases load the diffusion model, text encoder, and VAE as three files instead of a checkpoint: `unet`, `clip`, `clip_type`, `vae`, `weight_dtype`, `shift`, and — where the base supports it — `nag_scale`, `nag_alpha`, `nag_tau`. For `IMAGE upscale`: `upscale_model`, `factor`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `tile_width`, `tile_height`, `disabled`. For `IMAGE edit`: `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `disabled` — no `width` or `height`, since the source image dictates the size. For `IMAGE paint`: `unet`, `clip`, `clip_type`, `vae`, `weight_dtype`, `shift`, `cfg_norm`, `steps`, `cfg`, `sampler_name`, `scheduler`, `denoise`, `disabled`.
 
-`base` on the unnamed stage names the model architecture to render — `sdxl` (the default) or `anima`. It selects which node graph the composition compiles into and which defaults it inherits, and each architecture reads only its own model settings, so a `checkpoint` means nothing under `anima`. Set it in the pipeline file that supplies the model files. A `base` on `IMAGE upscale` is ignored.
+`base` on the unnamed stage names the model architecture to render — `sdxl` (the default) or `anima`. It selects which node graph the composition compiles into and which defaults it inherits, and each architecture reads only its own model settings, so a `checkpoint` means nothing under `anima`. Set it in the pipeline file that supplies the model files. A `base` on `IMAGE upscale`, `IMAGE edit`, or `IMAGE paint` is ignored. `paint` renders one architecture and nothing selects it: an instruction-edit model has nothing to do with the one that generated the image, so the composition's `base` would be answering a different question.
 
 `group` on the base `IMAGE` stage nests the output directory under a shared one: images land in `<group>/<NAME>/` instead of `<NAME>/`. It layers like any other setting, so a collection file holding only a `group` shelves every render it takes part in, and leaving that file out of the command restores the normal path.
 
@@ -273,6 +273,8 @@ IMAGE upscale
 
 | Declaration            | Effect                                                                                                          |
 | :--------------------- | :-------------------------------------------------------------------------------------------------------------- |
+| `IMAGE edit`           | `evoke edit` falls back to the architecture's built-in edit defaults                                             |
+| `IMAGE paint`          | `evoke paint` falls back to its architecture's built-in defaults                                                 |
 | `IMAGE upscale`        | upscale pass skipped                                                                                            |
 | `DETAILER <region>`    | that region's inpaint pass skipped                                                                              |
 | `LORA <name>`          | dropped from the chain; references resolve to nothing                                                            |

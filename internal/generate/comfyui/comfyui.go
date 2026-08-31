@@ -7,12 +7,16 @@ package comfyui
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"mime/multipart"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -25,16 +29,48 @@ import (
 	evoke "github.com/jesse0michael/evoke/pkg/evoke"
 )
 
-//go:embed templates/*.tmpl
+//go:embed templates/image/*.tmpl templates/edit/*.tmpl templates/paint/*.tmpl
 var templates embed.FS
 
 // DefaultBase is the architecture rendered when a composition names none.
 const DefaultBase = "sdxl"
 
-// bases lists the architectures that can be rendered — one embedded workflow
+// Kind is a family of workflow templates. Both families are keyed by the same
+// architecture names, so the composition still picks the architecture and the
+// command picks what to do with it — an edit of an Anima composition renders
+// through Anima, and no flag can say otherwise.
+type Kind string
+
+const (
+	KindImage Kind = "image"
+	KindEdit  Kind = "edit"
+	KindPaint Kind = "paint"
+)
+
+// PaintBase is the architecture `paint` renders. Unlike image and edit, the
+// composition does not choose it: an instruction-edit model has nothing to do
+// with the architecture that generated the image — you paint an SDXL render and
+// an Anima render with the same weights — so the composition's `base` would be
+// answering a different question. There is exactly one today, so nothing has to
+// select. A second one earns a setting of its own on IMAGE paint at that point,
+// not a reinterpretation of `base`.
+const PaintBase = "qwen"
+
+// allKinds is every template family, in the order they are documented.
+var allKinds = []Kind{KindImage, KindEdit, KindPaint}
+
+// baseFor reports which architecture a kind renders for a composition.
+func baseFor(kind Kind, doc *evoke.Composition) string {
+	if kind == KindPaint {
+		return PaintBase
+	}
+	return compositionBase(doc)
+}
+
+// bases lists the architectures a kind can render — one embedded workflow
 // template each, named without the .tmpl extension, in sorted order.
-func bases() []string {
-	entries, err := templates.ReadDir("templates")
+func bases(kind Kind) []string {
+	entries, err := templates.ReadDir("templates/" + string(kind))
 	if err != nil {
 		return nil
 	}
@@ -66,20 +102,21 @@ func compositionBase(doc *evoke.Composition) string {
 	return normalizeBase(stage.Settings["base"])
 }
 
-// resolveBase loads the workflow template for a base, returning the canonical
-// base name and the template source. An empty base selects DefaultBase.
-func resolveBase(name string) (string, []byte, error) {
+// resolveBase loads a kind's workflow template for a base, returning the
+// canonical base name and the template source. An empty base selects
+// DefaultBase.
+func resolveBase(kind Kind, name string) (string, []byte, error) {
 	if name == "" {
 		name = DefaultBase
 	}
 	// The name comes from a .evoke file and indexes an embedded path, so reject
 	// anything that could escape rather than relying on embed.FS to catch it.
 	if strings.ContainsAny(name, "/\\") {
-		return "", nil, fmt.Errorf("invalid IMAGE base %q (available: %s)", name, strings.Join(bases(), ", "))
+		return "", nil, fmt.Errorf("invalid IMAGE base %q (available: %s)", name, strings.Join(bases(kind), ", "))
 	}
-	raw, err := templates.ReadFile("templates/" + name + ".tmpl")
+	raw, err := templates.ReadFile("templates/" + string(kind) + "/" + name + ".tmpl")
 	if err != nil {
-		return "", nil, fmt.Errorf("unknown IMAGE base %q (available: %s)", name, strings.Join(bases(), ", "))
+		return "", nil, fmt.Errorf("unknown IMAGE base %q for %s (available: %s)", name, kind, strings.Join(bases(kind), ", "))
 	}
 	return name, raw, nil
 }
@@ -104,6 +141,8 @@ type promptData struct {
 	Apparel     prompt   `json:"apparel"`
 	Environment prompt   `json:"environment"`
 	Upscale     upscale  `json:"upscale"`
+	Edit        edit     `json:"edit"`
+	Paint       paint    `json:"paint"`
 	Face        detailer `json:"face"`
 	Eye         detailer `json:"eye"`
 	UpperBody   detailer `json:"upper_body"`
@@ -150,6 +189,53 @@ type upscale struct {
 	// second pass over every tile boundary, which costs more than the redraw it
 	// is fixing — so it is opt-in per architecture, not a global default.
 	SeamFix string `json:"seam_fix"`
+}
+
+// edit is the IMAGE edit stage: a redraw of a source image. Like upscale it is
+// a complete sampler spec rather than an adjustment of the base stage's, since
+// the base stage samples from noise at denoise 1.0 and has to keep doing that
+// for the same pipeline file to still serve `evoke image`.
+type edit struct {
+	// Image is how the backend addresses the source, not a local path — for
+	// ComfyUI, a name relative to its input directory that the CLI uploaded.
+	Image       string  `json:"image"`
+	Positive    string  `json:"positive"`
+	Negative    string  `json:"negative"`
+	Steps       int     `json:"steps"`
+	CFG         float64 `json:"cfg"`
+	SamplerName string  `json:"sampler_name"`
+	Scheduler   string  `json:"scheduler"`
+	// Denoise is the whole dial: how much of the source survives. There is no
+	// meaningful default that suits every pipeline, which is why an edit stage
+	// belongs in the pipeline file next to the sampler it is a variant of.
+	Denoise float64 `json:"denoise"`
+}
+
+// paint is the IMAGE paint stage: an instruction edit through a model that has
+// nothing to do with the one that generated the image. It carries its own unet,
+// clip, and vae for exactly that reason — nothing here layers over the unnamed
+// IMAGE stage, and a composition can name a paint model and a generation model
+// without either meaning anything to the other.
+type paint struct {
+	// Image is how the backend addresses the source, as Upload returned it.
+	Image       string  `json:"image"`
+	Unet        string  `json:"unet"`
+	Clip        string  `json:"clip"`
+	ClipType    string  `json:"clip_type"`
+	Vae         string  `json:"vae"`
+	WeightDtype string  `json:"weight_dtype"`
+	Shift       float64 `json:"shift"`
+	CFGNorm     float64 `json:"cfg_norm"`
+	// Positive is the instruction, not a description. Negative is normally
+	// empty: the reference workflow leaves it so, and the model was not trained
+	// on the negative vocabulary an SDXL composition carries.
+	Positive    string  `json:"positive"`
+	Negative    string  `json:"negative"`
+	Steps       int     `json:"steps"`
+	CFG         float64 `json:"cfg"`
+	SamplerName string  `json:"sampler_name"`
+	Scheduler   string  `json:"scheduler"`
+	Denoise     float64 `json:"denoise"`
 }
 
 type detailer struct {
@@ -202,12 +288,111 @@ func New(baseURL string) *Client {
 // Generate converts the resolved Evoke document to ComfyUI prompt data,
 // applies sane defaults for missing values, renders the template, and submits to ComfyUI.
 func (c *Client) Generate(ctx context.Context, doc *evoke.Composition) (*generate.Result, error) {
-	base, raw, err := resolveBase(compositionBase(doc))
+	return c.submit(ctx, doc, KindImage, "")
+}
+
+// Edit renders the composition through the edit workflow for its architecture,
+// redrawing image — a name relative to ComfyUI's input directory, as returned
+// by Upload — rather than sampling from noise.
+func (c *Client) Edit(ctx context.Context, doc *evoke.Composition, image string) (*generate.Result, error) {
+	if image == "" {
+		return nil, fmt.Errorf("edit requires a source image")
+	}
+	return c.submit(ctx, doc, KindEdit, image)
+}
+
+// Paint renders the composition through the instruction-edit workflow, altering
+// image according to the composition's PROMPT rather than redrawing it.
+func (c *Client) Paint(ctx context.Context, doc *evoke.Composition, image string) (*generate.Result, error) {
+	if image == "" {
+		return nil, fmt.Errorf("paint requires a source image")
+	}
+	return c.submit(ctx, doc, KindPaint, image)
+}
+
+// Upload copies a local image into ComfyUI's input directory and returns the
+// name the workflow addresses it by. The name is the content hash, so editing
+// the same source repeatedly reuses one file instead of growing the input
+// directory a copy at a time.
+func (c *Client) Upload(ctx context.Context, path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read %s: %w", path, err)
+	}
+
+	sum := sha256.Sum256(data)
+	name := hex.EncodeToString(sum[:8]) + strings.ToLower(filepath.Ext(path))
+
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	part, err := w.CreateFormFile("image", name)
+	if err != nil {
+		return "", fmt.Errorf("failed to build upload: %w", err)
+	}
+	if _, err := part.Write(data); err != nil {
+		return "", fmt.Errorf("failed to build upload: %w", err)
+	}
+	for field, value := range map[string]string{
+		"type":      "input",
+		"subfolder": uploadSubfolder,
+		"overwrite": "true",
+	} {
+		if err := w.WriteField(field, value); err != nil {
+			return "", fmt.Errorf("failed to build upload: %w", err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		return "", fmt.Errorf("failed to build upload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/upload/image", &body)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to upload to ComfyUI: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("ComfyUI returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var uploaded struct {
+		Name      string `json:"name"`
+		Subfolder string `json:"subfolder"`
+	}
+	if err := json.Unmarshal(respBody, &uploaded); err != nil {
+		return "", fmt.Errorf("failed to decode upload response: %w", err)
+	}
+	if uploaded.Name == "" {
+		return "", fmt.Errorf("ComfyUI accepted the upload but named no file")
+	}
+	if uploaded.Subfolder != "" {
+		return uploaded.Subfolder + "/" + uploaded.Name, nil
+	}
+	return uploaded.Name, nil
+}
+
+// uploadSubfolder keeps CLI uploads out of the input directory ComfyUI's own
+// UI lists, so a user's own inputs and evoke's stay separable.
+const uploadSubfolder = "evoke"
+
+// submit renders the composition through a kind's template for its
+// architecture and posts the workflow to ComfyUI.
+func (c *Client) submit(ctx context.Context, doc *evoke.Composition, kind Kind, image string) (*generate.Result, error) {
+	base, raw, err := resolveBase(kind, baseFor(kind, doc))
 	if err != nil {
 		return nil, err
 	}
 
-	evokeData, skipped := renderPromptData(doc, base)
+	evokeData, skipped := renderPromptData(doc, kind, base)
+	evokeData.Edit.Image = image
+	evokeData.Paint.Image = image
 	applyDefaults(&evokeData, defaultsFor(base))
 
 	payload, err := renderTemplate(evokeData, doc.Name, doc.Sources, c.Verbose, raw)
@@ -260,9 +445,9 @@ func (c *Client) Generate(ctx context.Context, doc *evoke.Composition) (*generat
 	return result, nil
 }
 
-// renderPromptData converts a composition into template data for the given
-// base, returning the names of any LoRAs skipped as incompatible with it.
-func renderPromptData(doc *evoke.Composition, base string) (promptData, []string) {
+// renderPromptData converts a composition into template data for the given kind
+// and base, returning the names of any LoRAs skipped as incompatible with it.
+func renderPromptData(doc *evoke.Composition, kind Kind, base string) (promptData, []string) {
 	var pd promptData
 
 	// CHARACTER, PERSONALITY, BACKSTORY, and SCENARIO are chat-only: they carry
@@ -300,8 +485,35 @@ func renderPromptData(doc *evoke.Composition, base string) (promptData, []string
 		}
 	}
 
+	// Apply IMAGE edit stage settings. Unlike upscale this stage is inert
+	// unless the caller supplies a source image, so it is resolved for every
+	// render and simply goes unread by the image templates.
+	if ed := doc.ImageStageByArgument("edit"); ed != nil && !ed.Disabled {
+		applyEditSettings(&pd.Edit, ed)
+		pd.Edit.Positive = joinAll(ed.Text.Positive)
+		pd.Edit.Negative = joinAll(ed.Text.Negative)
+	}
+
+	// The instruction is PROMPT, plus whatever an IMAGE paint stage adds. The
+	// description channels are deliberately absent: an instruction edit is told
+	// what to change, and re-describing the whole subject is what makes it
+	// change more than it was asked to.
+	//
+	// The instruction is set outside the stage check on purpose. A paint
+	// composition needs no IMAGE paint block at all — the architecture defaults
+	// carry every model setting — so nesting it inside one painted nothing.
+	if kind == KindPaint {
+		pd.Paint.Positive = joinAll(doc.Prompt.Positive)
+		pd.Paint.Negative = joinAll(doc.Prompt.Negative)
+		if pt := doc.ImageStageByArgument("paint"); pt != nil && !pt.Disabled {
+			applyPaintSettings(&pd.Paint, pt)
+			pd.Paint.Positive = joinComma(pd.Paint.Positive, joinAll(pt.Text.Positive))
+			pd.Paint.Negative = joinComma(pd.Paint.Negative, joinAll(pt.Text.Negative))
+		}
+	}
+
 	// Apply LORA definitions and resolve references.
-	skipped := resolveLoras(doc, base, &pd)
+	skipped := resolveLoras(doc, kind, base, &pd)
 
 	// Apply DETAILER configs.
 	applyDetailer(doc, &pd, "face", &pd.Face)
@@ -408,6 +620,63 @@ func applyUpscaleSettings(up *upscale, stage *evoke.ImageStage) {
 	}
 }
 
+func applyEditSettings(ed *edit, stage *evoke.ImageStage) {
+	if v, ok := stage.Settings["steps"]; ok {
+		ed.Steps = parseInt(v)
+	}
+	if v, ok := stage.Settings["cfg"]; ok {
+		ed.CFG = parseFloat(v)
+	}
+	if v, ok := stage.Settings["sampler_name"]; ok {
+		ed.SamplerName = v
+	}
+	if v, ok := stage.Settings["scheduler"]; ok {
+		ed.Scheduler = v
+	}
+	if v, ok := stage.Settings["denoise"]; ok {
+		ed.Denoise = parseFloat(v)
+	}
+}
+
+func applyPaintSettings(pt *paint, stage *evoke.ImageStage) {
+	if v, ok := stage.Settings["unet"]; ok {
+		pt.Unet = v
+	}
+	if v, ok := stage.Settings["clip"]; ok {
+		pt.Clip = v
+	}
+	if v, ok := stage.Settings["clip_type"]; ok {
+		pt.ClipType = v
+	}
+	if v, ok := stage.Settings["vae"]; ok {
+		pt.Vae = v
+	}
+	if v, ok := stage.Settings["weight_dtype"]; ok {
+		pt.WeightDtype = v
+	}
+	if v, ok := stage.Settings["shift"]; ok {
+		pt.Shift = parseFloat(v)
+	}
+	if v, ok := stage.Settings["cfg_norm"]; ok {
+		pt.CFGNorm = parseFloat(v)
+	}
+	if v, ok := stage.Settings["steps"]; ok {
+		pt.Steps = parseInt(v)
+	}
+	if v, ok := stage.Settings["cfg"]; ok {
+		pt.CFG = parseFloat(v)
+	}
+	if v, ok := stage.Settings["sampler_name"]; ok {
+		pt.SamplerName = v
+	}
+	if v, ok := stage.Settings["scheduler"]; ok {
+		pt.Scheduler = v
+	}
+	if v, ok := stage.Settings["denoise"]; ok {
+		pt.Denoise = parseFloat(v)
+	}
+}
+
 // resolveLoras builds the LoRA chain for the active base and returns the names
 // of the referenced LoRAs it left out.
 //
@@ -419,7 +688,7 @@ func applyUpscaleSettings(up *upscale, stage *evoke.ImageStage) {
 // architecture were trained against the default one. Only a skip the caller
 // would otherwise have seen in the chain is reported — a definition no stage
 // references was never going to load, base or not.
-func resolveLoras(doc *evoke.Composition, base string, pd *promptData) []string {
+func resolveLoras(doc *evoke.Composition, kind Kind, base string, pd *promptData) []string {
 	var skipped []string
 	reported := make(map[string]bool)
 
@@ -447,8 +716,14 @@ func resolveLoras(doc *evoke.Composition, base string, pd *promptData) []string 
 		}
 	}
 
-	// Resolve lora references from unnamed IMAGE stage into the main lora chain.
-	if stage := doc.ImageStageByArgument(""); stage != nil && !stage.Disabled {
+	// The chain belongs to whichever stage supplies the model being sampled: for
+	// paint that is IMAGE paint, which loads a different architecture entirely,
+	// so the unnamed stage's LoRAs would be guarded out one at a time anyway.
+	chainStage := ""
+	if kind == KindPaint {
+		chainStage = "paint"
+	}
+	if stage := doc.ImageStageByArgument(chainStage); stage != nil && !stage.Disabled {
 		for _, name := range stage.Loras {
 			if def, ok := loraDefs[name]; ok && take(def) {
 				pd.Loras = append(pd.Loras, loraFromDefinition(def))
@@ -563,6 +838,13 @@ var architectureDefaults = map[string]promptData{
 	"sdxl": {
 		Checkpoint: "riMixIllustriousAnima_riMixV2.safetensors",
 		Upscale:    upscale{SeamFix: "Half Tile"},
+		Edit: edit{
+			Steps:       24,
+			CFG:         4.0,
+			SamplerName: "euler_ancestral",
+			Scheduler:   "karras",
+			Denoise:     0.5,
+		},
 		Sampler: sampler{
 			Steps:       40,
 			CFG:         4.0,
@@ -573,8 +855,35 @@ var architectureDefaults = map[string]promptData{
 			Height:      832,
 		},
 	},
+	// The instruction-edit architecture. It has no image or edit template — a
+	// model trained to alter a source cannot generate from noise — so only the
+	// Paint block here is ever read. Defaults follow Comfy-Org's
+	// image_qwen_image_edit_2509 reference with no step-distillation LoRA.
+	"qwen": {
+		Paint: paint{
+			Unet:        "qwen_image_edit_2509_fp8_e4m3fn.safetensors",
+			Clip:        "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+			ClipType:    "qwen_image",
+			Vae:         "qwen_image_vae.safetensors",
+			WeightDtype: "default",
+			Shift:       3.0,
+			CFGNorm:     1.0,
+			Steps:       20,
+			CFG:         4.0,
+			SamplerName: "euler",
+			Scheduler:   "simple",
+			Denoise:     1.0,
+		},
+	},
 	"anima": {
-		Upscale:     upscale{SeamFix: "None"},
+		Upscale: upscale{SeamFix: "None"},
+		Edit: edit{
+			Steps:       30,
+			CFG:         4.0,
+			SamplerName: "euler",
+			Scheduler:   "simple",
+			Denoise:     0.5,
+		},
 		Unet:        "anima-base-v1.0.safetensors",
 		Clip:        "qwen_3_06b_base.safetensors",
 		ClipType:    "stable_diffusion",
@@ -655,6 +964,57 @@ func applyDefaults(data *promptData, def promptData) {
 	}
 	if data.Upscale.SeamFix == "" {
 		data.Upscale.SeamFix = def.Upscale.SeamFix
+	}
+	if data.Edit.Steps == 0 {
+		data.Edit.Steps = def.Edit.Steps
+	}
+	if data.Edit.CFG == 0 {
+		data.Edit.CFG = def.Edit.CFG
+	}
+	if data.Edit.SamplerName == "" {
+		data.Edit.SamplerName = def.Edit.SamplerName
+	}
+	if data.Edit.Scheduler == "" {
+		data.Edit.Scheduler = def.Edit.Scheduler
+	}
+	if data.Edit.Denoise == 0 {
+		data.Edit.Denoise = def.Edit.Denoise
+	}
+	if data.Paint.Unet == "" {
+		data.Paint.Unet = def.Paint.Unet
+	}
+	if data.Paint.Clip == "" {
+		data.Paint.Clip = def.Paint.Clip
+	}
+	if data.Paint.ClipType == "" {
+		data.Paint.ClipType = def.Paint.ClipType
+	}
+	if data.Paint.Vae == "" {
+		data.Paint.Vae = def.Paint.Vae
+	}
+	if data.Paint.WeightDtype == "" {
+		data.Paint.WeightDtype = def.Paint.WeightDtype
+	}
+	if data.Paint.Shift == 0 {
+		data.Paint.Shift = def.Paint.Shift
+	}
+	if data.Paint.CFGNorm == 0 {
+		data.Paint.CFGNorm = def.Paint.CFGNorm
+	}
+	if data.Paint.Steps == 0 {
+		data.Paint.Steps = def.Paint.Steps
+	}
+	if data.Paint.CFG == 0 {
+		data.Paint.CFG = def.Paint.CFG
+	}
+	if data.Paint.SamplerName == "" {
+		data.Paint.SamplerName = def.Paint.SamplerName
+	}
+	if data.Paint.Scheduler == "" {
+		data.Paint.Scheduler = def.Paint.Scheduler
+	}
+	if data.Paint.Denoise == 0 {
+		data.Paint.Denoise = def.Paint.Denoise
 	}
 
 	// Disable upscale/detailers if not explicitly configured.
@@ -802,6 +1162,12 @@ func escapePromptData(p promptData) promptData {
 	p.Hand.Negative = jsonEscape(p.Hand.Negative)
 	p.Upscale.Positive = jsonEscape(p.Upscale.Positive)
 	p.Upscale.Negative = jsonEscape(p.Upscale.Negative)
+	p.Edit.Positive = jsonEscape(p.Edit.Positive)
+	p.Edit.Negative = jsonEscape(p.Edit.Negative)
+	p.Edit.Image = jsonEscape(p.Edit.Image)
+	p.Paint.Positive = jsonEscape(p.Paint.Positive)
+	p.Paint.Negative = jsonEscape(p.Paint.Negative)
+	p.Paint.Image = jsonEscape(p.Paint.Image)
 	return p
 }
 

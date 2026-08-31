@@ -270,23 +270,31 @@ func TestViewPaintsOverThePreviousFrame(t *testing.T) {
 
 func TestViewControlsBar(t *testing.T) {
 	tests := []struct {
-		name     string
-		mode     viewMode
-		hasDebug bool
-		flashKey string
-		want     string
+		name        string
+		mode        viewMode
+		hasDebug    bool
+		flashKey    string
+		promptCmd   string
+		promptInput string
+		want        string
 	}{
-		{name: "browse", mode: modeBrowse, want: "← → navigate  c copy path    o finder  y copy image    d delete  q quit"},
-		{name: "confirming a copy", mode: modeBrowse, flashKey: "c", want: "← → navigate  c copy path ✓  o finder  y copy image    d delete  q quit"},
-		{name: "browse with debug frames", mode: modeBrowse, hasDebug: true, want: "← → navigate  t debug  c copy path    o finder  y copy image    d delete  q quit"},
+		{name: "browse", mode: modeBrowse, want: "← → navigate  c copy path    o finder  y copy image    e edit  p paint  d delete  q quit"},
+		{name: "confirming a copy", mode: modeBrowse, flashKey: "c", want: "← → navigate  c copy path ✓  o finder  y copy image    e edit  p paint  d delete  q quit"},
+		{name: "browse with debug frames", mode: modeBrowse, hasDebug: true, want: "← → navigate  t debug  c copy path    o finder  y copy image    e edit  p paint  d delete  q quit"},
 		{name: "confirming a delete", mode: modeConfirmDelete, want: "any key cancel  d again to delete"},
 		{name: "stepping debug frames", mode: modeDebug, want: "← → navigate  q/esc back"},
+		{name: "entering edit inputs", mode: modePrompt, promptCmd: "edit", promptInput: `sumi ill "red coat"`, want: `edit ▸ sumi ill "red coat"`},
+		{name: "an empty edit prompt", mode: modePrompt, promptCmd: "edit", want: "edit ▸ "},
+		// The label is the command, so the row says which of the two is armed.
+		{name: "entering paint inputs", mode: modePrompt, promptCmd: "paint", promptInput: "give her a red coat", want: "paint ▸ give her a red coat"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := newViewModel("/out", testImages(2), 0)
 			m.mode, m.hasDebug, m.flashKey = tt.mode, tt.hasDebug, tt.flashKey
+			m.promptCmd, m.promptInput = tt.promptCmd, tt.promptInput
+			m.width = 120
 
 			// The scroll keys and the ±50 jump are deliberately unadvertised.
 			require.Equal(t, tt.want, stripSGR(m.controlsBar()))
@@ -558,4 +566,165 @@ func (r *chunkReader) Read(p []byte) (int, error) {
 	n := copy(p, r.chunks[0])
 	r.chunks = r.chunks[1:]
 	return n, nil
+}
+
+func TestSplitArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want []string
+	}{
+		{name: "empty", line: "", want: nil},
+		{name: "whitespace only", line: "   ", want: nil},
+		{name: "bare selectors", line: "sumi ill", want: []string{"sumi", "ill"}},
+		{name: "runs of whitespace collapse", line: "  sumi\till  ", want: []string{"sumi", "ill"}},
+		// A prompt has to survive as one argument: evoke edit classifies an
+		// argument containing a space as a literal and anything else as a tag.
+		{name: "a quoted prompt stays one argument", line: `sumi ill "red coat, rain"`, want: []string{"sumi", "ill", "red coat, rain"}},
+		{name: "single quotes group too", line: `sumi 'red coat'`, want: []string{"sumi", "red coat"}},
+		{name: "a quote inside a word", line: `sumi+"a b"`, want: []string{"sumi+a b"}},
+		{name: "an empty quoted argument survives", line: `sumi ""`, want: []string{"sumi", ""}},
+		{name: "a backslash escapes", line: `vex_\(lol\)`, want: []string{"vex_(lol)"}},
+		{name: "an escaped space does not split", line: `red\ coat`, want: []string{"red coat"}},
+		// The line is still being typed, so an open quote closes at the end
+		// rather than discarding what was entered.
+		{name: "an unterminated quote closes at the end", line: `sumi "red coat`, want: []string{"sumi", "red coat"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, splitArgs(tt.line))
+		})
+	}
+}
+
+// TestViewEditPrompt drives the prompt the way the terminal does — one key
+// event per byte — and asserts on what reaches the edit command.
+func TestViewEditPrompt(t *testing.T) {
+	type call struct {
+		cmd    string
+		source string
+		args   []string
+	}
+
+	tests := []struct {
+		name     string
+		typed    []string
+		result   string
+		fail     error
+		wantCall *call
+		wantMode viewMode
+		wantNote string
+		wantErr  string
+	}{
+		{
+			name:     "typing inputs and submitting",
+			typed:    []string{"e", "s", "u", "m", "i", " ", "i", "l", "l", "enter"},
+			result:   "sumi => sumi.evoke\nComfyUI accepted (status: 200 OK)\n",
+			wantCall: &call{cmd: "edit", source: "/out/test-image-a.png", args: []string{"sumi", "ill"}},
+			wantMode: modeBrowse,
+			// The trace above the outcome is dropped: the bar holds one row.
+			wantNote: "ComfyUI accepted (status: 200 OK)",
+		},
+		{
+			name:     "backspace corrects the line",
+			typed:    []string{"e", "s", "u", "x", "backspace", "m", "i", "enter"},
+			wantCall: &call{cmd: "edit", source: "/out/test-image-a.png", args: []string{"sumi"}},
+			wantMode: modeBrowse,
+		},
+		{
+			name:     "esc cancels without submitting",
+			typed:    []string{"e", "s", "u", "m", "i", "esc"},
+			wantMode: modeBrowse,
+		},
+		{
+			name:     "an empty line cancels",
+			typed:    []string{"e", "enter"},
+			wantMode: modeBrowse,
+		},
+		{
+			// Navigation keys are inert while typing: they would otherwise
+			// change the source image out from under the line being written.
+			name:     "arrows do not navigate while typing",
+			typed:    []string{"e", "s", "left", "right", "u", "enter"},
+			wantCall: &call{cmd: "edit", source: "/out/test-image-a.png", args: []string{"su"}},
+			wantMode: modeBrowse,
+		},
+		{
+			// p opens the same line against the other command, so both are
+			// reachable from the frame without leaving the viewer.
+			name:     "p collects for paint instead",
+			typed:    []string{"p", "r", "e", "d", " ", "c", "o", "a", "t", "enter"},
+			wantCall: &call{cmd: "paint", source: "/out/test-image-a.png", args: []string{"red", "coat"}},
+			wantMode: modeBrowse,
+		},
+		{
+			// p was a third alias for "previous" before it was paint. Inside the
+			// prompt it has to be plain text, or the source would change under
+			// the line being written.
+			name:     "typing p inside the prompt is text, not a command",
+			typed:    []string{"e", "p", "q", "enter"},
+			wantCall: &call{cmd: "edit", source: "/out/test-image-a.png", args: []string{"pq"}},
+			wantMode: modeBrowse,
+		},
+		{
+			name:     "a failure is reported in the status bar",
+			typed:    []string{"e", "s", "u", "m", "i", "enter"},
+			fail:     errors.New("evoke edit: no files match selector \"sumi\""),
+			wantCall: &call{cmd: "edit", source: "/out/test-image-a.png", args: []string{"sumi"}},
+			wantMode: modeBrowse,
+			wantErr:  `evoke edit: no files match selector "sumi"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls []call
+			m := newViewModel("/out", testImages(3), 0)
+			m.runCommand = func(cmd, source string, args []string) (string, error) {
+				calls = append(calls, call{cmd: cmd, source: source, args: args})
+				return tt.result, tt.fail
+			}
+
+			var drawn []string
+			var out bytes.Buffer
+			m = sized(m, &drawn, &out)
+			m = press(m, keys(tt.typed...)...)
+
+			if tt.wantCall == nil {
+				require.Empty(t, calls)
+			} else {
+				require.Equal(t, []call{*tt.wantCall}, calls)
+			}
+			require.Equal(t, tt.wantMode, m.mode)
+			require.Empty(t, m.promptInput, "the line is cleared when the prompt closes")
+			require.Equal(t, tt.wantNote, m.noteMsg)
+			require.Equal(t, tt.wantErr, m.errMsg)
+			// The source image never changes: an edit reads the frame it was
+			// opened on, and nothing in the prompt navigates.
+			require.Equal(t, 0, m.idx)
+		})
+	}
+}
+
+// TestViewEditPromptShowsCaret covers the one place the viewer un-hides the
+// cursor. Everywhere else a visible block parked beside a bar is noise.
+func TestViewEditPromptShowsCaret(t *testing.T) {
+	var drawn []string
+	var out bytes.Buffer
+	m := sized(newViewModel("/out", testImages(2), 0), &drawn, &out)
+
+	out.Reset()
+	m = press(m, keys("e", "s", "u")...)
+	frame := out.String()
+
+	require.Contains(t, frame, cursorShow)
+	require.Contains(t, stripSGR(frame), "edit ▸ su")
+	// Column 1 is the prompt's first cell, so the caret sits one past the text.
+	require.Equal(t, ansi.StringWidth("edit ▸ ")+3, m.promptCursorCol())
+
+	// Leaving the prompt puts it away again.
+	out.Reset()
+	m = press(m, key("esc"))
+	require.NotContains(t, out.String(), cursorShow)
 }

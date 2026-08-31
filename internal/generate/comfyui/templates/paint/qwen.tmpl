@@ -1,0 +1,217 @@
+{{- $seed := RandomSeed -}}
+{
+  {{- /* Qwen-Image-Edit follows an instruction. The source image does not
+         become the starting latent the way it does in templates/edit — it goes
+         into the text encoder as vision tokens plus a reference latent, and
+         sampling runs from denoise 1.0. That is why a targeted change lands
+         here and cannot in a redraw: minimal difference from the source is the
+         model's training objective, not a side effect of partial denoise.
+
+         The graph follows Comfy-Org's image_qwen_image_edit_2509 reference. It
+         shares no model settings with the unnamed IMAGE stage: the architecture
+         that edits an image has nothing to do with the one that generated it,
+         so IMAGE paint names its own unet, clip, and vae. */}}
+  "unet": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "{{ .Prompt.Paint.Unet }}",
+      "weight_dtype": "{{ .Prompt.Paint.WeightDtype }}"
+    }
+  },
+
+  "clip": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "{{ .Prompt.Paint.Clip }}",
+      "type": "{{ .Prompt.Paint.ClipType }}",
+      "device": "default"
+    }
+  },
+
+  "vae": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "{{ .Prompt.Paint.Vae }}"
+    }
+  },
+
+  {{- /* ================= LoRA CHAIN ================= */ -}}
+  {{- /* Model-only: the text encoder is Qwen2.5-VL, which no LoRA trained
+         against a CLIP carries weights for. The step-distilled Lightning LoRAs
+         are the ones worth loading here — they take the sampler from 20 steps
+         at cfg 4 to 4 steps at cfg 1. */}}
+  {{- $prev := "unet" -}}
+  {{- range $i, $l := .Prompt.Loras }}
+  "lora_{{ $i }}": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "lora_name": "{{ $l.Name }}",
+      "strength_model": {{ $l.Strength }},
+      "model": ["{{ $prev }}", 0]
+    }
+  },
+  {{- $prev = printf "lora_%d" $i -}}
+  {{- end }}
+
+  {{- /* ================= MODEL SAMPLING ================= */ -}}
+  {{- /* Unlike anima, the reference workflow does carry this node, so shift is
+         defaulted on rather than left to the model config. */}}
+  {{- if .Prompt.Paint.Shift }}
+  "shift": {
+    "class_type": "ModelSamplingAuraFlow",
+    "inputs": {
+      "shift": {{ .Prompt.Paint.Shift }},
+      "model": ["{{ $prev }}", 0]
+    }
+  },
+  {{- $prev = "shift" -}}
+  {{- end }}
+
+  {{- if .Prompt.Paint.CFGNorm }}
+  "cfg_norm": {
+    "class_type": "CFGNorm",
+    "inputs": {
+      "strength": {{ .Prompt.Paint.CFGNorm }},
+      "model": ["{{ $prev }}", 0]
+    }
+  },
+  {{- $prev = "cfg_norm" -}}
+  {{- end }}
+
+  {{- /* ================= SOURCE IMAGE ================= */ -}}
+  {{- /* FluxKontextImageScale snaps the source to the nearest supported
+         resolution bucket around one megapixel. The buckets are shared with
+         Qwen-Image-Edit, which is why the reference workflow uses it here, and
+         it is what keeps the sampling latent the same shape as the reference
+         latent the encoder derives internally. */}}
+  "input": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{ .Prompt.Paint.Image }}"
+    }
+  },
+
+  "scale": {
+    "class_type": "FluxKontextImageScale",
+    "inputs": {
+      "image": ["input", 0]
+    }
+  },
+
+  "encode": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": ["scale", 0],
+      "vae": ["vae", 0]
+    }
+  },
+
+  "size": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": ["scale", 0]
+    }
+  },
+
+  {{- /* ================= INSTRUCTION ================= */ -}}
+  {{- /* Both encoders see the image; only the text differs. Passing the vae is
+         what attaches the reference latent that holds the edit to the source.
+         The node keys stay prompt_pos/prompt_neg so metadata.go reads this
+         graph with the same lookup it uses for every other template. */}}
+  "prompt_pos": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "inputs": {
+      "prompt": "{{ .Prompt.Paint.Positive }}",
+      "clip": ["clip", 0],
+      "vae": ["vae", 0],
+      "image1": ["scale", 0]
+    }
+  },
+
+  {{- /* PROMPT's two channels stay symmetric — splitting them would be the
+         surprise — but the reference workflow leaves this empty and the model
+         was never trained on the negative vocabulary an SDXL composition
+         carries, so normally nothing writes here. */}}
+  "prompt_neg": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "inputs": {
+      "prompt": "{{ .Prompt.Paint.Negative }}",
+      "clip": ["clip", 0],
+      "vae": ["vae", 0],
+      "image1": ["scale", 0]
+    }
+  },
+
+  {{- /* ================= SAMPLER ================= */ -}}
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": {{ $seed }},
+      "steps": {{ .Prompt.Paint.Steps }},
+      "cfg": {{ .Prompt.Paint.CFG }},
+      "sampler_name": "{{ .Prompt.Paint.SamplerName }}",
+      "scheduler": "{{ .Prompt.Paint.Scheduler }}",
+      "denoise": {{ .Prompt.Paint.Denoise }},
+      "model": ["{{ $prev }}", 0],
+      "positive": ["prompt_pos", 0],
+      "negative": ["prompt_neg", 0],
+      "latent_image": ["encode", 0]
+    }
+  },
+
+  {{- /* ================= DECODE ================= */ -}}
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler", 0],
+      "vae": ["vae", 0]
+    }
+  },
+
+  {{- /* ================= DEBUG ================= */ -}}
+  {{- if .Debug }}
+  "debug_source": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_0_source",
+      "images": ["scale", 0]
+    }
+  },
+  {{- end }}
+
+  {{- /* ================= SAVE ================= */ -}}
+  "save": {
+    "class_type": "Image Saver",
+    "inputs": {
+      "images": ["decode", 0],
+      "path": "images/{{ .OutputDir }}",
+      "filename": "{{ .Name }}",
+      "extension": "png",
+
+      {{- /* Metadata only: this text is never encoded, so the <lora:> tags Civitai
+             needs are appended here rather than to the instruction, which would
+             change what the model is asked to do. */}}
+      "positive": "{{ .Prompt.Paint.Positive }}{{ range .Prompt.Loras }} <lora:{{ StripExt .Name }}:{{ .Strength }}>{{ end }}",
+      "negative": "{{ .Prompt.Paint.Negative }}",
+
+      "modelname": "{{ .Prompt.Paint.Unet }}",
+      "seed_value": {{ $seed }},
+      "steps": {{ .Prompt.Paint.Steps }},
+      "cfg": {{ .Prompt.Paint.CFG }},
+      "sampler_name": "{{ .Prompt.Paint.SamplerName }}",
+      "scheduler_name": "{{ .Prompt.Paint.Scheduler }}",
+      "denoise": {{ .Prompt.Paint.Denoise }},
+
+      {{- /* The bucket the source was snapped to, which is only known at run
+             time, so these are links rather than constants. */}}
+      "width": ["size", 0],
+      "height": ["size", 1],
+      "clip_skip": 0,
+
+      "download_civitai_data": false,
+      "easy_remix": true,
+      "embed_workflow": true,
+      "show_preview": true
+    }
+  }
+}

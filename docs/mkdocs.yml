@@ -60,6 +60,8 @@ nav:
   - CLI:
       - cli/index.md
       - evoke image: cli/image.md
+      - evoke edit: cli/edit.md
+      - evoke paint: cli/paint.md
       - evoke chat: cli/chat.md
       - evoke knowledge: cli/knowledge.md
       - evoke settings: cli/settings.md
