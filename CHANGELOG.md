@@ -1,3 +1,9 @@
+# [1.2.0](https://github.com/Jesse0Michael/evoke/compare/v1.1.2...v1.2.0) (2026-09-01)
+
+### Features
+
+- edit/paint ([95d66c4](https://github.com/Jesse0Michael/evoke/commit/95d66c455d9d95b3e9960b13c870506b6c754247))
+
 ## [1.1.2](https://github.com/Jesse0Michael/evoke/compare/v1.1.1...v1.1.2) (2026-08-30)
 
 ### Bug Fixes
