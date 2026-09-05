@@ -244,7 +244,7 @@ Chat-only, no argument. Free-text lines become extra system instructions — wri
     Stay in character at all times.
 ```
 
-Settings: `backend` (`llama.cpp`), `model`, `context_window`, `gpu_layers`, `max_output_tokens`, `safety_margin`, `min_recent_turns`, `temperature`, `top_p`, `repeat_penalty`, `seed`, `stop`.
+Settings: `backend` (`llama.cpp` or `mlx`), `model`, `context_window`, `gpu_layers`, `max_output_tokens`, `safety_margin`, `min_recent_turns`, `temperature`, `top_p`, `repeat_penalty`, `seed`, `stop`, `thinking`.
 
 `model` is a GGUF **file name**, like a `checkpoint` — resolved against the model directories in trusted local settings, so the file names the model rather than a machine path and stays portable.
 

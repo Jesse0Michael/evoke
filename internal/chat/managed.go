@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+
+	"github.com/jesse0michael/evoke/internal/process"
 	"strings"
 	"sync"
 	"time"
@@ -23,37 +25,47 @@ const (
 	logTailBytes          = 16 << 10
 )
 
-// StartManaged launches the llama.cpp backend described by the plan, waits for
-// it to become healthy, and returns a Lease that owns the process. It validates
-// the executable and model path first, and refuses to start if the target port
-// is already in use — Evoke will not run a second backend alongside another.
-// On any startup failure it ensures no process is left running and includes the
-// tail of the backend's log for diagnostics.
+// StartManaged launches the backend described by the plan, waits for it to
+// become healthy, and returns a Lease that owns the process. It validates the
+// executable and model reference first, and refuses to start if the target port
+// is already in use — Evoke runs the backend it owns and never adopts one it
+// found, so a busy port is an error rather than an endpoint. On any startup
+// failure it ensures no process is left running and includes the tail of the
+// backend's log for diagnostics.
+//
+// Readiness is only as good as the backend's health endpoint. llama-server
+// reports unhealthy while a model loads; mlx_lm.server answers 200 immediately
+// and loads on first use, so for MLX a successful start means the port is
+// serving, and the model load lands on the first turn.
 func StartManaged(ctx context.Context, p *Plan, startupTimeout time.Duration) (Lease, error) {
 	if startupTimeout <= 0 {
 		startupTimeout = DefaultStartupTimeout
 	}
+	drv, ok := driverFor(p.Backend)
+	if !ok {
+		return nil, fmt.Errorf("unsupported chat backend %q", p.Backend)
+	}
 	if p.ModelPath == "" {
-		return nil, fmt.Errorf("could not locate model file %q; add its directory to chat.model_paths in settings", p.Model)
+		return nil, fmt.Errorf("could not locate model %q; add its directory to chat.model_paths in settings", p.Model)
 	}
 	exe, err := exec.LookPath(p.Runtime.Executable)
 	if err != nil {
 		return nil, fmt.Errorf("backend executable %q not found: %w", p.Runtime.Executable, err)
 	}
-	if info, err := os.Stat(p.ModelPath); err != nil || info.IsDir() {
-		return nil, fmt.Errorf("model file not found: %s", p.ModelPath)
+	if err := drv.validateModel(p); err != nil {
+		return nil, err
 	}
 
 	addr := net.JoinHostPort(p.Runtime.Host, fmt.Sprintf("%d", p.Runtime.Port))
 	if inUse(addr) {
-		return nil, fmt.Errorf("refusing to start backend: %s is already in use (another backend running?)", addr)
+		return nil, fmt.Errorf("refusing to start backend: %s is already in use (another backend running?); stop it or set a different chat.port in settings", addr)
 	}
 
-	logs := &ringBuffer{max: logTailBytes}
+	logs := process.NewRingBuffer(logTailBytes)
 	cmd := exec.Command(exe, p.commandArgs()...) //nolint:gosec // args are built from typed, validated settings, not shell input
 	cmd.Stdout = logs
 	cmd.Stderr = logs
-	setProcessGroup(cmd)
+	process.SetGroup(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start %s: %w", exe, err)
@@ -74,11 +86,11 @@ func StartManaged(ctx context.Context, p *Plan, startupTimeout time.Duration) (L
 	return lease, nil
 }
 
-// managedLease owns a llama.cpp child process.
+// managedLease owns a backend child process that Evoke started.
 type managedLease struct {
 	cmd      *exec.Cmd
 	endpoint *url.URL
-	logs     *ringBuffer
+	logs     *process.RingBuffer
 
 	exited  chan struct{} // closed when the process exits
 	waitErr error         // exit error, valid after exited is closed
@@ -138,7 +150,7 @@ func (l *managedLease) shutdown(ctx context.Context) error {
 	default:
 	}
 
-	if err := terminate(l.cmd); err != nil && !errors.Is(err, os.ErrProcessDone) {
+	if err := process.Terminate(l.cmd); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		// Fall through to forced kill below.
 		_ = err
 	}
@@ -149,7 +161,7 @@ func (l *managedLease) shutdown(ctx context.Context) error {
 	case <-l.exited:
 		return nil
 	case <-graceCtx.Done():
-		_ = forceKill(l.cmd)
+		_ = process.ForceKill(l.cmd)
 		<-l.exited
 		return nil
 	}
@@ -191,38 +203,4 @@ func inUse(addr string) bool {
 	}
 	_ = conn.Close()
 	return true
-}
-
-// ringBuffer is a byte sink that retains only the last max bytes written, used
-// to keep a bounded tail of backend logs for diagnostics. It is safe for the
-// concurrent writes os/exec performs for stdout and stderr.
-type ringBuffer struct {
-	mu  sync.Mutex
-	buf []byte
-	max int
-}
-
-func (r *ringBuffer) Write(p []byte) (int, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.buf = append(r.buf, p...)
-	if len(r.buf) > r.max {
-		r.buf = r.buf[len(r.buf)-r.max:]
-	}
-	return len(p), nil
-}
-
-func (r *ringBuffer) String() string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return string(r.buf)
-}
-
-// Drain returns the buffered content and clears it.
-func (r *ringBuffer) Drain() string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	s := string(r.buf)
-	r.buf = r.buf[:0]
-	return s
 }

@@ -8,6 +8,23 @@ $ evoke knowledge <dir>
 
 The database is a build artifact, not source: rebuild it whenever the corpus changes.
 
+## The embedding service
+
+Embedding runs through an ollama-compatible `/api/embed` endpoint — `chat.embed_url` in [settings](settings.md), default `http://localhost:11434`. Evoke checks that endpoint before the build and, when nothing answers a **loopback** address, launches `ollama serve` itself, waits for the API, and stops it again when the build finishes. A server that was already running is used as it is and never stopped: an ollama request names its model, so an adopted server is indistinguishable from a started one. (This is why the rule differs from [`chat`](chat.md), where a busy port is an error — a language backend carries launch-time settings a request cannot.)
+
+A non-loopback `chat.embed_url` is never launched. A remote endpoint that is down is an error, since starting a local server in its place would embed against something other than what was configured.
+
+The model itself is not downloaded for you. When it is not present, the build stops and prints the command:
+
+```console
+$ evoke knowledge ./lore
+evoke knowledge: embedding model "nomic-embed-text" not available at http://localhost:11434; pull it with:
+
+    ollama pull nomic-embed-text
+```
+
+`evoke chat` does the same for retrieval, since every turn embeds the user's message — the endpoint has to stay up for the whole session, so a server Evoke starts lives as long as the chat does.
+
 ## Where the database goes
 
 The database is written to the working directory as `knowledge.db`, and `--output` is an ordinary path — relative or absolute, exactly like any other CLI:

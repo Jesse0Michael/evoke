@@ -66,8 +66,15 @@ func (s *Session) Request() (CompletionRequest, error) {
 	if err != nil {
 		return CompletionRequest{}, err
 	}
+	// The request names the model by the same reference the backend was
+	// launched with, not the logical CHAT name. mlx_lm.server takes the body's
+	// model field seriously: an unrecognized value is loaded as a fresh model
+	// (and a bare name that is not a path relative to its working directory
+	// becomes a Hugging Face download), so a model resolved out of a
+	// chat.model_paths directory has to travel as its resolved path to match
+	// the one already in memory.
 	return CompletionRequest{
-		Model:    s.plan.Model,
+		Model:    cmpOr(s.plan.ModelPath, s.plan.Model),
 		Messages: msgs,
 		Sampling: s.plan.Sampling,
 	}, nil

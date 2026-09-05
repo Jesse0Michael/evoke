@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/jesse0michael/evoke/internal/knowledge"
+	"github.com/jesse0michael/evoke/internal/ollama"
 )
 
 // defaultKnowledgeDB is the database name used when --output is not given.
@@ -93,11 +94,27 @@ func KnowledgeCmd(args []string, verbose bool) int {
 	if embedURL == "" && settings.Chat != nil {
 		embedURL = settings.Chat.EmbedURL
 	}
+	if embedURL == "" {
+		embedURL = knowledge.DefaultEmbedURL
+	}
 
 	// Interrupt cancels mid-build; the temporary database is discarded and any
 	// existing one at the output path is left untouched.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// The build embeds every chunk through an ollama-compatible endpoint, so
+	// make sure one is serving the model first — starting a local server when
+	// none is, and stopping it again when the build finishes.
+	embedder, err := ollama.Ensure(ctx, embedURL, []string{*model}, 0)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "evoke knowledge: %v\n", err)
+		return 1
+	}
+	defer func() { _ = embedder.Close(context.WithoutCancel(ctx)) }()
+	if embedder.Started() {
+		fmt.Printf("Started ollama for embedding\n")
+	}
 
 	opts := knowledge.BuildOptions{
 		Input:      input,

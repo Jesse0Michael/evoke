@@ -79,19 +79,27 @@ func prepareResolution(ctx context.Context, inputArgs []string, settings *Settin
 			res.selectorInputs = append(res.selectorInputs, ci)
 
 		case inputLiteral:
-			doc := &evoke.Document{
-				Declarations: []*evoke.Declaration{
-					{Name: "PROMPT", Values: []string{ci.Raw}},
-					{Name: "APPAREL"},
-					{Name: "ENVIRONMENT"},
-					{Name: "SCENARIO"},
-				},
-			}
-			res.staticDocs = append(res.staticDocs, doc)
+			res.staticDocs = append(res.staticDocs, literalDocument(ci.Raw))
 		}
 	}
 
 	return res, nil
+}
+
+// literalDocument builds the document for a literal prompt argument. The text
+// becomes an explicit PROMPT contribution, and every other declaration that
+// supports a `?` default is contributed empty so those defaults are suppressed:
+// a literal states the subject and scene itself, so a character's default
+// apparel or a default environment would contradict it rather than fill a gap.
+// The structured declarations are left alone — their defaults carry sampler and
+// model configuration a literal says nothing about — as are the negative
+// channels, which subtract rather than describe.
+func literalDocument(text string) *evoke.Document {
+	decls := []*evoke.Declaration{{Name: "PROMPT", Values: []string{text}}}
+	for _, name := range []string{"PERSONALITY", "VOICE", "APPEARANCE", "APPAREL", "ENVIRONMENT", "SCENARIO"} {
+		decls = append(decls, &evoke.Declaration{Name: name})
+	}
+	return &evoke.Document{Declarations: decls}
 }
 
 // openIndexRoots opens the file index and refreshes every persistent source

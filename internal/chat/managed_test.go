@@ -149,5 +149,5 @@ func TestStartManagedUnresolvedModel(t *testing.T) {
 	_, err := StartManaged(t.Context(), plan, 5*time.Second)
 
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "could not locate model file")
+	require.Contains(t, err.Error(), "could not locate model")
 }

@@ -64,6 +64,8 @@ func (c *Client) Stream(ctx context.Context, cr CompletionRequest, onDelta func(
 
 	var full strings.Builder
 	var usage Usage
+	var finish string
+	var reasoned bool
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64<<10), 1<<20)
 	for scanner.Scan() {
@@ -84,6 +86,15 @@ func (c *Client) Stream(ctx context.Context, cr CompletionRequest, onDelta func(
 			usage = chunk.Usage.toUsage()
 		}
 		for _, ch := range chunk.Choices {
+			if ch.FinishReason != nil {
+				finish = *ch.FinishReason
+			}
+			// A reasoning model streams its chain of thought on a separate
+			// channel. It is not the reply, but knowing it arrived is what makes
+			// an answerless response explainable.
+			if ch.Delta.Reasoning != "" {
+				reasoned = true
+			}
 			if ch.Delta.Content == "" {
 				continue
 			}
@@ -99,6 +110,9 @@ func (c *Client) Stream(ctx context.Context, cr CompletionRequest, onDelta func(
 			return "", Usage{}, cause
 		}
 		return "", Usage{}, fmt.Errorf("stream read failed: %w", err)
+	}
+	if full.Len() == 0 {
+		return "", Usage{}, emptyReplyError(finish, reasoned)
 	}
 	return full.String(), usage, nil
 }
@@ -119,7 +133,32 @@ func (c *Client) Complete(ctx context.Context, cr CompletionRequest) (string, Us
 	if len(parsed.Choices) == 0 {
 		return "", Usage{}, fmt.Errorf("backend returned no choices")
 	}
-	return parsed.Choices[0].Message.Content, parsed.Usage.toUsage(), nil
+	choice := parsed.Choices[0]
+	if choice.Message.Content == "" {
+		finish := ""
+		if choice.FinishReason != nil {
+			finish = *choice.FinishReason
+		}
+		return "", Usage{}, emptyReplyError(finish, choice.Message.Reasoning != "")
+	}
+	return choice.Message.Content, parsed.Usage.toUsage(), nil
+}
+
+// emptyReplyError explains a response that carried no content. Reasoning models
+// emit their chain of thought on a separate channel, so a short output budget
+// can be spent entirely before any answer is produced — which would otherwise
+// reach the user as a silent blank turn.
+func emptyReplyError(finishReason string, reasoned bool) error {
+	switch {
+	case reasoned && finishReason == "length":
+		return fmt.Errorf("backend produced only reasoning and hit the output limit before answering; " +
+			"raise max_output_tokens on the CHAT declaration, or run the backend with thinking disabled")
+	case finishReason == "length":
+		return fmt.Errorf("backend hit the output limit before producing any content; " +
+			"raise max_output_tokens on the CHAT declaration")
+	default:
+		return fmt.Errorf("backend returned an empty reply (finish reason %q)", finishReason)
+	}
 }
 
 // do encodes and sends a request, returning the response for a 2xx status or a
@@ -174,8 +213,16 @@ type wireRequest struct {
 	TopP          *float64       `json:"top_p,omitempty"`
 	MaxTokens     int            `json:"max_tokens,omitempty"`
 	Seed          *int           `json:"seed,omitempty"`
-	RepeatPenalty *float64       `json:"repeat_penalty,omitempty"`
 	Stop          []string       `json:"stop,omitempty"`
+	// The two runtimes spell the repetition penalty differently — llama.cpp
+	// reads repeat_penalty, mlx_lm reads repetition_penalty — and each ignores
+	// unknown body keys, so the one value is sent under both names rather than
+	// making the transport aware of which backend it is talking to.
+	RepeatPenalty     *float64 `json:"repeat_penalty,omitempty"`
+	RepetitionPenalty *float64 `json:"repetition_penalty,omitempty"`
+	// ChatTemplateKwargs are arguments for the backend's chat-template
+	// rendering. It is how a reasoning model's thinking is toggled per request.
+	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
 }
 
 // streamOptions asks an OpenAI-compatible backend to emit a final usage chunk
@@ -190,18 +237,25 @@ func toWireRequest(cr CompletionRequest, stream bool) wireRequest {
 		msgs[i] = wireMessage{Role: string(m.Role), Content: m.Content}
 	}
 	req := wireRequest{
-		Model:         cr.Model,
-		Messages:      msgs,
-		Stream:        stream,
-		Temperature:   cr.Sampling.Temperature,
-		TopP:          cr.Sampling.TopP,
-		MaxTokens:     cr.Sampling.MaxOutputTokens,
-		Seed:          cr.Sampling.Seed,
-		RepeatPenalty: cr.Sampling.RepeatPenalty,
-		Stop:          cr.Sampling.Stop,
+		Model:             cr.Model,
+		Messages:          msgs,
+		Stream:            stream,
+		Temperature:       cr.Sampling.Temperature,
+		TopP:              cr.Sampling.TopP,
+		MaxTokens:         cr.Sampling.MaxOutputTokens,
+		Seed:              cr.Sampling.Seed,
+		RepeatPenalty:     cr.Sampling.RepeatPenalty,
+		RepetitionPenalty: cr.Sampling.RepeatPenalty,
+		Stop:              cr.Sampling.Stop,
 	}
 	if stream {
 		req.StreamOptions = &streamOptions{IncludeUsage: true}
+	}
+	// enable_thinking is the convention Qwen-family templates read, and the key
+	// mlx_lm and llama.cpp both forward to the tokenizer. A backend whose
+	// template ignores it is unaffected.
+	if cr.Sampling.Thinking != nil {
+		req.ChatTemplateKwargs = map[string]any{"enable_thinking": *cr.Sampling.Thinking}
 	}
 	return req
 }
@@ -219,6 +273,9 @@ type streamChunk struct {
 	Choices []struct {
 		Delta struct {
 			Content string `json:"content"`
+			// Reasoning carries a reasoning model's chain of thought, which is
+			// not part of the reply.
+			Reasoning string `json:"reasoning"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
@@ -228,8 +285,10 @@ type streamChunk struct {
 type completionResponse struct {
 	Choices []struct {
 		Message struct {
-			Content string `json:"content"`
+			Content   string `json:"content"`
+			Reasoning string `json:"reasoning"`
 		} `json:"message"`
+		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage usageJSON `json:"usage"`
 }

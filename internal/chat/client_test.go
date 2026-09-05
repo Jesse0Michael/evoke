@@ -159,3 +159,117 @@ func TestClientStreamCancellation(t *testing.T) {
 	err := <-errCh
 	require.ErrorIs(t, err, context.Canceled)
 }
+
+// A reasoning model spends its output budget on a separate channel, so an
+// answerless response must explain itself rather than reach the user as a blank
+// turn. Both transports share the rule.
+func TestEmptyReply(t *testing.T) {
+	tests := []struct {
+		name    string
+		stream  bool
+		body    string
+		wantErr string
+	}{
+		{
+			name:    "streamed reasoning that never answers",
+			stream:  true,
+			body:    "data: {\"choices\":[{\"delta\":{\"reasoning\":\"thinking\"},\"finish_reason\":null}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n\n",
+			wantErr: "produced only reasoning",
+		},
+		{
+			name:    "streamed truncation with no reasoning channel",
+			stream:  true,
+			body:    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n\n",
+			wantErr: "hit the output limit before producing any content",
+		},
+		{
+			name:    "complete reasoning that never answers",
+			body:    `{"choices":[{"message":{"role":"assistant","reasoning":"thinking"},"finish_reason":"length"}]}`,
+			wantErr: "produced only reasoning",
+		},
+		{
+			name:    "complete empty reply for another reason",
+			body:    `{"choices":[{"message":{"role":"assistant"},"finish_reason":"stop"}]}`,
+			wantErr: `empty reply (finish reason "stop")`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer srv.Close()
+			c := NewClient(srv.URL+"/v1", "")
+
+			var err error
+			if tt.stream {
+				_, _, err = c.Stream(t.Context(), sampleRequest(), nil)
+			} else {
+				_, _, err = c.Complete(t.Context(), sampleRequest())
+			}
+
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+// Thinking is toggled through the chat template rather than a sampling field,
+// and only when the declaration asked for it.
+func TestThinkingOnTheWire(t *testing.T) {
+	off := false
+	tests := []struct {
+		name     string
+		thinking *bool
+		want     map[string]any
+	}{
+		{name: "unset sends nothing", thinking: nil, want: nil},
+		{name: "off disables thinking", thinking: &off, want: map[string]any{"enable_thinking": false}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cr := sampleRequest()
+			cr.Sampling.Thinking = tt.thinking
+
+			require.Equal(t, tt.want, toWireRequest(cr, false).ChatTemplateKwargs)
+		})
+	}
+}
+
+// The repetition penalty travels under both runtimes' spellings, so the same
+// CHAT setting reaches llama.cpp (repeat_penalty) and mlx_lm
+// (repetition_penalty) alike.
+func TestRepeatPenaltyOnTheWire(t *testing.T) {
+	penalty := 1.15
+	tests := []struct {
+		name    string
+		penalty *float64
+		want    map[string]any
+	}{
+		{name: "unset sends neither key", penalty: nil, want: map[string]any{}},
+		{
+			name:    "set sends both keys",
+			penalty: &penalty,
+			want:    map[string]any{"repeat_penalty": 1.15, "repetition_penalty": 1.15},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cr := sampleRequest()
+			cr.Sampling.RepeatPenalty = tt.penalty
+
+			body, err := json.Marshal(toWireRequest(cr, false))
+			require.NoError(t, err)
+
+			var decoded map[string]any
+			require.NoError(t, json.Unmarshal(body, &decoded))
+			got := map[string]any{}
+			for _, key := range []string{"repeat_penalty", "repetition_penalty"} {
+				if v, ok := decoded[key]; ok {
+					got[key] = v
+				}
+			}
+
+			require.Equal(t, tt.want, got)
+		})
+	}
+}

@@ -105,14 +105,37 @@ func TestSessionTranscript(t *testing.T) {
 
 func TestSessionRequestCarriesModelAndSampling(t *testing.T) {
 	temp := 0.7
-	plan := budgetPlan(100000, "system")
-	plan.Sampling.Temperature = &temp
-	sess := NewSession(plan)
-	sess.AddUser("hello")
+	tests := []struct {
+		name      string
+		modelPath string
+		wantModel string
+	}{
+		{
+			// mlx_lm.server loads whatever the body names, so the request must
+			// name the same reference the backend was launched with.
+			name:      "resolved path names the loaded model",
+			modelPath: "/models/test-model",
+			wantModel: "/models/test-model",
+		},
+		{
+			name:      "unresolved model falls back to the logical name",
+			modelPath: "",
+			wantModel: "test-model",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan := budgetPlan(100000, "system")
+			plan.ModelPath = tt.modelPath
+			plan.Sampling.Temperature = &temp
+			sess := NewSession(plan)
+			sess.AddUser("hello")
 
-	req, err := sess.Request()
+			req, err := sess.Request()
 
-	require.NoError(t, err)
-	require.Equal(t, "test-model", req.Model)
-	require.Same(t, &temp, req.Sampling.Temperature)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantModel, req.Model)
+			require.Same(t, &temp, req.Sampling.Temperature)
+		})
+	}
 }

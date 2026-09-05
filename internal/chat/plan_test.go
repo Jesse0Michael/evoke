@@ -133,8 +133,81 @@ func TestCompile(t *testing.T) {
 			wantError: true,
 		},
 		{
+			name: "mlx backend resolves a local model directory",
+			comp: chatComposition(map[string]string{"model": "Qwen3-8B-4bit", "backend": "mlx"}, nil),
+			trusted: func(t *testing.T) TrustedConfig {
+				return TrustedConfig{ModelDirs: []string{mlxModelsDir(t, "Qwen3-8B-4bit")}}
+			},
+			check: func(t *testing.T, p *Plan) {
+				require.Equal(t, backendMLX, p.Backend)
+				require.Equal(t, "mlx_lm.server", p.Runtime.Executable)
+				require.True(t, strings.HasSuffix(p.ModelPath, "Qwen3-8B-4bit"), "got %q", p.ModelPath)
+			},
+		},
+		{
+			name: "mlx backend keeps a repo id for the runtime to fetch",
+			comp: chatComposition(map[string]string{"model": "mlx-community/Qwen3-8B-4bit", "backend": "mlx"}, nil),
+			trusted: func(t *testing.T) TrustedConfig {
+				return TrustedConfig{ModelDirs: []string{mlxModelsDir(t)}}
+			},
+			check: func(t *testing.T, p *Plan) {
+				require.Equal(t, "mlx-community/Qwen3-8B-4bit", p.ModelPath)
+				require.Empty(t, p.Diagnostics)
+			},
+		},
+		{
+			name: "mlx reports gpu_layers as having no effect",
+			comp: chatComposition(map[string]string{"model": "mlx-community/Qwen3-8B-4bit", "backend": "mlx", "gpu_layers": "99"}, nil),
+			trusted: func(t *testing.T) TrustedConfig {
+				return TrustedConfig{ModelDirs: []string{mlxModelsDir(t)}}
+			},
+			check: func(t *testing.T, p *Plan) {
+				require.Contains(t, p.Diagnostics, `CHAT setting "gpu_layers" has no effect on the mlx backend`)
+			},
+		},
+		{
+			name: "context_window still budgets history on mlx",
+			comp: chatComposition(map[string]string{"model": "mlx-community/Qwen3-8B-4bit", "backend": "mlx", "context_window": "4096"}, nil),
+			trusted: func(t *testing.T) TrustedConfig {
+				return TrustedConfig{ModelDirs: []string{mlxModelsDir(t)}}
+			},
+			check: func(t *testing.T, p *Plan) {
+				require.Equal(t, 4096, p.History.ContextWindow)
+				require.NotContains(t, p.commandArgs(), "--ctx-size")
+			},
+		},
+		{
+			name: "thinking off compiles to a per-request toggle",
+			comp: chatComposition(map[string]string{"model": "mlx-community/Qwen3-8B-4bit", "backend": "mlx", "thinking": "off"}, nil),
+			trusted: func(t *testing.T) TrustedConfig {
+				return TrustedConfig{ModelDirs: []string{mlxModelsDir(t)}}
+			},
+			check: func(t *testing.T, p *Plan) {
+				require.NotNil(t, p.Sampling.Thinking)
+				require.False(t, *p.Sampling.Thinking)
+			},
+		},
+		{
+			name: "thinking unset leaves the backend default",
+			comp: chatComposition(map[string]string{"model": "mlx-community/Qwen3-8B-4bit", "backend": "mlx"}, nil),
+			trusted: func(t *testing.T) TrustedConfig {
+				return TrustedConfig{ModelDirs: []string{mlxModelsDir(t)}}
+			},
+			check: func(t *testing.T, p *Plan) {
+				require.Nil(t, p.Sampling.Thinking)
+			},
+		},
+		{
+			name: "invalid thinking value",
+			comp: chatComposition(map[string]string{"model": "mlx-community/Qwen3-8B-4bit", "backend": "mlx", "thinking": "maybe"}, nil),
+			trusted: func(t *testing.T) TrustedConfig {
+				return TrustedConfig{ModelDirs: []string{mlxModelsDir(t)}}
+			},
+			wantError: true,
+		},
+		{
 			name: "unsupported backend driver",
-			comp: chatComposition(map[string]string{"model": "roleplay-12b.gguf", "backend": "ollama"}, nil),
+			comp: chatComposition(map[string]string{"model": "roleplay-12b.gguf", "backend": "vllm"}, nil),
 			trusted: func(t *testing.T) TrustedConfig {
 				return TrustedConfig{ModelDirs: []string{modelsDir(t, "roleplay-12b.gguf")}}
 			},
@@ -173,7 +246,7 @@ func TestCompile(t *testing.T) {
 				return TrustedConfig{ModelDirs: []string{modelsDir(t, "roleplay-12b.gguf")}}
 			},
 			check: func(t *testing.T, p *Plan) {
-				require.Equal(t, defaultExecutable, p.Runtime.Executable)
+				require.Equal(t, drivers[backendLlamaCpp].executable, p.Runtime.Executable)
 				require.Equal(t, defaultHost, p.Runtime.Host)
 				require.Equal(t, defaultPort, p.Runtime.Port)
 				require.Equal(t, defaultGPULayers, p.Runtime.GPULayers)

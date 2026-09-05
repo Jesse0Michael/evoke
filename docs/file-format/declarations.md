@@ -280,9 +280,9 @@ Interactive-chat configuration consumed by [`evoke chat`](../cli/chat.md). **Sin
     Stay in character at all times.
 ```
 
-**Settings:** `backend` (`llama.cpp`), `model`, `context_window`, `gpu_layers`, `max_output_tokens`, `safety_margin`, `min_recent_turns`, `temperature`, `top_p`, `repeat_penalty`, `seed`, `stop`.
+**Settings:** `backend` (`llama.cpp` or `mlx`), `model`, `context_window`, `gpu_layers`, `max_output_tokens`, `safety_margin`, `min_recent_turns`, `temperature`, `top_p`, `repeat_penalty`, `seed`, `stop`, `thinking`.
 
-`model` is a GGUF **file name** — like a `checkpoint` in `IMAGE` — resolved against the model directories in trusted local settings, so a `.evoke` file names the model, not a machine path, and stays portable. Evoke launches and manages the `llama-server` backend for the session. See [`evoke chat`](../cli/chat.md) for how it resolves and how the backend is managed.
+`model` names a model — like a `checkpoint` in `IMAGE` — resolved against the model directories in trusted local settings, so a `.evoke` file names the model, not a machine path, and stays portable. For `llama.cpp` it is a GGUF file name; for `mlx` it is a model directory or a Hugging Face repo id. Evoke launches and manages the backend process for the session. `thinking = off` disables a reasoning model's chain of thought per request, which matters because a reasoning model can spend the whole `max_output_tokens` budget thinking and return no answer. `gpu_layers` has no effect on `mlx`, which reports it as ignored. See [`evoke chat`](../cli/chat.md) for how a model resolves and how the backend is acquired.
 
 ### KNOWLEDGE
 

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	evoke "github.com/jesse0michael/evoke/pkg/evoke"
 	"github.com/stretchr/testify/require"
 )
 
@@ -184,4 +185,64 @@ func TestResolutionVariantsNoMatch(t *testing.T) {
 	_, err := res.variants(t.Context())
 	require.Error(t, err)
 	require.Equal(t, `no files match selector "nonexistent"`, err.Error())
+}
+
+func TestLiteralDocument(t *testing.T) {
+	src := `?PROMPT
+    1girl, solo
+
+APPEARANCE
+    long black hair
+
+?APPAREL
+    white blouse
+
+!APPAREL
+    hat
+
+?ENVIRONMENT
+    empty room
+
+?SCENARIO
+    waiting for a friend
+
+?PERSONALITY
+    patient
+
+?VOICE
+    low and even
+
+?IMAGE
+    steps = 30
+`
+
+	tests := []struct {
+		name    string
+		literal string
+		want    *evoke.Composition
+	}{
+		{
+			name:    "literal replaces the prompt and suppresses every other default",
+			literal: "a scientist in a lab",
+			want: &evoke.Composition{
+				Appearance: evoke.Prompt{Positive: []string{"long black hair"}},
+				Apparel:    evoke.Prompt{Negative: []string{"hat"}},
+				Prompt:     evoke.Prompt{Positive: []string{"a scientist in a lab"}},
+				Images: []evoke.ImageStage{
+					{Settings: map[string]string{"steps": "30"}},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc, err := evoke.Parse([]byte(src))
+			require.NoError(t, err)
+
+			got := evoke.Merge([]*evoke.Document{doc, literalDocument(tt.literal)})
+			got.Sources = nil
+
+			require.Equal(t, tt.want, got)
+		})
+	}
 }

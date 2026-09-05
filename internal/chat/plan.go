@@ -3,10 +3,11 @@
 // compilation (Composition -> Plan), runtime lifecycle (the managed backend
 // process behind the Lease seam), and transport (the OpenAI-compatible Client).
 //
-// Evoke owns the backend: for each chat session it starts a llama.cpp
-// `llama-server` child process with the model and runtime settings resolved
-// from the .evoke file, waits for it to become healthy, talks to it, and shuts
-// it down when the session ends. It never leaves the process running.
+// Evoke owns the backend: for each chat session it starts the backend named by
+// the CHAT declaration as a child process, with the model and runtime settings
+// resolved from the .evoke file, waits for it to become healthy, talks to it,
+// and shuts it down when the session ends. It never leaves the process running,
+// and it never attaches to one it did not start.
 package chat
 
 import (
@@ -39,20 +40,18 @@ type Message struct {
 	Content string
 }
 
-// backendLlamaCpp is the only supported backend driver in this version.
-const backendLlamaCpp = "llama.cpp"
-
 // TrustedConfig carries the machine-specific, trusted values that a portable
 // .evoke file refers to by name. The caller assembles it from local settings
 // and the environment before compilation; a shareable .evoke file names a model
 // file (like an IMAGE checkpoint), and this says where such files live.
 type TrustedConfig struct {
-	// Executable is the llama-server binary (name on PATH or absolute path).
+	// Executable is the backend binary (name on PATH or absolute path). It is
+	// driver-specific; empty means the driver's default for the chosen backend.
 	Executable string
-	// ModelDirs are the directories searched (recursively) for the model file
-	// named in a CHAT declaration — the "where my GGUFs live" for this machine,
-	// analogous to ComfyUI's models directory for checkpoints. Also searched
-	// for knowledge database files referenced by KNOWLEDGE declarations.
+	// ModelDirs are the directories searched for the model named in a CHAT
+	// declaration — the "where my models live" for this machine, analogous to
+	// ComfyUI's models directory for checkpoints. Also searched for knowledge
+	// database files referenced by KNOWLEDGE declarations.
 	ModelDirs []string
 	// EmbedURL is the ollama-compatible API base URL for query-time embeddings
 	// (default: http://localhost:11434).
@@ -80,6 +79,10 @@ type Sampling struct {
 	RepeatPenalty   *float64
 	Seed            *int
 	Stop            []string
+	// Thinking toggles a reasoning model's chain of thought. nil leaves the
+	// backend's own default in place. It travels per request rather than on the
+	// launch command, so it stays a property of the character.
+	Thinking *bool
 }
 
 // HistoryPolicy configures the deterministic sliding-window context budget.
@@ -102,7 +105,7 @@ type Plan struct {
 	Backend      string
 	Runtime      RuntimeSpec
 	Model        string // logical model name (for display)
-	ModelPath    string // resolved GGUF path, from trusted config
+	ModelPath    string // resolved model reference, from trusted config
 	SystemPrompt string
 	Opening      string // scenario framing seeded once as the first turn ("" if none)
 	Sampling     Sampling
@@ -129,7 +132,6 @@ const (
 	defaultGPULayers       = 99
 	defaultHost            = "127.0.0.1"
 	defaultPort            = 8080
-	defaultExecutable      = "llama-server"
 )
 
 // Compile turns a resolved Composition and trusted local configuration into a
@@ -150,22 +152,29 @@ func Compile(comp *evoke.Composition, trusted TrustedConfig) (*Plan, error) {
 		Sources: comp.Sources,
 	}
 
-	// Backend driver. Only llama.cpp (managed) is supported in this version.
+	// Backend driver. The driver fixes the launch command and how a model
+	// reference is resolved; everything else is shared across runtimes.
 	plan.Backend = strings.ToLower(cmpOr(s.str("backend"), backendLlamaCpp))
-	if plan.Backend != backendLlamaCpp {
-		fail("unsupported chat backend %q (only %q is supported)", plan.Backend, backendLlamaCpp)
+	drv, known := driverFor(plan.Backend)
+	if !known {
+		fail("unsupported chat backend %q (supported: %s)", plan.Backend, strings.Join(backendNames(), ", "))
+		// Keep compiling against a known driver so the rest of the settings are
+		// still checked and every problem is reported in one pass.
+		drv = drivers[backendLlamaCpp]
 	}
 
-	// Model reference (required): the GGUF file name, resolved to a path by
-	// searching the configured model directories (like an IMAGE checkpoint).
-	// A miss is a diagnostic here and a hard error at launch, so compilation
-	// stays pure and succeeds on a machine without the model present.
+	// Model reference (required), resolved against the configured model
+	// directories the way an IMAGE checkpoint is. What counts as a match is the
+	// driver's call: a GGUF file for llama.cpp, a weights directory or a
+	// Hugging Face repo id for MLX. A miss is a diagnostic here and a hard
+	// error at launch, so compilation stays pure and succeeds on a machine
+	// without the model present.
 	model := s.str("model")
 	if model == "" {
 		fail("CHAT is missing a model reference")
 	} else {
 		plan.Model = model
-		switch path, ok := resolveModelPath(model, trusted.ModelDirs); {
+		switch path, ok := drv.resolveModel(model, trusted.ModelDirs); {
 		case ok:
 			plan.ModelPath = path
 		case len(trusted.ModelDirs) == 0:
@@ -173,17 +182,27 @@ func Compile(comp *evoke.Composition, trusted TrustedConfig) (*Plan, error) {
 				fmt.Sprintf("model %q cannot be resolved: no chat.model_paths configured in settings", model))
 		default:
 			plan.Diagnostics = append(plan.Diagnostics,
-				fmt.Sprintf("model file %q not found under chat.model_paths: %s", model, strings.Join(trusted.ModelDirs, ", ")))
+				fmt.Sprintf("model %q not found under chat.model_paths: %s", model, strings.Join(trusted.ModelDirs, ", ")))
 		}
 	}
 
 	// Runtime / launch settings.
 	plan.Runtime = RuntimeSpec{
-		Executable:    cmpOr(trusted.Executable, defaultExecutable),
+		Executable:    cmpOr(trusted.Executable, drv.executable),
 		Host:          cmpOr(trusted.Host, defaultHost),
 		Port:          cmpOrInt(trusted.Port, defaultPort),
 		ContextWindow: s.intDefault("context_window", defaultContextWindow, fail),
 		GPULayers:     s.intDefault("gpu_layers", defaultGPULayers, fail),
+	}
+
+	// Settings the chosen runtime has no equivalent for are reported rather than
+	// silently dropped, since one portable file may carry settings aimed at
+	// several backends.
+	for _, key := range drv.ignored {
+		if s.has(key) {
+			plan.Diagnostics = append(plan.Diagnostics,
+				fmt.Sprintf("CHAT setting %q has no effect on the %s backend", key, plan.Backend))
+		}
 	}
 
 	// Sampling.
@@ -194,6 +213,7 @@ func Compile(comp *evoke.Composition, trusted TrustedConfig) (*Plan, error) {
 		Seed:            s.int("seed", fail),
 		MaxOutputTokens: s.intDefault("max_output_tokens", defaultMaxOutputTokens, fail),
 		Stop:            s.list("stop"),
+		Thinking:        s.boolean("thinking", fail),
 	}
 	if plan.Sampling.MaxOutputTokens <= 0 {
 		fail("max_output_tokens must be positive, got %d", plan.Sampling.MaxOutputTokens)
@@ -232,7 +252,7 @@ func Compile(comp *evoke.Composition, trusted TrustedConfig) (*Plan, error) {
 		if dbName == "" {
 			fail("KNOWLEDGE %q is missing a db setting", ks.Argument)
 		} else {
-			switch path, ok := resolveModelPath(dbName, trusted.ModelDirs); {
+			switch path, ok := resolveGGUFPath(dbName, trusted.ModelDirs); {
 			case ok:
 				cfg.DBPath = path
 			case len(trusted.ModelDirs) == 0:
@@ -278,26 +298,23 @@ func Compile(comp *evoke.Composition, trusted TrustedConfig) (*Plan, error) {
 	return plan, nil
 }
 
-// commandArgs returns the llama-server arguments (excluding the executable) for
-// launching the managed backend. It is the single source of truth for the
-// launch command.
+// commandArgs returns the backend arguments (excluding the executable) for
+// launching the managed process, delegating to the plan's driver.
 func (p *Plan) commandArgs() []string {
-	return []string{
-		"--model", p.ModelPath,
-		"--host", p.Runtime.Host,
-		"--port", strconv.Itoa(p.Runtime.Port),
-		"--ctx-size", strconv.Itoa(p.Runtime.ContextWindow),
-		"-ngl", strconv.Itoa(p.Runtime.GPULayers),
+	drv, ok := driverFor(p.Backend)
+	if !ok {
+		return nil
 	}
+	return drv.launchArgs(p)
 }
 
-// resolveModelPath resolves the model named in a CHAT declaration to an
-// absolute GGUF path. It mirrors how a checkpoint filename is located in a
-// models directory: an absolute path is used as-is; otherwise each configured
-// directory is tried first as a direct (possibly nested) path, then searched
-// recursively by file name. A ".gguf" extension is optional. It returns the
-// first match.
-func resolveModelPath(name string, dirs []string) (string, bool) {
+// resolveGGUFPath resolves a single-file reference — a llama.cpp model or a
+// KNOWLEDGE database — to an absolute path. It mirrors how a checkpoint
+// filename is located in a models directory: an absolute path is used as-is;
+// otherwise each configured directory is tried first as a direct (possibly
+// nested) path, then searched recursively by file name. A ".gguf" extension is
+// optional. It returns the first match.
+func resolveGGUFPath(name string, dirs []string) (string, bool) {
 	if name == "" {
 		return "", false
 	}
@@ -377,6 +394,13 @@ func settings(m map[string]string) *settingsReader {
 	return &settingsReader{m: m, seen: make(map[string]bool)}
 }
 
+// has reports whether the declaration set the key at all, so a setting the
+// driver ignores can be distinguished from one that was never written.
+func (r *settingsReader) has(key string) bool {
+	_, ok := r.m[key]
+	return ok
+}
+
 func (r *settingsReader) str(key string) string {
 	r.seen[key] = true
 	return strings.TrimSpace(r.m[key])
@@ -407,6 +431,26 @@ func (r *settingsReader) float(key string, fail func(string, ...any)) *float64 {
 		return nil
 	}
 	return &v
+}
+
+// boolean reads an on/off setting. It accepts the words a .evoke author would
+// reach for rather than Go's strconv set, since the format has no boolean type.
+func (r *settingsReader) boolean(key string, fail func(string, ...any)) *bool {
+	raw := strings.ToLower(r.str(key))
+	if raw == "" {
+		return nil
+	}
+	switch raw {
+	case "on", "true", "yes", "enabled":
+		v := true
+		return &v
+	case "off", "false", "no", "disabled":
+		v := false
+		return &v
+	default:
+		fail("invalid %s %q: must be on or off", key, raw)
+		return nil
+	}
 }
 
 func (r *settingsReader) int(key string, fail func(string, ...any)) *int {

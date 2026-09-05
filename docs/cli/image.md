@@ -61,7 +61,7 @@ $ evoke image sumi.evoke "a female scientist in a science lab"
 
 This merges the `sumi.evoke` file with the literal text appended to the positive prompt. Literal prompts compose with file-based PROMPT declarations — they accumulate just like any other PROMPT contribution.
 
-A literal prompt is an **explicit** contribution, so it also suppresses any `?PROMPT` default in the composition. Passing a literal string replaces a character file's default shot composition rather than adding to it.
+A literal prompt is an **explicit** contribution, so it suppresses any `?PROMPT` default in the composition — passing a literal string replaces a character file's default shot composition rather than adding to it. It suppresses the other defaults too: `?PERSONALITY`, `?VOICE`, `?APPEARANCE`, `?APPAREL`, `?ENVIRONMENT`, and `?SCENARIO` all drop out, because a literal states its own subject and scene and an inherited default would contradict it rather than fill a gap. Explicit values in those declarations still apply, as do the structured declarations (`IMAGE`, `LORA`, `DETAILER`) and every `!` channel — a literal says nothing about the sampler, the LoRA stack, or what to avoid.
 
 ## What ends up in the prompt
 

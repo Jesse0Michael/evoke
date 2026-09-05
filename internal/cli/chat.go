@@ -15,23 +15,26 @@ import (
 
 	"github.com/jesse0michael/evoke/internal/chat"
 	"github.com/jesse0michael/evoke/internal/knowledge"
+	"github.com/jesse0michael/evoke/internal/ollama"
 	evoke "github.com/jesse0michael/evoke/pkg/evoke"
 	"github.com/kelseyhightower/envconfig"
 	"golang.org/x/term"
 )
 
 type chatConfig struct {
-	Host           string        `envconfig:"EVOKE_CHAT_HOST" default:"127.0.0.1"`
-	Port           int           `envconfig:"EVOKE_CHAT_PORT" default:"8080"`
-	Executable     string        `envconfig:"EVOKE_LLAMA_SERVER" default:"llama-server"`
+	Host string `envconfig:"EVOKE_CHAT_HOST" default:"127.0.0.1"`
+	Port int    `envconfig:"EVOKE_CHAT_PORT" default:"8080"`
+	// Executable is empty by default so the compiled plan's backend chooses its
+	// own binary; an explicit value overrides whichever backend is selected.
+	Executable     string        `envconfig:"EVOKE_CHAT_EXECUTABLE" default:""`
 	ModelPaths     string        `envconfig:"EVOKE_CHAT_MODEL_PATH" default:""`
 	StartupTimeout time.Duration `envconfig:"EVOKE_CHAT_STARTUP_TIMEOUT" default:"180s"`
 }
 
 // Chat resolves and merges the selected .evoke files, compiles a chat plan,
-// launches a llama.cpp backend with the resolved model and settings, runs an
-// interactive conversation against it, and shuts the backend down on exit.
-// Evoke owns the backend process for the duration of the session.
+// launches a backend with the resolved model and settings, runs an interactive
+// conversation against it, and shuts the backend down on exit. Evoke owns the
+// backend process for the duration of the session.
 func Chat(args []string, verbose bool) int {
 	fs := flag.NewFlagSet("chat", flag.ContinueOnError)
 	fs.BoolVar(&verbose, "v", verbose, "verbose output")
@@ -106,12 +109,22 @@ func Chat(args []string, verbose bool) int {
 		return 1
 	}
 
+	// Compilation diagnostics explain what a portable file asked for that this
+	// machine or backend cannot honor — an unresolvable model, a setting the
+	// runtime ignores. They are warnings, not failures, so print them and go on.
+	for _, d := range plan.Diagnostics {
+		fmt.Fprintf(os.Stderr, "evoke chat: %s\n", d)
+	}
+
 	// Open knowledge bases for RAG if configured.
 	var knowledgeBases []*knowledge.Base
+	var embedURL string
 	for _, kcfg := range plan.Knowledge {
 		if kcfg.DBPath == "" {
 			continue
 		}
+		// Every knowledge config carries the one trusted embed endpoint.
+		embedURL = kcfg.EmbedURL
 		kb, kerr := knowledge.Open(kcfg)
 		if kerr != nil {
 			fmt.Fprintf(os.Stderr, "evoke chat: knowledge: %v\n", kerr)
@@ -120,6 +133,29 @@ func Chat(args []string, verbose bool) int {
 		knowledgeBases = append(knowledgeBases, kb)
 		if verbose {
 			fmt.Printf("Knowledge base loaded: %s (%d chunks, %s)\n", kcfg.DBPath, kb.Len(), kb.Meta().EmbedModel)
+		}
+	}
+
+	// Retrieval embeds the user's message on every turn, so the embedding
+	// endpoint has to stay up for the whole session — start one if nothing is
+	// answering, and stop it again only if it was ours.
+	if len(knowledgeBases) > 0 {
+		models := make([]string, 0, len(knowledgeBases))
+		for _, kb := range knowledgeBases {
+			models = append(models, kb.EmbedModel())
+		}
+		embedder, eerr := ollama.Ensure(ctx, embedURL, models, 0)
+		if eerr != nil {
+			fmt.Fprintf(os.Stderr, "evoke chat: knowledge: %v\n", eerr)
+			return 1
+		}
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = embedder.Close(shutdownCtx)
+		}()
+		if embedder.Started() && verbose {
+			fmt.Printf("Started ollama for embedding at %s\n", embedURL)
 		}
 	}
 

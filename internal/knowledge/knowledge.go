@@ -140,6 +140,10 @@ func (b *Base) Meta() Meta { return b.meta }
 // Len returns the number of chunks held in memory.
 func (b *Base) Len() int { return len(b.chunks) }
 
+// EmbedModel returns the model queries are embedded with — the one recorded in
+// the database unless the declaration overrode it.
+func (b *Base) EmbedModel() string { return b.embedder.Model() }
+
 // Retrieve embeds the query and returns the most relevant text chunks,
 // formatted as a single context string ready for injection into the
 // conversation.

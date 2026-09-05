@@ -24,13 +24,55 @@ $ evoke chat roleplay yasmin beach
 - `yasmin` supplies identity, personality, and backstory.
 - `beach` supplies the starting `SCENARIO` (its `ENVIRONMENT`/`APPAREL` are for image generation and are ignored by chat).
 
-## Backend: managed llama.cpp
+## Backends
 
-Evoke **owns** the backend for the session. When a chat starts, it launches a llama.cpp `llama-server` child process with the resolved model and runtime settings, waits for it to report healthy, talks to it, and **shuts it down when the session ends** — on `/exit`, EOF, interrupt, or error. It never leaves the process running.
+Two runtimes are supported, selected by the `backend` setting on the `CHAT` declaration:
 
-You do not start `llama-server` yourself. Evoke binds it to loopback on a fixed port (default `127.0.0.1:8080`) and, to avoid running two backends at once, **refuses to start if that port is already in use** — stop the other process (or point Evoke at a different port) and try again.
+| `backend` | binary | model reference |
+| --- | --- | --- |
+| `llama.cpp` (default) | `llama-server` | a GGUF file name |
+| `mlx` | `mlx_lm.server` | a model directory or a Hugging Face repo id |
 
-Only one backend driver is supported: `llama.cpp`. `llama-server` must be installed and on your `PATH` (or set its path in settings). Managing multiple concurrent backends is out of scope.
+The binary must be installed and on your `PATH`, or named by `chat.executable` in settings.
+
+### Evoke owns the backend
+
+Evoke **starts** the backend for the session. When a chat begins it launches the backend binary as a child process with the resolved model and runtime settings, waits for it to report healthy, talks to it, and **shuts it down when the session ends** — on `/exit`, EOF, interrupt, or error. It never leaves the process running.
+
+You do not start the backend yourself. Evoke binds it to loopback on a fixed port (default `127.0.0.1:8080`) and **refuses to start if that port is already in use** — it will not adopt a process it did not launch, so a server you started by hand is an error rather than an endpoint:
+
+```console
+evoke chat: refusing to start backend: 127.0.0.1:8080 is already in use (another backend running?); stop it or set a different chat.port in settings
+```
+
+Stop the other process, or point Evoke at a different port. Managing multiple concurrent backends is out of scope.
+
+Owning the process is what makes a composition reproducible: every setting the `CHAT` declaration names is true of the running backend by construction, including the launch-time ones a request cannot carry (`context_window` → `--ctx-size`, `gpu_layers` → `-ngl` on llama.cpp).
+
+### MLX notes
+
+`mlx_lm.server` has no context-size or GPU-offload flag — MLX uses unified memory and takes no context cap. So `gpu_layers` is reported as having no effect, and `context_window` remains a purely Evoke-side history budget.
+
+Its `/health` also answers `200` immediately, before any model is loaded. An MLX backend is therefore "ready" as soon as the port serves, and the model load lands on your first turn.
+
+`mlx_lm.server` defaults `temperature` to **0.0** where `llama-server` defaults to 0.8, so a `CHAT` declaration that sets no `temperature` samples greedily on MLX and not on llama.cpp. Evoke sends nothing when the setting is absent — each backend applies its own default — so set `temperature` explicitly on any character meant to read the same on both.
+
+### Knowledge retrieval needs an embedding server
+
+A `KNOWLEDGE` declaration embeds your message on every turn, so an ollama-compatible endpoint has to be up for the whole session. Evoke checks `chat.embed_url` when it opens the knowledge bases and starts `ollama serve` if nothing answers a loopback address, keeping it alive until the chat ends and stopping it only if it started it. The embedding model must already be pulled; the error names the command when it is not. See [`evoke knowledge`](knowledge.md#the-embedding-service).
+
+### Reasoning models
+
+A reasoning model emits its chain of thought on a separate channel and only then answers. With a small `max_output_tokens` it can spend the entire budget thinking and return **no content at all**, so set `thinking` on the `CHAT` declaration:
+
+```text
+CHAT
+    backend = mlx
+    model = mlx-community/Qwen3.5-9B-4bit
+    thinking = off
+```
+
+`thinking` travels in each request rather than on the launch command, so it is a per-character setting. Left unset, the backend's own default applies. When a reply arrives with no content, Evoke reports why rather than printing a blank turn.
 
 ## Prompt compilation
 
@@ -44,7 +86,7 @@ When a `SCENARIO` is present the character speaks first (its response to the see
 
 ## Configuration
 
-The `model` in a `CHAT` declaration is a **GGUF file name**, exactly like a `checkpoint` in an `IMAGE` declaration. Evoke locates that file in the model directories configured in **trusted local settings** (`~/.evoke/settings.json`), so a portable `.evoke` file names the model, never a machine path:
+The `model` in a `CHAT` declaration names a model the way a `checkpoint` names one in an `IMAGE` declaration. Evoke resolves it against the model directories configured in **trusted local settings** (`~/.evoke/settings.json`), so a portable `.evoke` file names the model, never a machine path:
 
 ```json
 {
@@ -59,9 +101,12 @@ The `model` in a `CHAT` declaration is a **GGUF file name**, exactly like a `che
 }
 ```
 
-- **`model`** (in the `.evoke` file) → a GGUF file name. Evoke searches each `model_paths` directory — first as a direct (or relative) path, then **recursively by file name**, so a nested layout like `…/MN-Violet-Lotus-12B.Q4_K_M/MN-Violet-Lotus-12B.Q4_K_M.gguf` resolves from just `MN-Violet-Lotus-12B.Q4_K_M.gguf`. The `.gguf` extension is optional. Not found → a clear error at startup listing what was searched.
-- **`model_paths`** → directories that hold your GGUF files (like ComfyUI's models directory). `~` is expanded.
-- **`executable`** → the `llama-server` binary. Optional; defaults to `llama-server` on your `PATH`.
+- **`model`** (in the `.evoke` file) → what counts as a match depends on the backend:
+    - **llama.cpp** → a GGUF file name. Evoke searches each `model_paths` directory — first as a direct (or relative) path, then **recursively by file name**, so a nested layout like `…/MN-Violet-Lotus-12B.Q4_K_M/MN-Violet-Lotus-12B.Q4_K_M.gguf` resolves from just `MN-Violet-Lotus-12B.Q4_K_M.gguf`. The `.gguf` extension is optional.
+    - **mlx** → a model *directory* under `model_paths`, or a Hugging Face repo id such as `mlx-community/Qwen3-8B-4bit`, which `mlx_lm` downloads on demand. A local directory wins when both would match.
+    - Not found → a clear error at startup listing what was searched.
+- **`model_paths`** → directories that hold your models (like ComfyUI's models directory). `~` is expanded.
+- **`executable`** → the backend binary. Optional; defaults to `llama-server` or `mlx_lm.server` for the selected backend. It is a single setting, so set it only when overriding the default for the backend you use.
 - **`host` / `port`** → the loopback endpoint Evoke binds the backend to. Optional; default `127.0.0.1:8080`.
 
 Runtime settings that shape the launch (`context_window`, `gpu_layers`) live in the portable `CHAT` declaration, since they describe the character's needs, not the machine.
