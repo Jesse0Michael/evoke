@@ -66,18 +66,16 @@ func loadImages(outputDir string) ([]viewImage, error) {
 }
 
 // resolveOutputDir returns the image output directory: EVOKE_OUTPUT_DIR, else
-// ComfyUI's default output location.
-func resolveOutputDir() string {
+// the configured output_path. Nothing is guessed — where the backend writes is
+// machine-specific, and a guess that happens to name a real directory browses
+// the wrong images silently, while one that does not is indistinguishable from
+// no configuration at all.
+func resolveOutputDir(s *Settings) string {
 	if dir := os.Getenv("EVOKE_OUTPUT_DIR"); dir != "" {
 		return dir
 	}
-	userHome, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	candidate := filepath.Join(userHome, "Documents", "ComfyUI", "output", "images")
-	if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-		return candidate
+	if s != nil {
+		return s.OutputPath
 	}
 	return ""
 }

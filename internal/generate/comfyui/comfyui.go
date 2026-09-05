@@ -409,20 +409,38 @@ func (c *Client) submit(ctx context.Context, doc *evoke.Composition, kind Kind, 
 	metaJSON, _ := json.Marshal(meta)
 
 	body := fmt.Sprintf(`{"prompt": %s, "extra_data": {"extra_pnginfo": {"evoke": %s}}, "client_id": "evoke-cli"}`, string(payload), string(metaJSON))
+
+	// A rejected workflow is precisely when the rendered graph is needed, and the
+	// caller only prints it on success, so print it here before failing.
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/prompt", strings.NewReader(body))
 	if err != nil {
+		if c.Verbose {
+			fmt.Println("=== ComfyUI Request ===")
+			fmt.Println(body)
+			fmt.Println()
+		}
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
+		if c.Verbose {
+			fmt.Println("=== ComfyUI Request ===")
+			fmt.Println(body)
+			fmt.Println()
+		}
 		return nil, fmt.Errorf("failed to submit to ComfyUI: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
+		if c.Verbose {
+			fmt.Println("=== ComfyUI Request ===")
+			fmt.Println(body)
+			fmt.Println()
+		}
 		return nil, fmt.Errorf("ComfyUI returned %d: %s", resp.StatusCode, string(respBody))
 	}
 

@@ -43,9 +43,13 @@ func library() (string, error) {
 
 // Settings holds user-editable persistent configuration.
 type Settings struct {
-	Registry string        `json:"registry,omitempty"`
-	Paths    []string      `json:"paths,omitempty"`
-	Chat     *ChatSettings `json:"chat,omitzero"`
+	Registry string   `json:"registry,omitempty"`
+	Paths    []string `json:"paths,omitempty"`
+	// OutputPath is the directory evoke view browses — where the backend saves
+	// what evoke generated, which for a standard ComfyUI install is
+	// <ComfyUI>/output/images. Machine-specific, like the chat model paths.
+	OutputPath string        `json:"output_path,omitempty"`
+	Chat       *ChatSettings `json:"chat,omitzero"`
 }
 
 // ChatSettings holds trusted local configuration for the chat command. It is

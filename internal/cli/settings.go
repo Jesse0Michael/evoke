@@ -73,6 +73,13 @@ func settingsSet(args []string) int {
 			return 0
 		}
 		s.Paths = append(s.Paths, abs)
+	case "output_path":
+		abs, err := expandPath(value)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "evoke settings set: %v\n", err)
+			return 1
+		}
+		s.OutputPath = abs
 	case "chat.color":
 		v, ok := parseBoolSetting(value)
 		if !ok {
@@ -112,12 +119,22 @@ func settingsSet(args []string) int {
 }
 
 func settingsRemove(args []string) int {
-	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "evoke settings remove: requires <key> <value>")
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "evoke settings remove: requires <key>")
 		settingsUsage()
 		return 2
 	}
-	key, value := args[0], args[1]
+	key := args[0]
+
+	// List-valued keys remove one entry and need the value; scalar keys clear.
+	var value string
+	if len(args) > 1 {
+		value = args[1]
+	} else if key != "output_path" {
+		fmt.Fprintf(os.Stderr, "evoke settings remove: %s requires a value\n", key)
+		settingsUsage()
+		return 2
+	}
 
 	s, err := settings()
 	if err != nil {
@@ -126,6 +143,8 @@ func settingsRemove(args []string) int {
 	}
 
 	switch key {
+	case "output_path":
+		s.OutputPath = ""
 	case "path":
 		abs, err := expandPath(value)
 		if err != nil {
@@ -197,6 +216,8 @@ func settingsUsage() {
     evoke settings                        Show current settings
     evoke settings set path <dir>         Add a source path
     evoke settings remove path <dir>      Remove a source path
+    evoke settings set output_path <dir>  Directory evoke view browses
+    evoke settings remove output_path     Clear the view output path
     evoke settings set chat.model_path <dir>      Add a model/knowledge search path
     evoke settings remove chat.model_path <dir>   Remove a model/knowledge search path
     evoke settings set chat.color <on|off|auto>   Style chat output

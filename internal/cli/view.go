@@ -62,9 +62,17 @@ func ViewCmd(args []string, _ bool) int {
 }
 
 func runViewer(_ context.Context, pageSize int) error {
-	outputDir := resolveOutputDir()
+	st, err := settings()
+	if err != nil {
+		return err
+	}
+
+	outputDir := resolveOutputDir(st)
 	if outputDir == "" {
-		return fmt.Errorf("could not resolve output directory (set EVOKE_OUTPUT_DIR)")
+		return fmt.Errorf("no output directory configured\n  evoke settings set output_path <dir>   (e.g. ~/ComfyUI/output/images)")
+	}
+	if info, err := os.Stat(outputDir); err != nil || !info.IsDir() {
+		return fmt.Errorf("output directory is not a directory: %s", outputDir)
 	}
 
 	// The full scan is cheap (a stat walk); metadata parsing and rendering are

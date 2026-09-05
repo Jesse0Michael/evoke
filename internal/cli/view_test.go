@@ -728,3 +728,58 @@ func TestViewEditPromptShowsCaret(t *testing.T) {
 	m = press(m, key("esc"))
 	require.NotContains(t, out.String(), cursorShow)
 }
+
+func TestResolveOutputDir(t *testing.T) {
+	tests := []struct {
+		name     string
+		env      string
+		settings *Settings
+		expected string
+	}{
+		{
+			name:     "environment wins over settings",
+			env:      "/tmp/test-output-env",
+			settings: &Settings{OutputPath: "/tmp/test-output-setting"},
+			expected: "/tmp/test-output-env",
+		},
+		{
+			name:     "falls back to the configured path",
+			settings: &Settings{OutputPath: "/tmp/test-output-setting"},
+			expected: "/tmp/test-output-setting",
+		},
+		{
+			name:     "nothing configured resolves to nothing",
+			settings: &Settings{},
+			expected: "",
+		},
+		{
+			name:     "nil settings resolves to nothing",
+			expected: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("EVOKE_OUTPUT_DIR", tt.env)
+
+			require.Equal(t, tt.expected, resolveOutputDir(tt.settings))
+		})
+	}
+}
+
+func TestSettingsOutputPath(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("EVOKE_HOME", dir)
+
+	require.Equal(t, 0, SettingsCmd([]string{"set", "output_path", filepath.Join(dir, "output", "images")}, false))
+
+	s, err := settings()
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(dir, "output", "images"), s.OutputPath)
+
+	// A scalar key clears without naming a value.
+	require.Equal(t, 0, SettingsCmd([]string{"remove", "output_path"}, false))
+
+	s, err = settings()
+	require.NoError(t, err)
+	require.Equal(t, &Settings{}, s)
+}
