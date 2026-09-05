@@ -1,3 +1,13 @@
+# [1.3.0](https://github.com/Jesse0Michael/evoke/compare/v1.2.0...v1.3.0) (2026-09-05)
+
+### Bug Fixes
+
+- update usage and paths ([35a9164](https://github.com/Jesse0Michael/evoke/commit/35a9164c26e7c4a1ec0bf5c6efb8242c76584c99))
+
+### Features
+
+- chat ([bb556a3](https://github.com/Jesse0Michael/evoke/commit/bb556a3c2728d13cf8e363b91ee1ba57bce141fd))
+
 # [1.2.0](https://github.com/Jesse0Michael/evoke/compare/v1.1.2...v1.2.0) (2026-09-01)
 
 ### Features
