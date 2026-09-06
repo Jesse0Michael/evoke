@@ -32,7 +32,7 @@ func Complete(args []string) int {
 	case "edit", "paint":
 		return completeInputs(current, []string{"-i", "--input", "-b", "-v", "--verbose"})
 	case "chat":
-		return completeInputs(current, []string{"--stream", "--no-tui", "-v", "--verbose"})
+		return completeInputs(current, []string{"--stream", "--no-tui", "--new", "-v", "--verbose"})
 	case "inspect":
 		return completeInputs(current, []string{"-v", "--verbose"})
 	case "knowledge":

@@ -41,6 +41,18 @@ func library() (string, error) {
 	return filepath.Join(h, "library"), nil
 }
 
+// sessions returns the path to the chat session directory inside the Evoke
+// home. Stored conversations live here rather than beside any .evoke file:
+// a transcript belongs to the caller's invocation, not to the character, which
+// is shareable and may be published to a registry.
+func sessions() (string, error) {
+	h, err := home()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(h, "sessions"), nil
+}
+
 // Settings holds user-editable persistent configuration.
 type Settings struct {
 	Registry string   `json:"registry,omitempty"`
@@ -59,7 +71,7 @@ type Settings struct {
 type ChatSettings struct {
 	// Executable is the llama-server binary (name on PATH or absolute path).
 	Executable string `json:"executable,omitempty"`
-	// Host and Port are the loopback endpoint the managed backend binds to.
+	// Host and Port are the loopback endpoint the backend binds to.
 	Host string `json:"host,omitempty"`
 	Port int    `json:"port,omitempty"`
 	// ModelPaths are directories searched (recursively) for the GGUF file named

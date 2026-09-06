@@ -41,6 +41,7 @@ func Chat(args []string, verbose bool) int {
 	fs.BoolVar(&verbose, "verbose", verbose, "verbose output")
 	streamFlag := fs.Bool("stream", false, "stream tokens as they generate (default: reply shown once complete)")
 	noTUI := fs.Bool("no-tui", false, "use the plain line-based interface instead of the full-screen UI")
+	newSession := fs.Bool("new", false, "start a new conversation instead of resuming the stored one for these inputs")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -59,7 +60,7 @@ func Chat(args []string, verbose bool) int {
 	}
 
 	// Interrupt/terminate cancel the session context so an in-flight request is
-	// aborted; the managed backend is then shut down by the deferred Close.
+	// aborted; a backend Evoke launched is then shut down by the deferred Close.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -116,6 +117,15 @@ func Chat(args []string, verbose bool) int {
 		fmt.Fprintf(os.Stderr, "evoke chat: %s\n", d)
 	}
 
+	// The conversation is stored per invocation, keyed by the inputs alone, so
+	// repeating a command resumes where it left off while editing a character
+	// file or its model continues the same conversation. Losing history must
+	// never stop a chat from starting, so a broken store is a warning.
+	sess := chat.NewSession(plan)
+	if err := rememberChat(sess, inputArgs, !*newSession); err != nil {
+		fmt.Fprintf(os.Stderr, "evoke chat: memory: %v\n", err)
+	}
+
 	// Open knowledge bases for RAG if configured.
 	var knowledgeBases []*knowledge.Base
 	var embedURL string
@@ -159,29 +169,23 @@ func Chat(args []string, verbose bool) int {
 		}
 	}
 
-	fmt.Printf("Starting %s backend (%s) ...\n", plan.Backend, plan.Display.Model)
-	lease, err := chat.StartManaged(ctx, plan, cfg.StartupTimeout)
+	backend, err := acquireBackend(ctx, plan, cfg.StartupTimeout, os.Stdout, os.Stdin, isInteractive())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "evoke chat: %v\n", err)
 		return 1
 	}
-	// Always stop the owned backend, even on interrupt: use a fresh context so a
-	// canceled session context still permits a clean shutdown.
+	// Always stop a backend Evoke started, even on interrupt: use a fresh
+	// context so a canceled session context still permits a clean shutdown.
+	// Closing one it merely connected to stops nothing.
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if cerr := lease.Close(shutdownCtx); cerr != nil {
+		if cerr := backend.Close(shutdownCtx); cerr != nil {
 			fmt.Fprintf(os.Stderr, "evoke chat: backend shutdown: %v\n", cerr)
 		}
 	}()
 
-	client := chat.NewClient(lease.Endpoint().String(), "")
-
-	// In verbose mode, surface the backend's own log between turns.
-	var backendLog func() string
-	if dl, ok := lease.(interface{ DrainLog() string }); ok {
-		backendLog = dl.DrainLog
-	}
+	client := chat.NewClient(backend.Endpoint().String(), "")
 
 	var colorPref *bool
 	if settings != nil && settings.Chat != nil {
@@ -204,15 +208,128 @@ func Chat(args []string, verbose bool) int {
 	// test) falls back to the line-based loop.
 	var runErr error
 	if !*noTUI && !stream && isInteractive() {
-		runErr = runChatTUI(ctx, plan, client, st, verbose, lease.Done(), lease.Err, knowledgeBases)
+		runErr = runChatTUI(ctx, plan, client, sess, st, verbose, backend.Done(), backend.Err, knowledgeBases, backendOrigin(backend))
 	} else {
-		runErr = runChatLoop(ctx, plan, client, stream, verbose, os.Stdin, os.Stdout, lease.Done(), lease.Err, backendLog, st, knowledgeBases)
+		runErr = runChatLoop(ctx, plan, client, sess, stream, verbose, os.Stdin, os.Stdout, backend.Done(), backend.Err, backend.DrainLog, st, knowledgeBases, backendOrigin(backend))
 	}
 	if runErr != nil {
 		fmt.Fprintf(os.Stderr, "evoke chat: %v\n", runErr)
 		return 1
 	}
 	return 0
+}
+
+// acquireBackend gets the session a backend: use one already running when it
+// fits, otherwise start one. A running server with the same model is used as
+// is; anything else is a decision the user makes, since whether the cost is
+// worth paying depends on what else they have running. Non-interactive runs are
+// never asked — they get the refusal with the reason in it, so a script can
+// neither hang on a question nor silently talk to the wrong model.
+func acquireBackend(ctx context.Context, plan *chat.Plan, timeout time.Duration, out io.Writer, in io.Reader, interactive bool) (*chat.Backend, error) {
+	running, err := chat.FindRunning(ctx, plan)
+	if err != nil {
+		return nil, err
+	}
+	if running == nil {
+		fmt.Fprintf(out, "Starting %s backend (%s) ...\n", plan.Backend, plan.Display.Model)
+		return chat.Launch(ctx, plan, timeout)
+	}
+	if len(running.Mismatches) == 0 {
+		fmt.Fprintf(out, "Using the %s backend already running at %s (%s)\n", plan.Backend, running.Endpoint, plan.Display.Model)
+		return chat.Connect(plan), nil
+	}
+	// The mismatch is worth reporting either way; only the offer to override it
+	// depends on there being someone at the keyboard to answer.
+	mismatch := fmt.Sprintf("a %s backend is already running at %s but does not match this chat:\n  - %s",
+		plan.Backend, running.Endpoint, strings.Join(running.Mismatches, "\n  - "))
+	if !interactive {
+		return nil, fmt.Errorf("refusing to start backend: %s\n%s\nstop it, set a different chat.port in settings, or run interactively to connect anyway",
+			mismatch, running.Consequence)
+	}
+	fmt.Fprintf(out, "%s\n%s\n", capitalize(mismatch), running.Consequence)
+	ok, err := confirm(ctx, out, in, "Connect anyway?")
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("refusing to start backend: %s", mismatch)
+	}
+	return chat.Connect(plan), nil
+}
+
+// capitalize upper-cases the first letter, so one message reads as a sentence
+// on its own and as a clause after an error prefix.
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// backendOrigin labels where the session's backend came from, so the startup
+// summary says whether exiting will shut anything down.
+func backendOrigin(b *chat.Backend) string {
+	if b.Launched() {
+		return "launched"
+	}
+	return "already running"
+}
+
+// confirm asks a yes/no question, defaulting to no. It reads a byte at a time
+// so no input beyond the answer is consumed — the chat loop reads the same
+// stdin afterwards — and reads on a goroutine so an interrupt at the prompt
+// ends the command instead of blocking on a read that will never return.
+func confirm(ctx context.Context, out io.Writer, in io.Reader, question string) (bool, error) {
+	fmt.Fprintf(out, "%s [y/N]: ", question)
+	type result struct {
+		line string
+		err  error
+	}
+	answer := make(chan result, 1)
+	go func() {
+		var b [1]byte
+		var line []byte
+		for {
+			n, err := in.Read(b[:])
+			if n > 0 && b[0] == '\n' {
+				break
+			}
+			if n > 0 {
+				line = append(line, b[0])
+			}
+			if err != nil {
+				answer <- result{string(line), err}
+				return
+			}
+		}
+		answer <- result{string(line), nil}
+	}()
+	select {
+	case <-ctx.Done():
+		fmt.Fprintln(out)
+		return false, ctx.Err()
+	case r := <-answer:
+		if r.err != nil && len(r.line) == 0 {
+			return false, nil // EOF with no answer is a no
+		}
+		switch strings.ToLower(strings.TrimSpace(r.line)) {
+		case "y", "yes":
+			return true, nil
+		}
+		return false, nil
+	}
+}
+
+// rememberChat points a session at where its transcript is stored and restores
+// it, unless resume is false (--new). The session is left usable whatever goes
+// wrong: an error only says what history was lost, never that the chat cannot
+// start.
+func rememberChat(sess *chat.Session, inputs []string, resume bool) error {
+	dir, err := sessions()
+	if err != nil {
+		return err
+	}
+	return sess.Remember(filepath.Join(dir, chat.MemoryKey(inputs)), inputs, resume)
 }
 
 // isInteractive reports whether both stdin and stdout are terminals, so the
@@ -268,12 +385,24 @@ type chatBackend interface {
 // runChatLoop drives the interactive conversation. It reads user lines from in,
 // writes assistant output to out, handles local slash commands, and streams
 // responses. In verbose mode it prints per-turn diagnostics (real token usage
-// and any backend log output) after each reply. backendDone fires if the managed
-// backend exits unexpectedly, with backendErr reporting the cause. It returns nil
-// on a clean exit (/exit, EOF, or interrupt).
-func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, stream, verbose bool, in io.Reader, out io.Writer, backendDone <-chan struct{}, backendErr func() error, backendLog func() string, st chatStyle, knowledgeBases []*knowledge.Base) error {
-	sess := chat.NewSession(plan)
-	printStartupSummary(out, plan, st)
+// and any backend log output) after each reply. backendDone fires if a backend
+// Evoke launched exits unexpectedly, with backendErr reporting the cause. It returns nil
+// on a clean exit (EOF or interrupt).
+//
+// sess arrives already carrying any transcript restored for these inputs, and
+// is saved after every completed turn.
+func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, stream, verbose bool, in io.Reader, out io.Writer, backendDone <-chan struct{}, backendErr func() error, backendLog func() string, st chatStyle, knowledgeBases []*knowledge.Base, backendOrigin string) error {
+	printStartupSummary(out, plan, st, len(sess.Turns()), backendOrigin)
+
+	// save records the transcript after each completed turn, so an interrupt has
+	// nothing to finish before shutdown. A failed write is reported and the
+	// conversation continues — durable memory is a convenience, not a
+	// precondition for talking.
+	save := func() {
+		if err := sess.Save(); err != nil {
+			fmt.Fprintf(out, "%s %v\n", st.errorText("warning:"), err)
+		}
+	}
 
 	// retrieveContext queries all knowledge bases and sets the combined results
 	// on the session for injection into the next request.
@@ -327,6 +456,7 @@ func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, strea
 			return false
 		}
 		sess.AddAssistant(reply)
+		save()
 		if verbose {
 			printTurnDiagnostics(out, sess, plan, usage, backendLog, st)
 		}
@@ -337,9 +467,10 @@ func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, strea
 	// the character responds to it. It runs at startup and again after /reset, so
 	// the scene is set once (never re-sent in the system prompt) and a reset
 	// returns to the opening rather than an empty stage. The seed message itself
-	// is not echoed. No-op when there is no scenario.
+	// is not echoed. It is a no-op when there is no scenario, and when a stored
+	// conversation was restored — that scene was already set the first time.
 	seedOpening := func() (done bool) {
-		if plan.Opening == "" {
+		if plan.Opening == "" || len(sess.Turns()) > 0 {
 			return false
 		}
 		sess.AddUser(plan.Opening)
@@ -384,15 +515,16 @@ func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, strea
 		if msg == "" {
 			continue
 		}
-		if quit, reset, handled := handleSlashCommand(out, sess, msg); handled {
-			if quit {
-				fmt.Fprintln(out, "Session ended.")
-				return nil
-			}
-			// A reset clears the transcript, including the seeded scene; replay
-			// the opening so the character starts over rather than a blank stage.
-			if reset && seedOpening() {
-				return nil
+		if reset, handled := handleSlashCommand(out, sess, msg); handled {
+			// A reset clears the transcript, including the seeded scene; store
+			// that immediately so quitting right after a reset does not resume
+			// the conversation just discarded, then replay the opening so the
+			// character starts over rather than on a blank stage.
+			if reset {
+				save()
+				if seedOpening() {
+					return nil
+				}
 			}
 			continue
 		}
@@ -517,34 +649,39 @@ func printBackendLog(out io.Writer, backendLog func() string) {
 }
 
 // handleSlashCommand executes local commands. Slash commands are never sent to
-// the model. It returns (quit, reset, handled); reset is true when the caller
-// should replay the opening scene.
-func handleSlashCommand(out io.Writer, sess *chat.Session, msg string) (quit, reset, handled bool) {
+// the model. It returns (reset, handled); reset is true when the caller should
+// replay the opening scene.
+//
+// There is no quit command: the session ends on EOF (Ctrl-D) or interrupt
+// (Ctrl-C), both of which shut the backend down cleanly and lose at most a reply
+// still generating, since the transcript is stored after every completed turn.
+func handleSlashCommand(out io.Writer, sess *chat.Session, msg string) (reset, handled bool) {
 	switch msg {
-	case "/exit", "/quit":
-		return true, false, true
 	case "/reset":
 		sess.Reset()
 		fmt.Fprintln(out, "(conversation reset)")
-		return false, true, true
+		return true, true
 	case "/context":
 		info := sess.Context()
 		fmt.Fprintf(out, "retained turns: %d\n", info.RetainedTurns)
 		fmt.Fprintf(out, "estimated input tokens: %d / %d available (context %d, reserve %d, margin %d)\n",
 			info.EstimatedTokens, info.InputBudget, info.ContextWindow, info.OutputReserve, info.SafetyMargin)
-		return false, false, true
+		return false, true
 	}
 	if strings.HasPrefix(msg, "/") {
-		fmt.Fprintf(out, "unknown command %q (try /exit, /reset, /context)\n", msg)
-		return false, false, true
+		fmt.Fprintf(out, "unknown command %q (try /reset, /context)\n", msg)
+		return false, true
 	}
-	return false, false, false
+	return false, false
 }
 
-func printStartupSummary(out io.Writer, plan *chat.Plan, st chatStyle) {
+func printStartupSummary(out io.Writer, plan *chat.Plan, st chatStyle, restored int, backendOrigin string) {
 	fmt.Fprintf(out, "Character: %s\n", st.character(plan.Display.CharacterName))
-	fmt.Fprintf(out, "Backend:   %s (managed)\n", plan.Display.Backend)
+	fmt.Fprintf(out, "Backend:   %s (%s)\n", plan.Display.Backend, backendOrigin)
 	fmt.Fprintf(out, "Model:     %s\n", plan.Display.Model)
 	fmt.Fprintf(out, "Context:   %d tokens\n", plan.Display.ContextWindow)
-	fmt.Fprintln(out, st.dim("Type /exit to quit, /reset to clear history, /context for budget info."))
+	if restored > 0 {
+		fmt.Fprintf(out, "Resumed:   %d stored turns\n", restored)
+	}
+	fmt.Fprintln(out, st.dim("Ctrl-C or Ctrl-D to quit, /reset to clear history, /context for budget info."))
 }

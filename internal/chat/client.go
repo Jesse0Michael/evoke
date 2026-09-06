@@ -16,8 +16,8 @@ import (
 const maxErrorBody = 8 << 10
 
 // Client is a minimal OpenAI-compatible chat-completions client. It speaks the
-// structured messages API and streams responses; the same client serves both
-// managed and external endpoints since only lifecycle ownership differs.
+// structured messages API and streams responses; the same client serves a
+// server Evoke launched and one it connected to, since only ownership differs.
 type Client struct {
 	baseURL string
 	apiKey  string

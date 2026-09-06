@@ -1,7 +1,9 @@
 package chat
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,6 +16,11 @@ const (
 	backendLlamaCpp = "llama.cpp"
 	backendMLX      = "mlx"
 )
+
+// ownerLlamaCpp is the owned_by value llama-server stamps on its /v1/models
+// entries. It is how that endpoint is told apart from mlx_lm.server's, which
+// serves the same path with no owner.
+const ownerLlamaCpp = "llamacpp"
 
 // driver captures the only things that differ between backend runtimes: the
 // binary to launch, the arguments it takes, and what a CHAT `model` reference
@@ -35,6 +42,15 @@ type driver struct {
 	// ignored names CHAT settings this runtime has no equivalent for. They are
 	// surfaced as diagnostics so a portable file never silently loses meaning.
 	ignored []string
+	// probe asks a server already listening on root ("http://host:port") what it
+	// has loaded, so an endpoint Evoke did not start can be judged rather than
+	// merely refused. nil means the runtime cannot be shared and a busy endpoint
+	// stays an error.
+	probe func(ctx context.Context, client *http.Client, root string) (identity, error)
+	// mismatchConsequence explains what connecting to a server that does not
+	// match the plan would actually do. It is per runtime because the failure
+	// differs in kind, not degree.
+	mismatchConsequence string
 }
 
 var drivers = map[string]driver{
@@ -56,6 +72,9 @@ var drivers = map[string]driver{
 			}
 			return nil
 		},
+		probe: probeLlamaCpp,
+		mismatchConsequence: "llama-server serves the model it was launched with and ignores the model named in a request, " +
+			"so the replies would come from that model rather than this character's.",
 	},
 	backendMLX: {
 		executable: "mlx_lm.server",
@@ -81,7 +100,63 @@ var drivers = map[string]driver{
 			return nil
 		},
 		ignored: []string{"gpu_layers"},
+		probe:   probeMLX,
+		mismatchConsequence: "mlx_lm.server loads the model named in each request, " +
+			"so it would load this one and evict whatever is resident.",
 	},
+}
+
+// probeLlamaCpp identifies a running llama-server from /props, which reports
+// the launched model and the per-sequence context size directly. The context is
+// comparable to a plan's context_window because llama-server runs a unified KV
+// cache: its slots each see the full --ctx-size rather than a share of it.
+func probeLlamaCpp(ctx context.Context, client *http.Client, root string) (identity, error) {
+	var props struct {
+		ModelPath string `json:"model_path"`
+		// n_ctx is nested: /props has no top-level context size.
+		Settings struct {
+			NCtx int `json:"n_ctx"`
+		} `json:"default_generation_settings"`
+	}
+	if err := getJSON(ctx, client, root+"/props", &props); err != nil {
+		return identity{}, err
+	}
+	return identity{Model: props.ModelPath, ContextWindow: props.Settings.NCtx}, nil
+}
+
+// probeMLX identifies a running mlx_lm.server from /v1/models. There is no
+// endpoint reporting the resident model, so this reads the next best thing: the
+// list is every mlx-shaped model in the Hugging Face cache, with the server's
+// own --model appended last — but appended only when that was a local path
+// (handle_models_request gates it on Path(model).exists()). The launch model is
+// therefore the last absolute path in the list, and a server started from a
+// repo id reports nothing at all rather than something wrong.
+//
+// No context size is reported because MLX has none: it takes no context cap, so
+// context_window stays a purely Evoke-side history budget.
+func probeMLX(ctx context.Context, client *http.Client, root string) (identity, error) {
+	var models struct {
+		Data []struct {
+			ID      string `json:"id"`
+			OwnedBy string `json:"owned_by"`
+		} `json:"data"`
+	}
+	if err := getJSON(ctx, client, root+"/v1/models", &models); err != nil {
+		return identity{}, err
+	}
+	var r identity
+	for _, m := range models.Data {
+		// llama-server answers /v1/models too, with an absolute model path as
+		// the id, so without this the wrong runtime would identify as mlx and
+		// be connected to — and llama-server ignores the model a request names.
+		if m.OwnedBy == ownerLlamaCpp {
+			return identity{}, fmt.Errorf("endpoint is a llama.cpp server, not mlx")
+		}
+		if filepath.IsAbs(m.ID) {
+			r.Model = m.ID
+		}
+	}
+	return r, nil
 }
 
 func driverFor(backend string) (driver, bool) {

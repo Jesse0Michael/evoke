@@ -21,11 +21,25 @@ func TestResolveKnowledgeOutput(t *testing.T) {
 	tests := []struct {
 		name     string
 		output   string
+		input    string
 		expected string
 	}{
 		{
-			name:     "default is knowledge.db in the working directory",
+			name:     "default is named after the corpus directory",
 			output:   "",
+			input:    filepath.Join(absDir, "stardew"),
+			expected: filepath.Join(cwd, "stardew.db"),
+		},
+		{
+			name:     "default for the working directory uses its name",
+			output:   "",
+			input:    cwd,
+			expected: filepath.Join(cwd, filepath.Base(cwd)+".db"),
+		},
+		{
+			name:     "a filesystem root falls back to the generic name",
+			output:   "",
+			input:    string(filepath.Separator),
 			expected: filepath.Join(cwd, "knowledge.db"),
 		},
 		{
@@ -52,7 +66,7 @@ func TestResolveKnowledgeOutput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveKnowledgeOutput(tt.output)
+			got, err := resolveKnowledgeOutput(tt.output, tt.input)
 
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, got)

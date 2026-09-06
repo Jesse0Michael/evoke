@@ -1,7 +1,8 @@
 // Package chat compiles resolved Evoke declarations into an interactive
 // chat session against a local LLM backend. It separates three concerns:
-// compilation (Composition -> Plan), runtime lifecycle (the managed backend
-// process behind the Lease seam), and transport (the OpenAI-compatible Client).
+// compilation (Composition -> Plan), runtime lifecycle (the Backend, which
+// Evoke either launches or connects to), and transport (the OpenAI-compatible
+// Client).
 //
 // Evoke owns the backend: for each chat session it starts the backend named by
 // the CHAT declaration as a child process, with the model and runtime settings
@@ -34,10 +35,12 @@ const (
 )
 
 // Message is a single structured chat message. Evoke owns the transcript and
-// resends it as needed; the backend request API is treated as stateless.
+// resends it as needed; the backend request API is treated as stateless. The
+// json tags are the stored-transcript format (see Memory); the wire format sent
+// to a backend is wireMessage in client.go.
 type Message struct {
-	Role    Role
-	Content string
+	Role    Role   `json:"role"`
+	Content string `json:"content"`
 }
 
 // TrustedConfig carries the machine-specific, trusted values that a portable
@@ -56,12 +59,12 @@ type TrustedConfig struct {
 	// EmbedURL is the ollama-compatible API base URL for query-time embeddings
 	// (default: http://localhost:11434).
 	EmbedURL string
-	// Host and Port are the loopback endpoint the managed server binds to.
+	// Host and Port are the loopback endpoint the server binds to.
 	Host string
 	Port int
 }
 
-// RuntimeSpec is everything needed to launch the managed backend process.
+// RuntimeSpec is everything needed to launch the backend process.
 type RuntimeSpec struct {
 	Executable    string
 	Host          string
@@ -299,7 +302,7 @@ func Compile(comp *evoke.Composition, trusted TrustedConfig) (*Plan, error) {
 }
 
 // commandArgs returns the backend arguments (excluding the executable) for
-// launching the managed process, delegating to the plan's driver.
+// launching the backend process, delegating to the plan's driver.
 func (p *Plan) commandArgs() []string {
 	drv, ok := driverFor(p.Backend)
 	if !ok {

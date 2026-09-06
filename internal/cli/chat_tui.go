@@ -16,14 +16,14 @@ import (
 )
 
 // runChatTUI drives the interactive conversation as a full-screen terminal UI:
-// a scrolling transcript above a pinned input line. The character's reply is
+// a pinned header, a scrolling transcript, and a pinned input line. The character's reply is
 // generated non-streaming — a spinner marks where it will land in the log while
 // the input line stays put — and Enter is ignored while a reply is in flight, so
 // the next message can be composed but not submitted until the current one
 // resolves. It is used only on an interactive terminal; piped or non-interactive
 // runs use runChatLoop instead.
-func runChatTUI(ctx context.Context, plan *chat.Plan, client chatBackend, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base) error {
-	m := newChatTUIModel(ctx, plan, client, st, verbose, backendDone, backendErr, knowledgeBases)
+func runChatTUI(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base, backendOrigin string) error {
+	m := newChatTUIModel(ctx, plan, client, sess, st, verbose, backendDone, backendErr, knowledgeBases, backendOrigin)
 	// Deliberately do NOT capture the mouse: mouse reporting would steal native
 	// click-drag text selection. Most terminals translate the wheel into ↑/↓ keys
 	// for an alt-screen app when the mouse isn't captured, so the viewport still
@@ -32,7 +32,7 @@ func runChatTUI(ctx context.Context, plan *chat.Plan, client chatBackend, st cha
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	// Quit the program if the session context is cancelled (e.g. SIGTERM) so the
-	// managed backend can still be shut down cleanly by the caller's deferred Close.
+	// backend can still be shut down cleanly by the caller's deferred Close.
 	go func() {
 		<-ctx.Done()
 		p.Quit()
@@ -61,6 +61,7 @@ type chatTUIModel struct {
 	backendDone    <-chan struct{}
 	backendErr     func() error
 	knowledgeBases []*knowledge.Base
+	backendOrigin  string
 
 	viewport viewport.Model
 	input    textinput.Model
@@ -72,6 +73,17 @@ type chatTUIModel struct {
 	exitErr    error    // non-nil to surface an error after the program exits
 }
 
+// chatHeaderHeight is how many terminal rows the pinned header occupies: the
+// status line, the command list, and the rule dividing them from the transcript.
+// Update reserves exactly this many rows, so header must never wrap past them.
+const chatHeaderHeight = 3
+
+// chatCommands is the command list shown in the pinned header. It is the same
+// set slash handles, glossed, so the options stay on screen rather than
+// scrolling out of the log the way a startup banner would. Quitting is not among
+// them: Ctrl-C ends the session cleanly and needs no command of its own.
+const chatCommands = "/reset clear history · /context token budget"
+
 // replyMsg carries the result of a backend completion back into the update loop.
 type replyMsg struct {
 	reply string
@@ -79,10 +91,10 @@ type replyMsg struct {
 	err   error
 }
 
-// backendDeadMsg signals the managed backend exited unexpectedly.
+// backendDeadMsg signals the backend exited unexpectedly.
 type backendDeadMsg struct{}
 
-func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base) chatTUIModel {
+func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base, backendOrigin string) chatTUIModel {
 	ti := textinput.New()
 	ti.Prompt = "> "
 	ti.Placeholder = "type a message"
@@ -100,17 +112,33 @@ func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, s
 		backendDone:    backendDone,
 		backendErr:     backendErr,
 		knowledgeBases: knowledgeBases,
+		backendOrigin:  backendOrigin,
 		input:          ti,
 		spinner:        sp,
-		sess:           chat.NewSession(plan),
+		sess:           sess,
 	}
-	m.transcript = append(m.transcript, st.dim(fmt.Sprintf(
-		"%s · %s · %d ctx — /exit /reset /context",
-		plan.Display.CharacterName, plan.Display.Model, plan.Display.ContextWindow)))
+
+	// Show the restored dialogue so a resumed conversation opens on its own
+	// history instead of a blank pane.
+	restored := m.sess.Turns()
+	// The opening scene was seeded as a user turn and deliberately never shown;
+	// reading it back from the stored transcript must not reveal it now.
+	if len(restored) > 0 && plan.Opening != "" && restored[0].Content == plan.Opening {
+		restored = restored[1:]
+	}
+	for _, t := range restored {
+		switch t.Role {
+		case chat.RoleUser:
+			m.transcript = append(m.transcript, m.renderUser(t.Content))
+		case chat.RoleAssistant:
+			m.transcript = append(m.transcript, m.renderAssistant(t.Content))
+		}
+	}
 
 	// Seed the opening scene once; the character responds first (see the loop's
-	// seedOpening for the same rationale). The seed message is not shown.
-	if plan.Opening != "" {
+	// seedOpening for the same rationale). The seed message is not shown, and a
+	// restored conversation already had its scene set.
+	if plan.Opening != "" && len(m.sess.Turns()) == 0 {
 		m.sess.AddUser(plan.Opening)
 		m.busy = true
 	}
@@ -128,9 +156,10 @@ func (m chatTUIModel) Init() tea.Cmd {
 func (m chatTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		// Reserve one footer line for the pinned input; the thinking indicator
-		// lives inside the transcript (where the reply will land), not here.
-		vpHeight := max(1, msg.Height-1)
+		// Reserve the header rows and one footer line for the pinned input; the
+		// thinking indicator lives inside the transcript (where the reply will
+		// land), not here.
+		vpHeight := max(1, msg.Height-chatHeaderHeight-1)
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width, vpHeight)
 			m.ready = true
@@ -185,6 +214,7 @@ func (m chatTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.transcript = append(m.transcript, m.st.errorText("error: ")+msg.err.Error())
 		default:
 			m.sess.AddAssistant(msg.reply)
+			m.save()
 			m.transcript = append(m.transcript, m.renderAssistant(msg.reply))
 			if m.verbose {
 				m.transcript = append(m.transcript, m.renderDiagnostics(msg.usage))
@@ -208,7 +238,23 @@ func (m chatTUIModel) View() string {
 	if !m.ready {
 		return "starting chat…"
 	}
-	return m.viewport.View() + "\n" + m.input.View()
+	return m.header() + "\n" + m.viewport.View() + "\n" + m.input.View()
+}
+
+// header is the chrome pinned above the transcript: who you are talking to, and
+// the commands available. Each line is truncated rather than wrapped, so the
+// header is exactly chatHeaderHeight rows however narrow the terminal is and the
+// viewport arithmetic in Update holds.
+func (m chatTUIModel) header() string {
+	width := max(1, m.viewport.Width)
+	status := fmt.Sprintf("%s · %s (%s) · %d ctx",
+		m.plan.Display.CharacterName, m.plan.Display.Model, m.backendOrigin, m.plan.Display.ContextWindow)
+	clip := lipgloss.NewStyle().MaxWidth(width)
+	return strings.Join([]string{
+		clip.Render(m.st.dim(status)),
+		clip.Render(m.st.dim(chatCommands)),
+		m.st.dim(strings.Repeat("─", width)),
+	}, "\n")
 }
 
 // submit handles a completed input line: a slash command or a new user message.
@@ -233,10 +279,11 @@ func (m chatTUIModel) submit() (tea.Model, tea.Cmd) {
 func (m chatTUIModel) slash(cmd string) (tea.Model, tea.Cmd) {
 	m.input.Reset()
 	switch cmd {
-	case "/exit", "/quit":
-		return m, tea.Quit
 	case "/reset":
 		m.sess.Reset()
+		// Store the cleared transcript at once, so quitting straight after a
+		// reset does not resume the conversation just discarded.
+		m.save()
 		m.transcript = []string{m.st.dim("(conversation reset)")}
 		if m.plan.Opening != "" {
 			// Replay the opening so a reset returns to the scene, not a blank stage.
@@ -255,9 +302,18 @@ func (m chatTUIModel) slash(cmd string) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 		return m, nil
 	default:
-		m.transcript = append(m.transcript, m.st.dim(fmt.Sprintf("unknown command %q (try /exit, /reset, /context)", cmd)))
+		m.transcript = append(m.transcript, m.st.dim(fmt.Sprintf("unknown command %q (try /reset, /context)", cmd)))
 		m.refreshViewport()
 		return m, nil
+	}
+}
+
+// save records the transcript after a completed turn or a reset. A failed write
+// is reported in the log rather than ending the session: durable memory is a
+// convenience, not a precondition for talking.
+func (m *chatTUIModel) save() {
+	if err := m.sess.Save(); err != nil {
+		m.transcript = append(m.transcript, m.st.errorText("warning: ")+err.Error())
 	}
 }
 
@@ -342,9 +398,9 @@ func (m chatTUIModel) renderDiagnostics(usage chat.Usage) string {
 		info.EstimatedTokens, m.plan.Display.ContextWindow, info.RetainedTurns))
 }
 
-// waitForBackendDeath returns a command that resolves when the managed backend
-// exits, so the UI can surface the failure and quit. Nil when there is no
-// backend channel (e.g. tests).
+// waitForBackendDeath returns a command that resolves when the backend exits,
+// so the UI can surface the failure and quit. Nil when there is no channel to
+// watch — a server Evoke connected to has no exit of its own to await.
 func waitForBackendDeath(done <-chan struct{}) tea.Cmd {
 	if done == nil {
 		return nil

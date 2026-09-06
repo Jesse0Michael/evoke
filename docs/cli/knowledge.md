@@ -3,8 +3,10 @@
 Build the vector database that a [`KNOWLEDGE`](../file-format/declarations.md#knowledge) declaration points at. It walks a directory of markdown and `.evoke` files, splits every file into heading-scoped chunks, embeds each chunk through an ollama-compatible endpoint, and writes a SQLite database.
 
 ```console
-$ evoke knowledge <dir>
+$ evoke knowledge [dir]
 ```
+
+With no directory the corpus is the working directory. The walk descends at most **5 directories** below the root — a corpus is prose organized by hand, so anything nested deeper is far more likely to be something that wandered in than lore worth embedding.
 
 The database is a build artifact, not source: rebuild it whenever the corpus changes.
 
@@ -27,20 +29,20 @@ evoke knowledge: embedding model "nomic-embed-text" not available at http://loca
 
 ## Where the database goes
 
-The database is written to the working directory as `knowledge.db`, and `--output` is an ordinary path — relative or absolute, exactly like any other CLI:
+The database is written to the working directory, named after the corpus directory — a corpus at `./stardew` builds `stardew.db` — and `--output` is an ordinary path, relative or absolute, exactly like any other CLI:
 
 ```console
 $ evoke knowledge ./lore
-Wrote /Users/you/lore/knowledge.db
+Wrote /Users/you/lore.db
   42 files, 318 chunks, nomic-embed-text (768 dimensions)
 
 Reference it from a .evoke file:
 
-    KNOWLEDGE knowledge db=knowledge.db
+    KNOWLEDGE lore db=lore.db
 
 To make it resolvable by chat:
 
-    evoke settings set chat.model_path /Users/you/lore
+    evoke settings set chat.model_path /Users/you
 ```
 
 That last line appears only when the database is not already under a `chat.model_paths` directory. `chat` looks a `db=` up **by file name** across those directories (recursively), the same way it resolves a `CHAT` model — but `chat.model_paths` is a *search* path, frequently a directory some other application owns, so `knowledge` never writes into it. Keep the database next to the corpus it was built from and add that directory to the search path once.
@@ -51,7 +53,7 @@ The build writes to a temporary file and renames it into place only on success, 
 
 | Flag | Default | Description |
 |:-----|:--------|:------------|
-| `--output`, `-o` | `./knowledge.db` | Database to write, as an ordinary relative or absolute path. |
+| `--output`, `-o` | `./<dir>.db` | Database to write, as an ordinary relative or absolute path. Defaults to the corpus directory's name. |
 | `--model` | `nomic-embed-text` | Embedding model. Recorded in the database. |
 | `--url` | `chat.embed_url`, else `http://localhost:11434` | Ollama-compatible API base URL. |
 | `--max-tokens` | `1000` | Target maximum tokens per chunk. |
@@ -82,7 +84,7 @@ A `?` default is indexed when it is the effective value, which for a single file
 
 Files that render to nothing contribute no chunks. That covers two cases: a file with no `NAME` (evoke files compose, but the builder walks them one at a time, so a nameless `winter-coat.evoke` fragment would be prose about nobody), and a file carrying only generator input. A file that fails to parse fails the build rather than being silently skipped.
 
-Hidden files and directories and `node_modules` are always skipped. Everything else needs `--exclude`:
+Hidden files and directories, `node_modules`, and anything more than 5 directories below the root are always skipped. Everything else needs `--exclude`:
 
 ```console
 $ evoke knowledge ./docs --exclude index.md --exclude 'Drafts/*'

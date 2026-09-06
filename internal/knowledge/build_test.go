@@ -62,6 +62,10 @@ func TestCorpusFiles(t *testing.T) {
 		".hidden.md":             "# Hidden file",
 		"node_modules/pkg.md":    "# Vendored",
 		"Planes/Deep/Nest.md":    "# Nested",
+		// MaxDepth is 5: the directory holding Edge.md is the deepest walked,
+		// and everything under it is out of reach.
+		"Deep/a/b/c/d/Edge.md":      "# Edge",
+		"Deep/a/b/c/d/e/TooDeep.md": "# Too deep",
 	}
 
 	tests := []struct {
@@ -70,29 +74,29 @@ func TestCorpusFiles(t *testing.T) {
 		expected []string
 	}{
 		{
-			name:     "markdown and evoke are walked, hidden entries and node_modules skipped",
+			name:     "markdown and evoke are walked, hidden entries, node_modules and over-deep nesting skipped",
 			exclude:  nil,
-			expected: []string{"Design/Fauna.md", "Design/Flora.md", "Drahkar.evoke", "Planes/Deep/Nest.md", "index.md"},
+			expected: []string{"Deep/a/b/c/d/Edge.md", "Design/Fauna.md", "Design/Flora.md", "Drahkar.evoke", "Planes/Deep/Nest.md", "index.md"},
 		},
 		{
 			name:     "exclude by base name",
 			exclude:  []string{"index.md"},
-			expected: []string{"Design/Fauna.md", "Design/Flora.md", "Drahkar.evoke", "Planes/Deep/Nest.md"},
+			expected: []string{"Deep/a/b/c/d/Edge.md", "Design/Fauna.md", "Design/Flora.md", "Drahkar.evoke", "Planes/Deep/Nest.md"},
 		},
 		{
 			name:     "exclude by relative path glob",
 			exclude:  []string{"Design/*"},
-			expected: []string{"Drahkar.evoke", "Planes/Deep/Nest.md", "index.md"},
+			expected: []string{"Deep/a/b/c/d/Edge.md", "Drahkar.evoke", "Planes/Deep/Nest.md", "index.md"},
 		},
 		{
 			name:     "multiple excludes combine",
 			exclude:  []string{"index.md", "Flora.md"},
-			expected: []string{"Design/Fauna.md", "Drahkar.evoke", "Planes/Deep/Nest.md"},
+			expected: []string{"Deep/a/b/c/d/Edge.md", "Design/Fauna.md", "Drahkar.evoke", "Planes/Deep/Nest.md"},
 		},
 		{
 			name:     "evoke files can be excluded by extension glob",
 			exclude:  []string{"*.evoke"},
-			expected: []string{"Design/Fauna.md", "Design/Flora.md", "Planes/Deep/Nest.md", "index.md"},
+			expected: []string{"Deep/a/b/c/d/Edge.md", "Design/Fauna.md", "Design/Flora.md", "Planes/Deep/Nest.md", "index.md"},
 		},
 	}
 

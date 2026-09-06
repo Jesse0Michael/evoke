@@ -14,12 +14,14 @@ import (
 	"github.com/jesse0michael/evoke/internal/ollama"
 )
 
-// defaultKnowledgeDB is the database name used when --output is not given.
+// defaultKnowledgeDB is the fallback database name, used when --output is not
+// given and the corpus directory has no usable name of its own.
 const defaultKnowledgeDB = "knowledge.db"
 
 // KnowledgeCmd builds the RAG vector database that a KNOWLEDGE declaration
 // refers to: it walks a directory of markdown and .evoke files, splits each
 // file into heading-scoped chunks, embeds them, and writes a SQLite database.
+// With no directory argument the corpus is the working directory.
 //
 // The database is written to the working directory, and --output is an ordinary
 // path. chat resolves a KNOWLEDGE db= against chat.model_paths, but that is a
@@ -30,7 +32,7 @@ func KnowledgeCmd(args []string, verbose bool) int {
 	fs := flag.NewFlagSet("knowledge", flag.ContinueOnError)
 	fs.BoolVar(&verbose, "v", verbose, "verbose output")
 	fs.BoolVar(&verbose, "verbose", verbose, "verbose output")
-	output := fs.String("output", "", "database to write (default: ./"+defaultKnowledgeDB+")")
+	output := fs.String("output", "", "database to write (default: ./<dir>.db)")
 	fs.StringVar(output, "o", "", "database to write (shorthand)")
 	model := fs.String("model", knowledge.DefaultEmbedModel, "embedding model")
 	url := fs.String("url", "", "ollama-compatible API base URL (default: chat.embed_url setting, else "+knowledge.DefaultEmbedURL+")")
@@ -56,13 +58,18 @@ func KnowledgeCmd(args []string, verbose bool) int {
 		remaining = remaining[1:]
 	}
 
-	if len(positional) != 1 {
-		fmt.Fprintln(os.Stderr, "evoke knowledge: exactly one input directory is required")
-		fmt.Fprintln(os.Stderr, "\nusage: evoke knowledge <dir> [--output db] [--model name] [--exclude glob]")
+	if len(positional) > 1 {
+		fmt.Fprintln(os.Stderr, "evoke knowledge: at most one input directory is expected")
+		fmt.Fprintln(os.Stderr, "\nusage: evoke knowledge [dir] [--output db] [--model name] [--exclude glob]")
 		return 2
 	}
 
-	input, err := expandPath(positional[0])
+	dir := "."
+	if len(positional) == 1 {
+		dir = positional[0]
+	}
+
+	input, err := expandPath(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "evoke knowledge: %v\n", err)
 		return 1
@@ -84,7 +91,7 @@ func KnowledgeCmd(args []string, verbose bool) int {
 	}
 	modelPaths := knowledgeModelPaths(settings)
 
-	out, err := resolveKnowledgeOutput(*output)
+	out, err := resolveKnowledgeOutput(*output, input)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "evoke knowledge: %v\n", err)
 		return 1
@@ -172,13 +179,26 @@ func knowledgeModelPaths(s *Settings) []string {
 }
 
 // resolveKnowledgeOutput returns the absolute path to write. --output is an
-// ordinary path, relative to the working directory like any other CLI; the
-// default is ./knowledge.db.
-func resolveKnowledgeOutput(output string) (string, error) {
+// ordinary path, relative to the working directory like any other CLI. The
+// default names the database after the corpus directory — ./stardew.db for a
+// corpus at ./stardew — since that name is what a KNOWLEDGE db= then carries.
+func resolveKnowledgeOutput(output, input string) (string, error) {
 	if output == "" {
-		output = defaultKnowledgeDB
+		output = defaultKnowledgeName(input)
 	}
 	return expandPath(output)
+}
+
+// defaultKnowledgeName derives the database file name from the corpus
+// directory. A filesystem root has no name to borrow, so it falls back to the
+// generic default.
+func defaultKnowledgeName(input string) string {
+	base := filepath.Base(filepath.Clean(input))
+	switch base {
+	case ".", "..", string(filepath.Separator), "":
+		return defaultKnowledgeDB
+	}
+	return base + ".db"
 }
 
 // underAny reports whether path sits inside one of the directories. A KNOWLEDGE

@@ -16,9 +16,9 @@ import (
 )
 
 // TestMain lets the test binary impersonate a llama-server child process so the
-// managed-runtime lifecycle can be exercised without a real model. When the
+// launched-process lifecycle can be exercised without a real model. When the
 // FAKE_LLAMA env var is set, the process behaves like the fake and never runs
-// the test suite. StartManaged is pointed at os.Args[0] with FAKE_LLAMA set.
+// the test suite. Launch is pointed at os.Args[0] with FAKE_LLAMA set.
 func TestMain(m *testing.M) {
 	switch os.Getenv("FAKE_LLAMA") {
 	case "ready":
@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// runFakeReady serves a health endpoint on the --port passed by StartManaged and
+// runFakeReady serves a health endpoint on the --port passed by Launch and
 // blocks until terminated, mimicking a healthy backend.
 func runFakeReady() {
 	port := ""
@@ -84,39 +84,39 @@ func managedPlan(t *testing.T, port int) *Plan {
 	}
 }
 
-func TestStartManagedLifecycle(t *testing.T) {
+func TestLaunchLifecycle(t *testing.T) {
 	t.Setenv("FAKE_LLAMA", "ready")
 	plan := managedPlan(t, freePort(t))
 
-	lease, err := StartManaged(t.Context(), plan, 10*time.Second)
+	backend, err := Launch(t.Context(), plan, 10*time.Second)
 	require.NoError(t, err)
 
-	require.Equal(t, "http://127.0.0.1:"+strconv.Itoa(plan.Runtime.Port)+"/v1", lease.Endpoint().String())
-	require.Nil(t, lease.Err(), "backend should be running")
+	require.Equal(t, "http://127.0.0.1:"+strconv.Itoa(plan.Runtime.Port)+"/v1", backend.Endpoint().String())
+	require.Nil(t, backend.Err(), "backend should be running")
 
 	// Close stops the owned process; it must actually exit (no orphan).
-	require.NoError(t, lease.Close(context.Background()))
+	require.NoError(t, backend.Close(context.Background()))
 	select {
-	case <-lease.Done():
+	case <-backend.Done():
 	default:
 		t.Fatal("backend process was not terminated by Close")
 	}
 
 	// Close is idempotent.
-	require.NoError(t, lease.Close(context.Background()))
+	require.NoError(t, backend.Close(context.Background()))
 }
 
-func TestStartManagedEarlyExit(t *testing.T) {
+func TestLaunchEarlyExit(t *testing.T) {
 	t.Setenv("FAKE_LLAMA", "exit")
 	plan := managedPlan(t, freePort(t))
 
-	_, err := StartManaged(t.Context(), plan, 5*time.Second)
+	_, err := Launch(t.Context(), plan, 5*time.Second)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "exited during startup")
 }
 
-func TestStartManagedPortInUse(t *testing.T) {
+func TestLaunchPortInUse(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer func() { _ = l.Close() }()
@@ -126,27 +126,27 @@ func TestStartManagedPortInUse(t *testing.T) {
 	// process is spawned.
 	plan := managedPlan(t, port)
 
-	_, err = StartManaged(t.Context(), plan, 5*time.Second)
+	_, err = Launch(t.Context(), plan, 5*time.Second)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "already in use")
 }
 
-func TestStartManagedMissingModel(t *testing.T) {
+func TestLaunchMissingModel(t *testing.T) {
 	plan := managedPlan(t, freePort(t))
 	plan.ModelPath = filepath.Join(t.TempDir(), "does-not-exist.gguf")
 
-	_, err := StartManaged(t.Context(), plan, 5*time.Second)
+	_, err := Launch(t.Context(), plan, 5*time.Second)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "model file not found")
 }
 
-func TestStartManagedUnresolvedModel(t *testing.T) {
+func TestLaunchUnresolvedModel(t *testing.T) {
 	plan := managedPlan(t, freePort(t))
 	plan.ModelPath = ""
 
-	_, err := StartManaged(t.Context(), plan, 5*time.Second)
+	_, err := Launch(t.Context(), plan, 5*time.Second)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "could not locate model")

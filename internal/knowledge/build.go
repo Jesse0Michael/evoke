@@ -20,6 +20,13 @@ var skipDirs = map[string]bool{
 const (
 	markdownExt = ".md"
 	evokeExt    = ".evoke"
+
+	// MaxDepth bounds how far below the corpus root the walk descends, counted
+	// in directories: a file directly inside the root sits at depth 1. A corpus
+	// is authored prose organized by hand, so anything nested deeper is far more
+	// likely to be something that wandered in — a vendored checkout, a build
+	// output, an unpacked archive — than lore worth embedding.
+	MaxDepth = 5
 )
 
 // corpusExt reports whether a file name is one the builder indexes.
@@ -30,7 +37,7 @@ func corpusExt(name string) bool {
 
 // BuildOptions configures a knowledge database build.
 type BuildOptions struct {
-	// Input is the root directory of the corpus.
+	// Input is the root directory of the corpus, walked recursively to MaxDepth.
 	Input string
 	// Output is the path of the database file to write.
 	Output string
@@ -214,8 +221,8 @@ func createTemp(opts BuildOptions, model string, dims int) (*Store, string, erro
 }
 
 // corpusFiles walks root and returns the sorted set of markdown and .evoke
-// files, skipping hidden entries, known non-content directories, and anything
-// matching an exclude pattern.
+// files, skipping hidden entries, known non-content directories, anything
+// nested deeper than MaxDepth, and anything matching an exclude pattern.
 func corpusFiles(root string, exclude []string) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -229,6 +236,9 @@ func corpusFiles(root string, exclude []string) ([]string, error) {
 				return nil
 			}
 			if skipDirs[name] || strings.HasPrefix(name, ".") {
+				return fs.SkipDir
+			}
+			if depth(root, path) > MaxDepth {
 				return fs.SkipDir
 			}
 			return nil
@@ -250,6 +260,16 @@ func corpusFiles(root string, exclude []string) ([]string, error) {
 		return nil, fmt.Errorf("failed to walk %s: %w", root, err)
 	}
 	return files, nil
+}
+
+// depth counts the path elements between root and path; a direct child of the
+// root is depth 1.
+func depth(root, path string) int {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return 0
+	}
+	return len(strings.Split(filepath.ToSlash(rel), "/"))
 }
 
 // excluded reports whether a file matches any exclude pattern, by relative path
