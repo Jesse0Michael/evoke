@@ -15,7 +15,7 @@ import (
 func newTestTUIModel(fb *fakeBackend, opening string) chatTUIModel {
 	plan := testChatPlan()
 	plan.Opening = opening
-	return newChatTUIModel(context.Background(), plan, fb, chat.NewSession(plan), chatStyle{}, false, nil, nil, nil, "launched")
+	return newChatTUIModel(context.Background(), plan, fb, chat.NewSession(plan), chatStyle{}, false, nil, nil, nil)
 }
 
 // newTestTUIMemoryModel builds a model over a session with a stored transcript,
@@ -39,7 +39,7 @@ func newTestTUIMemoryModel(t *testing.T, fb *fakeBackend, opening string, stored
 
 	sess := chat.NewSession(plan)
 	require.NoError(t, sess.Remember(path, []string{"haley"}, true))
-	return newChatTUIModel(context.Background(), plan, fb, sess, chatStyle{}, false, nil, nil, nil, "launched")
+	return newChatTUIModel(context.Background(), plan, fb, sess, chatStyle{}, false, nil, nil, nil)
 }
 
 // resolveReply runs the pending reply command synchronously (fakeBackend is

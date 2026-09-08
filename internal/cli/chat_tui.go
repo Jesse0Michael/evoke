@@ -22,8 +22,8 @@ import (
 // the next message can be composed but not submitted until the current one
 // resolves. It is used only on an interactive terminal; piped or non-interactive
 // runs use runChatLoop instead.
-func runChatTUI(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base, backendOrigin string) error {
-	m := newChatTUIModel(ctx, plan, client, sess, st, verbose, backendDone, backendErr, knowledgeBases, backendOrigin)
+func runChatTUI(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base) error {
+	m := newChatTUIModel(ctx, plan, client, sess, st, verbose, backendDone, backendErr, knowledgeBases)
 	// Deliberately do NOT capture the mouse: mouse reporting would steal native
 	// click-drag text selection. Most terminals translate the wheel into ↑/↓ keys
 	// for an alt-screen app when the mouse isn't captured, so the viewport still
@@ -61,7 +61,6 @@ type chatTUIModel struct {
 	backendDone    <-chan struct{}
 	backendErr     func() error
 	knowledgeBases []*knowledge.Base
-	backendOrigin  string
 
 	viewport viewport.Model
 	input    textinput.Model
@@ -79,10 +78,10 @@ type chatTUIModel struct {
 const chatHeaderHeight = 3
 
 // chatCommands is the command list shown in the pinned header. It is the same
-// set slash handles, glossed, so the options stay on screen rather than
-// scrolling out of the log the way a startup banner would. Quitting is not among
-// them: Ctrl-C ends the session cleanly and needs no command of its own.
-const chatCommands = "/reset clear history · /context token budget"
+// set slash handles, so the options stay on screen rather than scrolling out of
+// the log the way a startup banner would. Quitting is not among them: Ctrl-C
+// ends the session cleanly and needs no command of its own.
+const chatCommands = "/reset · /context"
 
 // replyMsg carries the result of a backend completion back into the update loop.
 type replyMsg struct {
@@ -94,7 +93,7 @@ type replyMsg struct {
 // backendDeadMsg signals the backend exited unexpectedly.
 type backendDeadMsg struct{}
 
-func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base, backendOrigin string) chatTUIModel {
+func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base) chatTUIModel {
 	ti := textinput.New()
 	ti.Prompt = "> "
 	ti.Placeholder = "type a message"
@@ -112,7 +111,6 @@ func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, s
 		backendDone:    backendDone,
 		backendErr:     backendErr,
 		knowledgeBases: knowledgeBases,
-		backendOrigin:  backendOrigin,
 		input:          ti,
 		spinner:        sp,
 		sess:           sess,
@@ -247,8 +245,8 @@ func (m chatTUIModel) View() string {
 // viewport arithmetic in Update holds.
 func (m chatTUIModel) header() string {
 	width := max(1, m.viewport.Width)
-	status := fmt.Sprintf("%s · %s (%s) · %d ctx",
-		m.plan.Display.CharacterName, m.plan.Display.Model, m.backendOrigin, m.plan.Display.ContextWindow)
+	status := fmt.Sprintf("%s · %s · %d ctx",
+		m.plan.Display.CharacterName, m.plan.Display.Model, m.plan.Display.ContextWindow)
 	clip := lipgloss.NewStyle().MaxWidth(width)
 	return strings.Join([]string{
 		clip.Render(m.st.dim(status)),

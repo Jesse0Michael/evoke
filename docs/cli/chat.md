@@ -193,8 +193,8 @@ A resumed session does **not** replay the `SCENARIO` opening — the scene was s
 On an interactive terminal, chat runs as a full-screen UI: a pinned header, a scrolling transcript, and a pinned `>` input line. The header names who you are talking to and lists the commands, and is chrome rather than log content — it stays put as you scroll and survives `/reset`:
 
 ```text
-Yasmin · qwen3-8b-q4.gguf (launched) · 8192 ctx
-/reset clear history · /context token budget
+Yasmin · qwen3-8b-q4.gguf · 8192 ctx
+/reset · /context
 ────────────────────────────────────────────────────────
 ```
 

@@ -208,7 +208,7 @@ func Chat(args []string, verbose bool) int {
 	// test) falls back to the line-based loop.
 	var runErr error
 	if !*noTUI && !stream && isInteractive() {
-		runErr = runChatTUI(ctx, plan, client, sess, st, verbose, backend.Done(), backend.Err, knowledgeBases, backendOrigin(backend))
+		runErr = runChatTUI(ctx, plan, client, sess, st, verbose, backend.Done(), backend.Err, knowledgeBases)
 	} else {
 		runErr = runChatLoop(ctx, plan, client, sess, stream, verbose, os.Stdin, os.Stdout, backend.Done(), backend.Err, backend.DrainLog, st, knowledgeBases, backendOrigin(backend))
 	}
