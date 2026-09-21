@@ -1,3 +1,17 @@
+# [1.4.0](https://github.com/Jesse0Michael/evoke/compare/v1.3.0...v1.4.0) (2026-09-21)
+
+### Bug Fixes
+
+- chat top bar ([cabf97e](https://github.com/Jesse0Michael/evoke/commit/cabf97e1893eb81011188c35b340e41e79f8a411))
+
+### Features
+
+- chat images ([e87748a](https://github.com/Jesse0Michael/evoke/commit/e87748acd83c66160f6411e5645970d4ce160500))
+
+### Other
+
+- evoke chat cli ([f7e639b](https://github.com/Jesse0Michael/evoke/commit/f7e639b2d5cd5daa00fbacc12fe9bfbad716f52d))
+
 # [1.3.0](https://github.com/Jesse0Michael/evoke/compare/v1.2.0...v1.3.0) (2026-09-05)
 
 ### Bug Fixes
