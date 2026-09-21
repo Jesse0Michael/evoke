@@ -174,6 +174,22 @@ func TestRunChatLoopUnknownCommand(t *testing.T) {
 	require.Empty(t, fb.reqs, "an unknown slash command is never sent to the model")
 }
 
+// The /image command reports the setting without generating anything: the
+// character has not spoken yet, so there is no scene to draw.
+func TestRunChatLoopImageCommand(t *testing.T) {
+	plan := testChatPlan()
+	fb := &fakeBackend{replies: []string{"unused"}}
+	in := strings.NewReader("/image ill\n/image\n")
+	var out bytes.Buffer
+
+	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), true, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched")
+
+	require.NoError(t, err)
+	require.Contains(t, out.String(), "(image generation on: ill)")
+	require.Contains(t, out.String(), "(image generation off)")
+	require.Empty(t, fb.reqs, "a slash command is never sent to the model")
+}
+
 func TestRunChatLoopExitsWhenBackendDies(t *testing.T) {
 	plan := testChatPlan()
 	fb := &fakeBackend{replies: []string{"unused"}}

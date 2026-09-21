@@ -292,9 +292,10 @@ func TestSessionMemory(t *testing.T) {
 		// empty means no file exists yet.
 		stored string
 		// resume is false for --new.
-		resume    bool
-		wantTurns []Message
-		wantErr   bool
+		resume     bool
+		wantTurns  []Message
+		wantImages []string
+		wantErr    bool
 	}{
 		{
 			name:      "a missing file is an empty session, not an error",
@@ -306,6 +307,21 @@ func TestSessionMemory(t *testing.T) {
 			stored:    `{"version":1,"inputs":["haley"],"updated":"2026-09-05T00:00:00Z","turns":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"}]}`,
 			resume:    true,
 			wantTurns: dialogue,
+		},
+		{
+			// A file written before image_inputs existed reads back fine, which
+			// is why adding the field needed no version bump.
+			name:       "a stored scene-image setting is restored with the transcript",
+			stored:     `{"version":1,"image_inputs":["ill","mf"],"turns":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"}]}`,
+			resume:     true,
+			wantTurns:  dialogue,
+			wantImages: []string{"ill", "mf"},
+		},
+		{
+			name:      "not resuming ignores a stored scene-image setting",
+			stored:    `{"version":1,"image_inputs":["ill"],"turns":[]}`,
+			resume:    false,
+			wantTurns: nil,
 		},
 		{
 			name:      "a malformed file reports the problem and starts fresh",
@@ -343,14 +359,17 @@ func TestSessionMemory(t *testing.T) {
 
 			require.Equal(t, tt.wantErr, err != nil)
 			require.Equal(t, tt.wantTurns, sess.Turns())
+			require.Equal(t, tt.wantImages, sess.ImageInputs())
 
 			// Whatever was there, saving replaces it and reads back intact.
 			sess.AddUser("hi")
 			sess.AddAssistant("hello")
+			sess.SetImageInputs([]string{"ill", "solo, 1girl"})
 			require.NoError(t, sess.Save())
 			reopened := NewSession(budgetPlan(8192, sys))
 			require.NoError(t, reopened.Remember(path, []string{"haley"}, true))
 			require.Equal(t, append(append([]Message{}, tt.wantTurns...), dialogue...), reopened.Turns())
+			require.Equal(t, []string{"ill", "solo, 1girl"}, reopened.ImageInputs())
 
 			// Staging files are renamed into place, never left behind.
 			entries, err := os.ReadDir(filepath.Dir(path))

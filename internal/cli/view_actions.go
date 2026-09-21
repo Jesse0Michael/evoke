@@ -1,9 +1,8 @@
 package cli
 
 import (
-	"bytes"
+	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -61,32 +60,10 @@ func appleScriptString(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
-// runEvokeImageCommand runs an image-in subcommand (edit, paint) for source with
-// args, returning what it reported. It re-runs this same binary rather than
-// calling the command in process:
-// the command writes its resolution trace to stdout, which would land in the
-// middle of an absolutely-positioned frame, and a child's output can simply be
-// captured instead. os.Executable is the binary actually running, so a viewer
-// launched from ./bin does not silently drive a different evoke on PATH.
-//
-// Stdin stays nil for the same reason chafa's does — a child that inherits the
-// terminal swallows the keystrokes typed while it runs.
+// runEvokeImageCommand runs an image-in subcommand (edit, paint) for source
+// with args, returning what it reported.
 func runEvokeImageCommand(cmd, source string, args []string) (string, error) {
-	self, err := os.Executable()
-	if err != nil {
-		return "", fmt.Errorf("failed to locate the evoke binary: %w", err)
-	}
-
-	child := exec.Command(self, append([]string{cmd, "-i", source}, args...)...)
-	var out bytes.Buffer
-	child.Stdout, child.Stderr = &out, &out
-	if err := child.Run(); err != nil {
-		if text := strings.TrimSpace(out.String()); text != "" {
-			return "", fmt.Errorf("%s", text)
-		}
-		return "", fmt.Errorf("evoke %s: %w", cmd, err)
-	}
-	return out.String(), nil
+	return runEvokeSelf(context.Background(), append([]string{cmd, "-i", source}, args...))
 }
 
 // splitArgs splits a typed line into arguments the way a shell would, so a

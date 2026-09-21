@@ -177,6 +177,8 @@ roleplay+yasmin+beach-9b0d1c73.json
 
 Memory lives here rather than in a `.evoke` file on purpose: a `.evoke` file is shareable and may be published to a registry, while your conversation with a character belongs to your invocation of it, not to the character.
 
+The `/image` [scene-image setting](#scene-images) is stored alongside the dialogue, so a resumed conversation is still generating what it was. It is written the moment it changes rather than at the next turn, so setting it and quitting keeps it.
+
 The dialogue is stored **verbatim**, not summarized. Nothing is lost to a summarization pass, and a transcript far longer than the context window is safe to restore — the [sliding window](#context-management) already decides how much of it a request carries, dropping the oldest complete pairs. What ages out of the window is still on disk.
 
 The transcript is written after **every completed turn**, not at exit, so an interrupt has nothing to finish before the backend shuts down and an abrupt kill loses at most the turn in flight. Each write is renamed into place, so a transcript is never half-written. A failed write is reported as a warning and the conversation continues — durable memory is a convenience, not a precondition for talking.
@@ -194,7 +196,7 @@ On an interactive terminal, chat runs as a full-screen UI: a pinned header, a sc
 
 ```text
 Yasmin · qwen3-8b-q4.gguf · 8192 ctx
-/reset · /context
+/reset · /context · /image
 ────────────────────────────────────────────────────────
 ```
 
@@ -210,8 +212,60 @@ The plain line-based interface is used automatically when output is piped or non
 |:--------|:-------|
 | `/reset` | Clear the conversation, discard the [stored transcript](#conversation-memory), and replay the opening scene (the compiled character is kept; the character re-opens from the `SCENARIO`). |
 | `/context` | Show retained turns, estimated input tokens, and the budget. |
+| `/image [inputs]` | Set the extra inputs [scene images](#scene-images) compose with, and generate one from the reply on screen. A bare `/image` clears them, which turns generation off. The setting is [remembered](#conversation-memory) with the conversation. |
 
 There is deliberately no quit command. Both interfaces end on interrupt (**Ctrl-C**), and the line interface also on EOF (**Ctrl-D**); either shuts the backend down cleanly and loses at most a reply still generating, since the [transcript is stored](#conversation-memory) after every completed turn. Slash commands are handled locally and never sent to the model.
+
+## Scene images
+
+Chat can generate an image after every reply, from the scene the character just described. It is **off until you turn it on** with `/image`, because nothing about a conversation says it wants pictures, and a generation spends GPU time on the ComfyUI backend.
+
+```text
+> /image ill mf
+(image generation on: ill mf)
+```
+
+The inputs are the whole setting: naming them turns generation on, and a bare `/image` clears them, which turns it off.
+
+```text
+> /image
+(image generation off)
+```
+
+The header shows what is set (`/image - ill mf`), so the setting steering every generation stays on screen. Each generation is one `evoke image` composition: the inputs you named on `/image`, the `.evoke` files the chat resolved, and the scene as the literal prompt.
+
+The inputs are where you steer the picture — a pipeline file, a shot file, a LoRA, an `x2` batch count: anything [`evoke image`](image.md) accepts. `IMAGE`, `LORA`, and `DETAILER` settings layer per key with the last writer winning, so a pipeline file you name here sets the sampler, while `NAME` stays singular and the character file's wins, which keeps the output directory named for the character.
+
+The chat's files are passed as the resolved **files**, not the selectors you typed: a selector re-resolved here could roll a different file than the one the character is being played from.
+
+The setting is stored with the conversation, so resuming one that was generating opens with the same inputs already set and the header already showing them — no image is generated on resume, since nothing new has been said; the next reply fires one. `/reset` clears the dialogue but keeps the setting, and `--new` opens with generation off.
+
+Changing the setting generates again from the reply already on screen, so a new pipeline or shot file can be judged against the scene you are looking at rather than the next one. Generation is fire and forget — the conversation never waits on it, and the result arrives in the log whenever ComfyUI answers. Images land wherever `evoke image` puts them; browse them with `evoke view`.
+
+### How a reply becomes a prompt
+
+A chat reply is narration — sentences, negation, emotion, everything an image prompt should not contain. So the reply is not the prompt. After each reply, chat asks the model one **aside**: a separate request, under its own system prompt, over the last few turns, that describes the current moment as image tags. Nothing about it is recorded — no turn is added, the stored transcript is untouched — because a question about the scene answered in the character's voice would change every reply after it.
+
+What it asks for is **visual detail only**: what the subject is wearing, what their face and body are doing, and the place and light around them. Not camera framing, shot type, or subject count — those belong to the composition you chose, and a model inventing "close-up" every turn would fight it. Not negatives either, since the answer becomes a positive prompt.
+
+```text
+scene: sitting, window seat, tank top, bare shoulders, blanket, streetlight, rain on window
+image: ComfyUI accepted (status: 200 OK)
+```
+
+Both lines are reported, so a picture that came out wrong can be read back against the prompt that caused it. If the aside fails — the model answers in prose, or says nothing — the reply is passed through as the prompt instead, with the reason. No image at all is worse than a poor one.
+
+The scene arrives as a literal prompt, so the usual literal behavior applies: the character's `?APPAREL`, `?ENVIRONMENT`, and `?PROMPT` defaults are suppressed for that generation. That is mostly what you want, since the scene states the clothing and the place itself — but it also drops a `?PROMPT` subject count, so put one in the `/image` inputs when it matters:
+
+```text
+> /image ill "solo, 1girl"
+```
+
+The matching `?!PROMPT` negative is untouched, since channels resolve separately.
+
+### What it costs
+
+The aside is one short request at a low temperature with a small output cap, and it runs while you are reading the reply — the backend is idle at that moment, and the conversation never waits on it. Measured against `mlx_lm.server` on a 4-bit 27B model: **~1s for ~20 tokens** once the prefix is cached. It carries **no seed**, which matters more than it looks: `mlx_lm.server` only batches a request into a generation already running when it has none, so a seed here would make the aside queue behind your next message instead of decoding alongside it.
 
 ## Flags
 
@@ -249,7 +303,7 @@ Character: assistant
 Backend:   llama.cpp (managed)
 Model:     mistral-nemo
 Context:   8192 tokens
-Ctrl-C or Ctrl-D to quit, /reset to clear history, /context for budget info.
+Ctrl-C or Ctrl-D to quit · /reset · /context · /image
 
 You> What's the capital of France?
 

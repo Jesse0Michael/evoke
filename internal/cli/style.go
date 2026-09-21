@@ -49,6 +49,11 @@ func (s chatStyle) user(text string) string { return s.wrap("36", text) }
 // character styles the assistant/character speaker label.
 func (s chatStyle) character(text string) string { return s.wrap("1;35", text) }
 
+// active styles a setting that is switched on, matching the viewer's green
+// confirmations. Bright green against dim chrome is what makes the one live
+// entry in the header readable at a glance.
+func (s chatStyle) active(text string) string { return s.wrap("1;32", text) }
+
 // dim styles secondary output such as diagnostics and hints.
 func (s chatStyle) dim(text string) string { return s.wrap("2", text) }
 

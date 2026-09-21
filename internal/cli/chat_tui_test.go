@@ -87,6 +87,15 @@ func TestChatTUIHeader(t *testing.T) {
 			contains: chatCommands,
 		},
 		{
+			name:  "the /image setting is reported once it is on",
+			width: 100,
+			setup: func(t *testing.T, m chatTUIModel) chatTUIModel {
+				m, _ = enter(t, m, "/image ill mf")
+				return m
+			},
+			contains: "/image - ill mf",
+		},
+		{
 			name:     "a narrow terminal truncates rather than wrapping",
 			width:    14,
 			setup:    func(_ *testing.T, m chatTUIModel) chatTUIModel { return m },

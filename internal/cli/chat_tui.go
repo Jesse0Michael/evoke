@@ -61,6 +61,7 @@ type chatTUIModel struct {
 	backendDone    <-chan struct{}
 	backendErr     func() error
 	knowledgeBases []*knowledge.Base
+	image          chatImage
 
 	viewport viewport.Model
 	input    textinput.Model
@@ -90,6 +91,10 @@ type replyMsg struct {
 	err   error
 }
 
+// imageMsg carries the result of a scene image generation back into the update
+// loop.
+type imageMsg sceneGeneration
+
 // backendDeadMsg signals the backend exited unexpectedly.
 type backendDeadMsg struct{}
 
@@ -111,6 +116,7 @@ func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, s
 		backendDone:    backendDone,
 		backendErr:     backendErr,
 		knowledgeBases: knowledgeBases,
+		image:          newChatImage(plan, sess),
 		input:          ti,
 		spinner:        sp,
 		sess:           sess,
@@ -217,6 +223,25 @@ func (m chatTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.verbose {
 				m.transcript = append(m.transcript, m.renderDiagnostics(msg.usage))
 			}
+			// Draw the scene the character just described. Fire and forget: the
+			// conversation never waits on a generation, and its result arrives as
+			// its own message whenever ComfyUI answers.
+			cmd := m.imageCmd(msg.reply)
+			m.refreshViewport()
+			return m, cmd
+		}
+		m.refreshViewport()
+		return m, nil
+
+	case imageMsg:
+		if msg.scene != "" {
+			m.transcript = append(m.transcript, m.st.dim("scene: "+msg.scene))
+		}
+		switch {
+		case msg.err != nil:
+			m.transcript = append(m.transcript, m.st.errorText("image: ")+msg.err.Error())
+		case lastLine(msg.out) != "":
+			m.transcript = append(m.transcript, m.st.dim("image: "+lastLine(msg.out)))
 		}
 		m.refreshViewport()
 		return m, nil
@@ -250,7 +275,7 @@ func (m chatTUIModel) header() string {
 	clip := lipgloss.NewStyle().MaxWidth(width)
 	return strings.Join([]string{
 		clip.Render(m.st.dim(status)),
-		clip.Render(m.st.dim(chatCommands)),
+		clip.Render(m.st.dim(chatCommands+" · ") + m.image.label(m.st)),
 		m.st.dim(strings.Repeat("─", width)),
 	}, "\n")
 }
@@ -276,6 +301,19 @@ func (m chatTUIModel) submit() (tea.Model, tea.Cmd) {
 // slash handles the local commands, mirroring the line loop's handleSlashCommand.
 func (m chatTUIModel) slash(cmd string) (tea.Model, tea.Cmd) {
 	m.input.Reset()
+	if isImageCommand(cmd) {
+		status, fire := m.image.set(cmd, m.sess)
+		m.transcript = append(m.transcript, m.st.dim(status))
+		m.save()
+		var gen tea.Cmd
+		if fire {
+			// Redraw the scene already on screen, so a changed setting can be
+			// judged against the reply it will apply to.
+			gen = m.imageCmd(lastAssistantReply(m.sess))
+		}
+		m.refreshViewport()
+		return m, gen
+	}
 	switch cmd {
 	case "/reset":
 		m.sess.Reset()
@@ -300,7 +338,7 @@ func (m chatTUIModel) slash(cmd string) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 		return m, nil
 	default:
-		m.transcript = append(m.transcript, m.st.dim(fmt.Sprintf("unknown command %q (try /reset, /context)", cmd)))
+		m.transcript = append(m.transcript, m.st.dim(fmt.Sprintf("unknown command %q (try /reset, /context, /image)", cmd)))
 		m.refreshViewport()
 		return m, nil
 	}
@@ -326,6 +364,23 @@ func (m chatTUIModel) replyCmd() tea.Cmd {
 	return func() tea.Msg {
 		reply, usage, err := client.Complete(ctx, req)
 		return replyMsg{reply: reply, usage: usage, err: err}
+	}
+}
+
+// imageCmd generates one image from a reply, or nil when there is nothing to
+// generate — /image off, or a character that has not spoken yet.
+//
+// The extraction request is built here, on the update goroutine, because it
+// reads the session; the returned command then owns nothing the conversation
+// can touch and is free to run alongside the next turn.
+func (m chatTUIModel) imageCmd(reply string) tea.Cmd {
+	if !m.image.on() || strings.TrimSpace(reply) == "" {
+		return nil
+	}
+	ctx, client, img := m.ctx, m.client, m.image
+	req := chat.SceneRequest(m.sess)
+	return func() tea.Msg {
+		return imageMsg(img.generate(ctx, client, req, reply))
 	}
 }
 

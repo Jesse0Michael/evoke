@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -51,6 +53,35 @@ func Image(args []string, verbose bool) int {
 	return composeAndSubmit(ctx, "image", fs.Args(), verbose, func(ctx context.Context, composition *evoke.Composition) (*generate.Result, error) {
 		return gen.Generate(ctx, composition)
 	}, *batch)
+}
+
+// runEvokeSelf runs one of this CLI's own subcommands as a child process and
+// returns everything it printed. Both the viewer and the chat session generate
+// images this way rather than calling the command in process: these commands
+// write their resolution trace to stdout, which would land in the middle of an
+// absolutely-positioned frame or an alt-screen UI, and a child's output can
+// simply be captured instead. os.Executable is the binary actually running, so
+// a session started from ./bin does not silently drive a different evoke on PATH.
+//
+// Stdin stays nil for the same reason chafa's does — a child that inherits the
+// terminal swallows the keystrokes typed while it runs. Leaving it nil points it
+// at the null device.
+func runEvokeSelf(ctx context.Context, args []string) (string, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("failed to locate the evoke binary: %w", err)
+	}
+
+	child := exec.CommandContext(ctx, self, args...)
+	var out bytes.Buffer
+	child.Stdout, child.Stderr = &out, &out
+	if err := child.Run(); err != nil {
+		if text := strings.TrimSpace(out.String()); text != "" {
+			return "", fmt.Errorf("%s", text)
+		}
+		return "", fmt.Errorf("evoke %s: %w", args[0], err)
+	}
+	return out.String(), nil
 }
 
 // resolveLocalPathDoc reads, parses, and validates a local .evoke file.

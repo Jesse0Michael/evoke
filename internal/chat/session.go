@@ -33,6 +33,12 @@ type Session struct {
 	// inputs are the CLI arguments this conversation belongs to, recorded in
 	// the stored file for whoever reads the sessions directory.
 	inputs []string
+	// imageInputs are the extra .evoke inputs the conversation generates scene
+	// images with, stored alongside the transcript so resuming a conversation
+	// picks it up still generating what it was. The session neither reads nor
+	// interprets them; it only keeps them durable, since the front-end that
+	// owns the setting has nowhere of its own to write.
+	imageInputs []string
 }
 
 // NewSession creates a session seeded with the compiled system prompt.
@@ -59,6 +65,20 @@ func (s *Session) SetRetrievedContext(ctx string) {
 // after a response finishes successfully, exactly once per response.
 func (s *Session) AddAssistant(content string) {
 	s.turns = append(s.turns, Message{Role: RoleAssistant, Content: content})
+}
+
+// SetImageInputs records the scene-image setting. It takes effect on the next
+// Save, so the caller stores it the moment it changes rather than waiting for a
+// turn to end — a setting made and then abandoned by quitting is still the
+// setting the user chose.
+func (s *Session) SetImageInputs(inputs []string) {
+	s.imageInputs = inputs
+}
+
+// ImageInputs returns the scene-image setting restored with the transcript,
+// empty when the conversation had none.
+func (s *Session) ImageInputs() []string {
+	return s.imageInputs
 }
 
 // Reset clears the conversational turns while retaining the compiled system
@@ -124,6 +144,52 @@ func (s *Session) Request() (CompletionRequest, error) {
 		Messages: msgs,
 		Sampling: s.plan.Sampling,
 	}, nil
+}
+
+// Aside builds a one-off request over the recent transcript under a different
+// system prompt, for asking the model something about the conversation rather
+// than continuing it.
+//
+// Nothing it does is recorded: no turn is added, the stored transcript is
+// untouched, and the retrieved RAG context is neither read nor consumed. That
+// is the whole point — an aside must not be able to reach the dialogue, because
+// a question about the scene answered in the character's voice, or a stray turn
+// in the history, would change every reply after it.
+//
+// The messages are the newest maxTurns of the transcript, aligned to start on a
+// user message and trimmed by whole pairs until they fit the budget, so a
+// strict-alternation chat template accepts the result. Sampling is the caller's
+// and deliberately not the plan's: an extraction wants a low temperature and no
+// seed, which is the opposite of what makes a character read well.
+func (s *Session) Aside(system, instruction string, maxTurns int, sampling Sampling) CompletionRequest {
+	turns := s.turns
+	if len(turns) > maxTurns {
+		turns = turns[len(turns)-maxTurns:]
+	}
+	alignToUser := func(t []Message) []Message {
+		for len(t) > 0 && t[0].Role != RoleUser {
+			t = t[1:]
+		}
+		return t
+	}
+	turns = alignToUser(turns)
+
+	budget := s.plan.History.InputBudget(sampling.MaxOutputTokens)
+	for {
+		msgs := make([]Message, 0, len(turns)+2)
+		msgs = append(msgs, Message{Role: RoleSystem, Content: system})
+		msgs = append(msgs, turns...)
+		msgs = append(msgs, Message{Role: RoleUser, Content: instruction})
+
+		if len(turns) == 0 || estimateTokens(msgs) <= budget {
+			return CompletionRequest{
+				Model:    cmpOr(s.plan.ModelPath, s.plan.Model),
+				Messages: msgs,
+				Sampling: sampling,
+			}
+		}
+		turns = alignToUser(turns[min(2, len(turns)):])
+	}
 }
 
 // buildMessages applies the deterministic sliding-window policy: the system
@@ -224,10 +290,14 @@ const memoryVersion = 1
 // memoryFile is the on-disk representation. Inputs are recorded for whoever
 // reads the sessions directory, not for matching — the file name is the key.
 type memoryFile struct {
-	Version int       `json:"version"`
-	Inputs  []string  `json:"inputs,omitempty"`
-	Updated time.Time `json:"updated"`
-	Turns   []Message `json:"turns"`
+	Version int      `json:"version"`
+	Inputs  []string `json:"inputs,omitempty"`
+	// ImageInputs is omitted when unset, which is what keeps this readable by
+	// the version that predates it — a new optional field needs no version bump,
+	// and bumping would discard every stored conversation rather than migrate it.
+	ImageInputs []string  `json:"image_inputs,omitempty"`
+	Updated     time.Time `json:"updated"`
+	Turns       []Message `json:"turns"`
 }
 
 // Remember gives the session durable storage at path, so repeating a command
@@ -268,6 +338,7 @@ func (s *Session) Remember(path string, inputs []string, resume bool) error {
 		return fmt.Errorf("stored conversation %s is version %d, not %d; starting a new conversation", path, f.Version, memoryVersion)
 	}
 	s.restore(f.Turns)
+	s.imageInputs = f.ImageInputs
 	return nil
 }
 
@@ -284,10 +355,11 @@ func (s *Session) Save() error {
 		return nil
 	}
 	data, err := json.MarshalIndent(memoryFile{
-		Version: memoryVersion,
-		Inputs:  s.inputs,
-		Updated: time.Now().UTC(),
-		Turns:   s.turns,
+		Version:     memoryVersion,
+		Inputs:      s.inputs,
+		ImageInputs: s.imageInputs,
+		Updated:     time.Now().UTC(),
+		Turns:       s.turns,
 	}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to encode conversation: %w", err)
