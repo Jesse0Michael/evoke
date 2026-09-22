@@ -458,6 +458,8 @@ Camera, lens, aperture, resolution, quality anchors, sampler settings → **one*
 
 `IMAGE` text lands at the prompt front — right for quality anchors, wrong for eye color.
 
+**`IMAGE` is generator configuration, not a fact bucket.** Every other rendering declaration is populated by placing the brief's facts into the block they describe (SKILL.md, "Authoring a new file"); `IMAGE` isn't one of those blocks. It exists to hold the settings and prompt text a specific model/architecture's pipeline needs — checkpoint, sampler, steps, the camera/lighting/quality anchors true of everything that pipeline renders — or to override settings a pipeline file already established. Write one only when the task is actually about defining or tuning that pipeline for a model. A brief calling a scene "cinematic" or a subject "glamorous" is describing the subject's affect, not asking for pipeline configuration — that fact goes into `APPEARANCE` as an expression or quality, and produces no `IMAGE` block at all.
+
 **Writing the pipeline file: its prompt text is all-or-nothing, so keep the subject out of it.** Settings on `IMAGE` layer per key, but the free text is a channel — one explicit `IMAGE` prompt line anywhere in the composition drops _every_ line of the default's text (see [File Format](file-format.md)). So a caller who needs to lose one phrase loses the camera, the composition anchors, and the medium anchor with it, and has to write them back into a character file that has no business asserting a focal length.
 
 That price is paid at authoring time, by whoever decides what goes in the block. Camera, lens, lighting, composition, medium and quality anchors belong there — they are true of every subject the pipeline will ever render. Anything describing the **subject's surface** does not: `ultra-realistic skin texture, visible pores, natural imperfections` is right for most people and wrong for anyone made of scales, fur, metal, stone or feathers, and it drags an unusual skin tone back toward a human one. Put subject-surface text in its own small selectable file the caller includes by default and drops for non-human subjects, and the phrase can be removed without costing anyone the block.
@@ -467,6 +469,8 @@ That price is paid at authoring time, by whoever decides what goes in the block.
 **The `base` setting belongs there too, and only there.** `base` names the model architecture — `sdxl` (the default, so pipeline files for it may omit it) or `anima` — and it is what makes the composition compile against that architecture's node graph and defaults. A character file that names a base has decided which model its callers may use; the pipeline file that supplies the `checkpoint` or the `unet` is the file entitled to that call.
 
 A `LORA` is the one place a base is a property of the asset rather than a choice: the weights were trained against one base model, so `base = anima` on a `LORA` means "load me only under `anima`," and a mismatch is skipped rather than warned. It defaults exactly as it does on `IMAGE` — omitted means `sdxl` — so write it only for weights built against something else, and never write `base = sdxl`. An untagged `LORA` is an SDXL `LORA`: it loads under `sdxl` and is skipped everywhere else, which is what stops SDXL weights being handed to an architecture whose keys they do not match.
+
+**Don't invent a `LORA` or a `DETAILER` — both name something that has to already exist.** A `LORA` block is a pointer to a trained weight file; the `model` setting has to be a filename you know is part of the project's assets, not a name that sounds right for the character (`beauty`, `makeup`, `luxury` describe a vibe, not a file). If no matching LoRA exists, that's not a gap to fill by writing one — say there's no LoRA for this rather than fabricating a reference to a file that isn't there. `DETAILER` is a per-region inpaint pass, and its canonical settings — `detector`, sizes, denoise — belong to whichever pipeline/style file the caller selects for that concern. A character or shot file gets to override one of those settings once a pipeline has established the region (§5, structured layering: a shot file raising `max_detection` while inheriting everything else is the whole point) — it does not get to introduce a `DETAILER face` block where nothing upstream configured one. Either way the syntax is a required argument plus `key = value` settings ([File Format](file-format.md#detailer)); `DETAILER` followed by a bare comma list of region names is not a shorthand for three detailers, it's an empty configuration for a declaration that needed an argument on the header line.
 
 **The exception is a style the source binds to one character.** When the material says this character is rendered in this medium — a bot whose stored prompt carries `dreamworks, 3d animation, Pixar`, an existing asset you are transcribing — that is a fact about the character as authored, and it belongs in an `IMAGE` block in the character file. Do not silently relocate it to a style file the caller has to know to select, and do not drop it (§2). Say once that `IMAGE` is singular, so two such characters in one composition warn and the first wins, and let the author decide; the split into a shared style file is a refactor they may want later and never something to perform on their behalf mid-conversion.
 
@@ -742,7 +746,7 @@ The first four are **reference prose about a character**. `CHAT` instructions ar
 
 ### 4.3 `CHARACTER` — what the character is
 
-The stable facts needed to recognize and understand the character. Positive only; there is no `!CHARACTER`.
+Write this block only when the file exists to define a persistent character (§5) — not to title or narrate a one-off scene's subject. The stable facts needed to recognize and understand the character. Positive only; there is no `!CHARACTER`.
 
 Lead with the clearest, most important statement, then work from major defining traits down to smaller distinctive ones. The list below is what _may_ go here, not fields to fill — cover only what applies and the source supports, and skip the rest silently:
 
@@ -884,6 +888,7 @@ CHAT
 
 ## 5. File design
 
+- **`NAME` and `CHARACTER` exist to define a character — write neither unless that's what the file is.** `NAME` sets the output directory and the chat greeting (`You are {NAME}`); `CHARACTER` states what a persistent identity fundamentally is. A one-off scene, a themed shot, an apparel file, an environment, a style/pipeline file — none of these are a character, however much the brief reads like one ("a woman getting ready", "a knight in the rain"). Describe an anonymous subject in `APPEARANCE`/`PROMPT` instead; a render doesn't need a name. Both declarations are also singular ([File Format](file-format.md)), so a `NAME` or `CHARACTER` on a file that was never meant to be a character conflicts with the real character it gets composed with.
 - **One concern per file** — the smallest thing you'd select alone. Never selected alone? Fold it in. Routinely swap half of it? Split it.
 - **Name the thing, not the type** — `winter-coat.evoke`, not `apparel-winter.evoke`.
 - **The filename is already a tag.** The index carries every file's base name as an implicit tag, so `leotorin.evoke` answers `evoke image leotorin` with no `TAGS` block at all. Never tag a file with its own name.
@@ -906,12 +911,14 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 
 | File kind        | Explicit                                                                              | `?` default                                                                       |
 | :--------------- | :------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------- |
-| Character        | `APPEARANCE`/`!`, `CHARACTER`, `PERSONALITY`/`!`, `BACKSTORY`, `VOICE` when asked for | `?PROMPT` — its default composition; `?APPAREL`; `?ENVIRONMENT` only when the source establishes a home, shop, or city |
+| Character        | `NAME`, `APPEARANCE`/`!`, `CHARACTER`, `PERSONALITY`/`!`, `BACKSTORY`, `VOICE` when asked for | `?PROMPT` — its default composition; `?APPAREL`; `?ENVIRONMENT` only when the source establishes a home, shop, or city |
+| Scene / one-off render (no `NAME`/`CHARACTER`) | `PROMPT`/`!`, `APPEARANCE`/`!`, `APPAREL`/`!`, `ENVIRONMENT`/`!` — whatever the brief describes | —                                                                                 |
 | Shot / view      | `PROMPT`/`!`                                                                          | —                                                                                 |
 | Apparel          | `APPAREL`/`!`                                                                         | —                                                                                 |
 | Place / location | `ENVIRONMENT`/`!`                                                                     | —                                                                                 |
 | Style / pipeline | `IMAGE` text, quality anchors                                                          | settings a shot file should be free to raise                                      |
 
+- **A scene file has nothing to default.** It has no reusable identity behind it for a block to "come along with," so nothing in it is `?` — not even `APPAREL` or `ENVIRONMENT`, which take `?` on a character file for the opposite reason. If the brief describes clothing or a place, that's the whole assertion, not a fallback. And it never gets `NAME` or `CHARACTER` regardless of how specific or vivid the brief is — see SKILL.md's "What is this file?".
 - **`APPEARANCE` is never `?`.** A character's face is not a fallback — there is no composition where you want a different file's face substituted for it, and in a two-character composition accumulation is already the behavior you want.
 - **`PROMPT` in a character file is always `?`; in a shot file it is never `?`.** The character's composition is a claim about the picture that holds only until a caller asks for a different picture, so it yields. A shot file exists to assert that shot, so it doesn't. This is the same test as `winter-coat` and its `APPAREL` — the block the file exists for is explicit (§3.10).
 - **A pipeline file carries no `PROMPT` at all.** It is the one file that cannot know whether the subject is a girl, a boy, or a non-human, so any composition it writes is either wrong or too vague to be worth the tokens. Camera, lighting, and quality anchors go in its `IMAGE` text (§3.9); composition belongs to the character and the shot.
@@ -929,6 +936,9 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 - [ ] Can every value be pointed at something in the prompt or the source material?
 - [ ] Any block written because it was empty rather than because there was material for it?
 - [ ] Any declaration present that nobody asked for?
+- [ ] Does `NAME`/`CHARACTER` trace to a fact list that actually found a persisting identity (SKILL.md, "Authoring a new file" step 2) — and does every `?` sit on a block that has something more specific to yield to (§5, §5.1)?
+- [ ] Any `IMAGE`, `LORA`, or `DETAILER` block present without the task explicitly calling for generator/pipeline configuration or an override of one — none of the three is populated from the brief's descriptive facts (§3.9)?
+- [ ] Does every line in `APPEARANCE`/`APPAREL`/`ENVIRONMENT`/`PROMPT` trace to one entry on the fact list, with synonyms for the same idea collapsed to one rather than stacked (SKILL.md step 1)?
 - [ ] Converting existing material — is every token in the source either placed in some block or named in your reply as dropped, with a reason?
 - [ ] Anything dropped that would have fit `IMAGE`, `PERSONALITY`, `?PROMPT`, `?APPAREL`, `?ENVIRONMENT`, or a `!BLOCK` if you had looked there?
 - [ ] Any fact lost while changing the form of a block, or any source fragment pasted verbatim into a prose block?

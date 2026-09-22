@@ -135,7 +135,7 @@ Notes on the non-obvious ones:
 
 `IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE`. Singular **per argument**, values a mix of `key = value` settings and free prompt text where the declaration accepts it. They do **not** follow the all-or-nothing singular rule — every block contributing to the same declaration and argument merges **setting by setting**:
 
-The character file carries the canonical configuration:
+One file carries the canonical configuration:
 
 ```text
 DETAILER face
@@ -146,14 +146,14 @@ DETAILER face
     max_detection = 1
 ```
 
-The shot file changes one setting and inherits the rest:
+A second file changes one setting and inherits the rest:
 
 ```text
 DETAILER face
     max_detection = 2
 ```
 
-→ `evoke image character shot` gives `max_detection = 2` with `detector`, `guide_size`, `denoise`, and the text inherited. **A block only names what it changes.**
+→ composing both gives `max_detection = 2` with `detector`, `guide_size`, `denoise`, and the text inherited. **A block only names what it changes.** This is the merge mechanics; which file's job it is to hold the canonical config versus override one setting is a content decision — see [Style Guide](style-guide.md) §3.9.
 
 Settings resolve in two passes, last writer winning within each:
 
