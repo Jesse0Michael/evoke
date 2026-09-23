@@ -615,6 +615,8 @@ Some framings delete the standing position by construction, so a block using one
 
 These are **not** anchors, however prominent: grass, heather, flowers, foliage, undergrowth, **trees**, rocks, boulders, rubble, sand, snow, mud, water, mist, cloud, sky, dunes, terrain of any kind. Their real size varies freely, so the model resizes them around whatever it renders rather than contradicting it. Trees are the most tempting and the worst — tree heights span two orders of magnitude. **A stated measurement is not an anchor either**: `outer walls running across the middle distance, sixty feet high` still renders a giant, because a number is inert in an image (§3.13) while reading, to the author, as having handled scale.
 
+**When the location's whole premise is that there is no ground — a floating city, an orbiting station, a chamber of hovering platforms — invent the foothold its own architecture would plausibly have, and describe that instead of the wide view.** Source material for a place like this is written and photographed from outside and above, because that is the shot that reads as "floating" to a human; treat that shot as material to place in the middle distance and background, never as the frame itself. Give the subject a platform, terrace, balcony, landing pad, docking arm, or walkway, and write it exactly like any other interior or exterior ground under §3.12 — a standing surface at the viewer's level plus a scale anchor of known height, both in the foreground, before anything the source shows at a distance. Everything the source establishes about the place still belongs in the file; only its position in the frame changes.
+
 The two requirements are independent, which is why one check cannot catch both:
 
 ```text
