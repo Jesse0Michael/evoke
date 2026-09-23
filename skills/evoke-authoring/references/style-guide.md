@@ -511,6 +511,8 @@ Shot files state `PROMPT` explicitly, and several of them accumulate with each o
 
 To the model these name an _object_, or a tagged genre, rather than the sense you meant. Grouped by what you are writing, so you can scan the one section that applies. Append when you find new ones.
 
+**The table is examples of a pattern, not the pattern itself — do not scan it looking for an exact match.** The trap is any comparison: `-like`, `-sized`, a bare simile, or a named object, animal, or famous figure standing in for a trait you meant only as an analogy. CLIP has no concept of "like" — `gorilla-like arms` and `gorilla` are the same tokens to the encoder, and it renders the gorilla, not the "muscular" the comparison meant. `huge tennis-ball-sized eyes` renders a tennis ball. `bat-like ears` renders bat wings. A moustache named for the household object it resembles renders the object. `skeletally thin` renders a skeleton. These look nothing alike on the page — a build, a size, an animal, a grooming style, a thinness — which is why checking a new phrase against the table's existing rows misses them. The question that catches all of them, table entry or not: **does this phrase name a second thing the model could render on its own, separate from the trait I meant?** If the answer is yes, replace the comparison with the geometry it stood in for — shape, size, material, stated directly — so there is no second noun left for the model to render literally. `hooked nose` survives this test: a hook is the shape itself, not a second object competing with the face.
+
 **Body & build**
 
 | Don't use              | Renders             | Use instead                                     |
@@ -520,6 +522,11 @@ To the model these name an _object_, or a tagged genre, rather than the sense yo
 | `tail`                 | an animal tail      | qualify it — `a long scaled lizard tail`        |
 | `tendrils`             | tentacles           | `thin trailing strands`                         |
 | `glowing eyes` on stone or wood | a glow effect | `carved marble eyes`                          |
+| `gorilla-like arms`    | a gorilla            | `thick muscular arms`                          |
+| `huge tennis-ball-sized eyes` | a tennis ball  | `huge round eyes`                              |
+| `skeletally thin`, `skeletal build` | a skeleton, exposed bones | `extremely thin, gaunt, emaciated build` |
+| `bat-like ears`        | bat wings             | `large drooping pointed ears` — name the shape, not the animal |
+| `beak-like nose`       | a bird's beak         | `a large hooked nose`                          |
 
 **Colour & material**
 
@@ -542,6 +549,7 @@ To the model these name an _object_, or a tagged genre, rather than the sense yo
 | `winged eyeliner`     | wings                    | `cat-eye eyeliner`       |
 | `wire-rimmed glasses` | wires, machinery         | `thin metal-frame glasses` |
 | `cracked lens`        | cracks on skin, cracks on surfaces | `one lens fractured` |
+| `toothbrush moustache` | a literal toothbrush    | `a short neatly clipped moustache trimmed close to the upper lip` |
 
 **Objects & weapons**
 
@@ -552,6 +560,9 @@ To the model these name an _object_, or a tagged genre, rather than the sense yo
 | `fighter stance`       | fighter jets                 | `combat pose`                                  |
 | `warrior` (non-combat) | armor, weapons, battlefields | `strong posture`                               |
 | `bound`                | bondage                      | `tied at the wrists with rope`                 |
+| `crocodile-skin`, `alligator-skin` handbag/accessory | the literal animal | `textured leather` |
+| a cane/walking stick described as `concealing a wand` | the wand, not the cane | state the cane's length and material only — drop the concealment clause |
+| `X, like Santa` or any named public figure as a mood comparison | the figure's costume (a red suit, a beard) | the specific visual trait itself — `a wide jolly grin, rosy cheeks, twinkling warm eyes` |
 
 **Place & architecture**
 
