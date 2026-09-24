@@ -160,7 +160,7 @@ Most files are written from words — a brief, notes, a character sheet. Sometim
 
 **Where words and picture disagree, the picture governs the rendering blocks.** A prose description of an appearance is usually written from someone's memory of an image, and memory drifts — hair length, hair colour, and headwear are the usual casualties. So read the image before writing `APPEARANCE`, not after, and re-read the `!BLOCK` while you are there: a negative written from prose can end up suppressing a feature the reference plainly has, which costs you the trait in every render.
 
-**Read shadow as light, not as pigment.** This is the transferable one. Artists shade skin with a cool cast — green, blue, violet along the jaw, the throat, the underside of an arm — and transcribing that cast as a skin tone gives you a green-skinned character nobody drew. Ask what colour the *lit* side is; that is the pigment. The same trap runs the other way on your own output, where a warm key light reads as a tan you never wrote.
+**Read shadow as light, not as pigment.** This is the transferable one. Artists shade skin with a cool cast — green, blue, violet along the jaw, the throat, the underside of an arm — and transcribing that cast as a skin tone gives you a green-skinned character nobody drew. Ask what colour the _lit_ side is; that is the pigment. The same trap runs the other way on your own output, where a warm key light reads as a tan you never wrote.
 
 **A crop is not a small version of the whole.** A headshot is silent about arms, hands, build, height, and everything below the collar — and silence is not neutral, because the model fills it with its default. Work from the widest reference available, and when only a crop exists, name in your reply what it left unsourced instead of quietly supplying it.
 
@@ -178,30 +178,30 @@ Reading a render you already produced is the same skill pointed at your own outp
 
 The rules divide into what a value **says**, how it is **phrased**, and what to do **after a render**. A block can satisfy every phrasing rule and still come back wrong; when it does, the answer is in the first group or the last. Numbers are stable identifiers, not a reading order — find the rule by what you are doing:
 
-| Doing this                                                 | Read                                             |
-| :--------------------------------------------------------- | :----------------------------------------------- |
-| Choosing what goes in the block at all                     | §3.12 one frame, §3.10 count and framing, §3.9 technical directives |
-| Naming a species, a proper noun, or a generic place        | §3.13                                            |
-| Phrasing a value                                           | §3.5 phrases, §3.3 nothing abstract, §3.4 don't over-explain, §3.8 be specific, §3.7 no alternatives |
-| Picking a word that might mean something else              | §3.11                                            |
-| Writing a `!BLOCK`                                         | §3.2 bare nouns, §3.2b correction not wishlist, §3.2d shared geometry, §3.1 don't negate twice |
-| Pinning a trait the model keeps averaging away             | §3.6 weights, §3.2c continuum bracket            |
-| Fixing a render that came back wrong                       | §3.14                                            |
+| Doing this                                          | Read                                                                                                 |
+| :-------------------------------------------------- | :--------------------------------------------------------------------------------------------------- |
+| Choosing what goes in the block at all              | §3.12 one frame, §3.10 count and framing, §3.9 technical directives                                  |
+| Naming a species, a proper noun, or a generic place | §3.13                                                                                                |
+| Phrasing a value                                    | §3.5 phrases, §3.3 nothing abstract, §3.4 don't over-explain, §3.8 be specific, §3.7 no alternatives |
+| Picking a word that might mean something else       | §3.11                                                                                                |
+| Writing a `!BLOCK`                                  | §3.2 bare nouns, §3.2b correction not wishlist, §3.2d shared geometry, §3.1 don't negate twice       |
+| Pinning a trait the model keeps averaging away      | §3.6 weights, §3.2c continuum bracket                                                                |
+| Fixing a render that came back wrong                | §3.14                                                                                                |
 
 ### 3.1 Never negate in a positive block
 
 The tokenizer renders every content word regardless of modifiers. `no clothing` renders clothing. **Test:** if every modifier were stripped and the word rendered literally, would that be fine?
 
-| Wrong                  | Renders             | Right                                                  |
-| :--------------------- | :------------------ | :----------------------------------------------------- |
-| `without jewelry`      | jewelry             | omit, or `!APPAREL jewelry`                            |
-| `missing legs`         | legs                | `two legs`                                             |
-| `free of blemishes`    | blemishes           | `smooth clear skin`                                    |
-| `no visible pupil`     | a pupil             | `solid glowing red eyes`, with `visible pupils` negated |
+| Wrong                  | Renders             | Right                                                      |
+| :--------------------- | :------------------ | :--------------------------------------------------------- |
+| `without jewelry`      | jewelry             | omit, or `!APPAREL jewelry`                                |
+| `missing legs`         | legs                | `two legs`                                                 |
+| `free of blemishes`    | blemishes           | `smooth clear skin`                                        |
+| `no visible pupil`     | a pupil             | `solid glowing red eyes`, with `visible pupils` negated    |
 | `no daylight`          | daylight            | `lightless, lit only by the fire`, with `daylight` negated |
-| `an unrolled bedroll`  | a rolled-up bedroll | `a bedroll laid out flat`                              |
-| `an unbuttoned jacket` | a buttoned jacket   | `an open jacket, the front hanging loose`              |
-| `undyed homespun`      | dyed cloth          | `natural pale homespun`                                |
+| `an unrolled bedroll`  | a rolled-up bedroll | `a bedroll laid out flat`                                  |
+| `an unbuttoned jacket` | a buttoned jacket   | `an open jacket, the front hanging loose`                  |
+| `undyed homespun`      | dyed cloth          | `natural pale homespun`                                    |
 
 Exclusions go in the matching `!BLOCK`.
 
@@ -234,14 +234,14 @@ What earns no place is the token corresponding to nothing you wrote. A generic q
 
 **Fix the positive first.** Most drift is caused by a bad positive token, not a missing negative — see §3.11. `collar` rendering a dog collar, `tail` rendering an animal tail, `bound` rendering bondage, `television` in an `ENVIRONMENT` putting the subject inside the screen. A negative that papers over a bad positive leaves the bad positive in place and spends budget hiding it. Reach for `!BLOCK` only once the positive is correct and the drift persists.
 
-| Situation                                            | Negative                                                            |
-| :--------------------------------------------------- | :------------------------------------------------------------------ |
-| a green-haired character keeps rendering brown       | `brown hair, brunette` — observed                                   |
-| a character's small bow keeps rendering huge         | `large bow, oversized bow` — observed                               |
+| Situation                                            | Negative                                                             |
+| :--------------------------------------------------- | :------------------------------------------------------------------- |
+| a green-haired character keeps rendering brown       | `brown hair, brunette` — observed                                    |
+| a character's small bow keeps rendering huge         | `large bow, oversized bow` — observed                                |
 | a positive stating `young adult, early twenties`     | `loli, child, teenage girl` — the overshoot of a stated trait, §3.2c |
 | a positive stating `rustic one room cabin interior`  | `modern, suburban, tidy` — the register the noun defaults to, §3.13  |
-| a character who has never once rendered a dog collar | **nothing** — nothing in the positive invites one                   |
-| `extra fingers`, `bad hands`, `watermark`            | **nothing here** — adjacent to no subject; pipeline file, §3.9      |
+| a character who has never once rendered a dog collar | **nothing** — nothing in the positive invites one                    |
+| `extra fingers`, `bad hands`, `watermark`            | **nothing here** — adjacent to no subject; pipeline file, §3.9       |
 
 ### 3.2c Traits on a continuum: state the target, negate the overshoot
 
@@ -256,7 +256,7 @@ The pair does the work; either half alone leaves the axis open. This is also the
 
 The same shape handles a **named tag that renders the wrong thing** — though that one you do have to observe first. Replace the name with the geometry you actually wanted, and put the name into the negative, because the geometry still invites it. A hairstyle that kept coming back as a side bun became `rolled hair ends`, `spiral curl at each side of the jaw`, `symmetrical hairstyle`, with `side bun, hair bun, updo, asymmetrical hair` suppressed.
 
-**Build always needs the bracket, and the bracket needs a middle.** Of every continuum in the list, build is the one that fails most reliably, and it fails in a way the others don't: the model does not merely overshoot, it *fills in whatever you left unsaid* with its default silhouette. A block saying `broad, heavily built` and nothing about the waist comes back with an hourglass, because the adjective spoke about mass and the prior owns everything else. Name the parts, not the impression — shoulders, ribcage, waist, hips, limbs — so there is nothing left for the default to supply:
+**Build always needs the bracket, and the bracket needs a middle.** Of every continuum in the list, build is the one that fails most reliably, and it fails in a way the others don't: the model does not merely overshoot, it _fills in whatever you left unsaid_ with its default silhouette. A block saying `broad, heavily built` and nothing about the waist comes back with an hourglass, because the adjective spoke about mass and the prior owns everything else. Name the parts, not the impression — shoulders, ribcage, waist, hips, limbs — so there is nothing left for the default to supply:
 
 ```text
 APPEARANCE
@@ -271,7 +271,7 @@ APPEARANCE
 
 A negative is not aimed. It pushes against every token in the positive that resembles it, and the resemblance the model computes is geometric, not semantic. When something you are asking for is shaped like something you are suppressing, the negative takes the positive with it — and the symptom is that a trait you weighted, wrote carefully, and stated three ways simply does not appear.
 
-The clearest case is proportion. A small-folk species — gnome, halfling, dwarf, goblin — reads as small-folk because of a large head on a short body with short limbs. Those are also *childlike* proportions, so a stack of `child`, `loli`, `toddler` negatives pushes toward adult human proportion and quietly deletes the species. The negatives were fighting the thing the file exists to assert.
+The clearest case is proportion. A small-folk species — gnome, halfling, dwarf, goblin — reads as small-folk because of a large head on a short body with short limbs. Those are also _childlike_ proportions, so a stack of `child`, `loli`, `toddler` negatives pushes toward adult human proportion and quietly deletes the species. The negatives were fighting the thing the file exists to assert.
 
 The fix is to separate the axes rather than soften either one. Put the contested geometry in the positive explicitly, put the property you actually wanted the negative for in the positive too, and let the negative shrink to the narrow thing it was for:
 
@@ -286,7 +286,7 @@ APPEARANCE
     child, loli, toddler, baby face, chibi
 ```
 
-Adult *face and features* is now something the positive asserts, so the negative no longer has to carry it — and a flat, narrow negative replaces the stack of weighted ones that was overriding the species. Each weighted line is one trait: the species, its proportions, its adulthood.
+Adult _face and features_ is now something the positive asserts, so the negative no longer has to carry it — and a flat, narrow negative replaces the stack of weighted ones that was overriding the species. Each weighted line is one trait: the species, its proportions, its adulthood.
 
 Other pairs that collide the same way: `flat chest` against a `child` negative; `slim, petite` against a `loli` negative; `bald` against a `shaved head` negative; a smooth non-human face against `featureless, faceless`; a stylised or low-detail medium against `blurry, low quality`. Before writing a negative, ask what shape it suppresses rather than what word it names, and check nothing in the positive has that shape.
 
@@ -302,7 +302,7 @@ Negate the **reciprocal** instead. "A person the size of a building" and "buildi
 
 The framing tags are safe for the same reason — none of them is shaped like a person.
 
-And resist the mirror instinct on the *other* symptom. When the environment renders with no subject in it, `empty`, `scenery only` and `no figure` are all wrong: the first two share their geometry with the environment itself, and the third means the reverse of what it says inside a `!BLOCK` (§3.1). There is nothing useful to suppress. That symptom has a positive fix only — give the frame a standing position (§3.12).
+And resist the mirror instinct on the _other_ symptom. When the environment renders with no subject in it, `empty`, `scenery only` and `no figure` are all wrong: the first two share their geometry with the environment itself, and the third means the reverse of what it says inside a `!BLOCK` (§3.1). There is nothing useful to suppress. That symptom has a positive fix only — give the frame a standing position (§3.12).
 
 ### 3.3 Nothing abstract, instructional, or emotional
 
@@ -377,12 +377,12 @@ SDXL — Illustrious especially — averages distinctive subjects toward generic
 
 The predictor, before you've tested, is **rarity, not centrality**. The prior fights a trait exactly when the training data rarely paired it with the rest of the description — species, non-human skin and eye colors, atypical proportions, extra or missing limbs. A trait can be the single most defining thing about a character and still need no weight: `very tall broad build` is common, renders flat, and weighting it only steals relative strength from the traits that needed it. Same trait, different character: `blue-grey skin` earns a weight, `tan skin` never does.
 
-| Rule   | Value                                                                                                                                                                                                         |
-| :----- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Form   | Numeric `(trait:1.25)` only. **Never** `(word)` or `((word))` — [multiplier and nesting order are implementation-dependent](https://www.generativelabs.com/insights/prompt-syntax-for-stable-diffusion-faq).  |
-| Range  | 1.1–1.3. Above ~1.4 gives the artifact version, not more of the trait.                                                                                                                                        |
-| Budget | 1–3 per **subject** — per character, per location — not per file.                                                                                                                                             |
-| Where  | The block the file exists to assert (§5.1): a character file's `APPEARANCE`, a location file's `ENVIRONMENT`, an apparel file's `APPAREL`. Not a pipeline or style file, whose anchors fight no prior.        |
+| Rule   | Value                                                                                                                                                                                                        |
+| :----- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Form   | Numeric `(trait:1.25)` only. **Never** `(word)` or `((word))` — [multiplier and nesting order are implementation-dependent](https://www.generativelabs.com/insights/prompt-syntax-for-stable-diffusion-faq). |
+| Range  | 1.1–1.3. Above ~1.4 gives the artifact version, not more of the trait.                                                                                                                                       |
+| Budget | 1–3 per **subject** — per character, per location — not per file.                                                                                                                                            |
+| Where  | The block the file exists to assert (§5.1): a character file's `APPEARANCE`, a location file's `ENVIRONMENT`, an apparel file's `APPAREL`. Not a pipeline or style file, whose anchors fight no prior.       |
 
 **Weight goes on the block the file was selected for.** Which block it sits in is what stops a weight fighting a composition the element is incidental to. A location file's `ENVIRONMENT` applies exactly when someone asked for that location, so weighting the one element that makes the place recognizable cannot distort a composition the file is absent from. What a weight must not do is shout from a block that merely came along with the subject, or from a file the caller selected for something else entirely.
 
@@ -400,7 +400,7 @@ APPEARANCE
     human skin, pale skin, two arms
 ```
 
-The weighted lines sit alone because you tune them individually; everything else groups by width (§2.1). One weighted span, one trait. Several reinforcing descriptors of the *same* trait are one trait — that is what §3.2c asks for — but two different traits sharing a span can only be tuned together, which is the opposite of why weights exist.
+The weighted lines sit alone because you tune them individually; everything else groups by width (§2.1). One weighted span, one trait. Several reinforcing descriptors of the _same_ trait are one trait — that is what §3.2c asks for — but two different traits sharing a span can only be tuned together, which is the opposite of why weights exist.
 
 **Keep a weighted span short.** The multiplier applies across everything inside the parentheses, so a long span spends most of its weight on its own filler. Seventeen words at 1.25 puts as much pressure on `running from the centre of` as on the trait, and the trait does not land:
 
@@ -515,67 +515,69 @@ To the model these name an _object_, or a tagged genre, rather than the sense yo
 
 **Body & build**
 
-| Don't use              | Renders             | Use instead                                     |
-| :--------------------- | :------------------ | :---------------------------------------------- |
-| `hourglass figure`     | a sand timer        | `curvy silhouette`, `small waist and wide hips` |
-| `squat` as a build     | a squatting pose    | `short stocky build`                            |
-| `tail`                 | an animal tail      | qualify it — `a long scaled lizard tail`        |
-| `tendrils`             | tentacles           | `thin trailing strands`                         |
-| `glowing eyes` on stone or wood | a glow effect | `carved marble eyes`                          |
-| `gorilla-like arms`    | a gorilla            | `thick muscular arms`                          |
-| `huge tennis-ball-sized eyes` | a tennis ball  | `huge round eyes`                              |
-| `skeletally thin`, `skeletal build` | a skeleton, exposed bones | `extremely thin, gaunt, emaciated build` |
-| `bat-like ears`        | bat wings             | `large drooping pointed ears` — name the shape, not the animal |
-| `beak-like nose`       | a bird's beak         | `a large hooked nose`                          |
+| Don't use                           | Renders                   | Use instead                                                    |
+| :---------------------------------- | :------------------------ | :------------------------------------------------------------- |
+| `hourglass figure`                  | a sand timer              | `curvy silhouette`, `small waist and wide hips`                |
+| `squat` as a build                  | a squatting pose          | `short stocky build`                                           |
+| `tail`                              | an animal tail            | qualify it — `a long scaled lizard tail`                       |
+| `tendrils`                          | tentacles                 | `thin trailing strands`                                        |
+| `glowing eyes` on stone or wood     | a glow effect             | `carved marble eyes`                                           |
+| `gorilla-like arms`                 | a gorilla                 | `thick muscular arms`                                          |
+| `huge tennis-ball-sized eyes`       | a tennis ball             | `huge round eyes`                                              |
+| `skeletally thin`, `skeletal build` | a skeleton, exposed bones | `extremely thin, gaunt, emaciated build`                       |
+| `bat-like ears`                     | bat wings                 | `large drooping pointed ears` — name the shape, not the animal |
+| `beak-like nose`                    | a bird's beak             | `a large hooked nose`                                          |
 
 **Colour & material**
 
-| Don't use                | Renders                | Use instead                         |
-| :----------------------- | :--------------------- | :---------------------------------- |
-| `olive skin`             | green-tinted skin      | `warm tan skin`, `light brown skin` |
-| `honey tan complexion`   | literal honey drips    | `warm tan complexion`               |
-| `lavender` as a colour   | fields of the flower   | `pale purple`, `light purple`       |
-| `fire engine red`        | a fire truck           | `crimson`, `cherry red`             |
-| `liquid ethereal form`   | literal dripping       | `translucent spectral form`         |
-| `ermine trim`            | the animal             | `white fur trim`                    |
+| Don't use                                                 | Renders                        | Use instead                                                                          |
+| :-------------------------------------------------------- | :----------------------------- | :----------------------------------------------------------------------------------- |
+| `olive skin`                                              | green-tinted skin              | `warm tan skin`, `light brown skin`                                                  |
+| `honey tan complexion`                                    | literal honey drips            | `warm tan complexion`                                                                |
+| `lavender` as a colour                                    | fields of the flower           | `pale purple`, `light purple`                                                        |
+| `fire engine red`                                         | a fire truck                   | `crimson`, `cherry red`                                                              |
+| `liquid ethereal form`                                    | literal dripping               | `translucent spectral form`                                                          |
+| `ermine trim`                                             | the animal                     | `white fur trim`                                                                     |
+| `electric blue` / `electric` on an eye or magical feature | lightning bolts, sparks, smoke | `vivid blue`, `bright cobalt blue` — describe the hue only, drop the phenomenon word |
 
 **Clothing, hair & accessories**
 
-| Don't use             | Renders                  | Use instead              |
-| :-------------------- | :----------------------- | :----------------------- |
-| `collar`              | a choker or dog collar   | `shirt-collar`           |
-| `cuffs`               | handcuffs                | `shirt cuffs`            |
-| `bombshell curls`     | a bomb                   | `rolled curls`, `victory rolls` |
-| `winged eyeliner`     | wings                    | `cat-eye eyeliner`       |
-| `wire-rimmed glasses` | wires, machinery         | `thin metal-frame glasses` |
-| `cracked lens`        | cracks on skin, cracks on surfaces | `one lens fractured` |
-| `toothbrush moustache` | a literal toothbrush    | `a short neatly clipped moustache trimmed close to the upper lip` |
+| Don't use              | Renders                            | Use instead                                                       |
+| :--------------------- | :--------------------------------- | :---------------------------------------------------------------- |
+| `collar`               | a choker or dog collar             | `shirt-collar`                                                    |
+| `cuffs`                | handcuffs                          | `shirt cuffs`                                                     |
+| `bombshell curls`      | a bomb                             | `rolled curls`, `victory rolls`                                   |
+| `winged eyeliner`      | wings                              | `cat-eye eyeliner`                                                |
+| `wire-rimmed glasses`  | wires, machinery                   | `thin metal-frame glasses`                                        |
+| `cracked lens`         | cracks on skin, cracks on surfaces | `one lens fractured`                                              |
+| `toothbrush moustache` | a literal toothbrush               | `a short neatly clipped moustache trimmed close to the upper lip` |
 
 **Objects & weapons**
 
-| Don't use              | Renders                      | Use instead                                    |
-| :--------------------- | :--------------------------- | :--------------------------------------------- |
-| `greatsword`           | a slim curved blade, near-katana | `a thick blunt slab of dark pitted iron, more a bar of metal than a blade`, with `katana, curved blade` negated |
-| `mannequin pose`       | mannequins in the background | `stiff unmoving posture`                       |
-| `fighter stance`       | fighter jets                 | `combat pose`                                  |
-| `warrior` (non-combat) | armor, weapons, battlefields | `strong posture`                               |
-| `bound`                | bondage                      | `tied at the wrists with rope`                 |
-| `crocodile-skin`, `alligator-skin` handbag/accessory | the literal animal | `textured leather` |
-| a cane/walking stick described as `concealing a wand` | the wand, not the cane | state the cane's length and material only — drop the concealment clause |
-| `X, like Santa` or any named public figure as a mood comparison | the figure's costume (a red suit, a beard) | the specific visual trait itself — `a wide jolly grin, rosy cheeks, twinkling warm eyes` |
+| Don't use                                                       | Renders                                    | Use instead                                                                                                         |
+| :-------------------------------------------------------------- | :----------------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
+| `greatsword`                                                    | a slim curved blade, near-katana           | `a thick blunt slab of dark pitted iron, more a bar of metal than a blade`, with `katana, curved blade` negated     |
+| `mannequin pose`                                                | mannequins in the background               | `stiff unmoving posture`                                                                                            |
+| `fighter stance`                                                | fighter jets                               | `combat pose`                                                                                                       |
+| `warrior` (non-combat)                                          | armor, weapons, battlefields               | `strong posture`                                                                                                    |
+| `bound`                                                         | bondage                                    | `tied at the wrists with rope`                                                                                      |
+| `crocodile-skin`, `alligator-skin` handbag/accessory            | the literal animal                         | `textured leather`                                                                                                  |
+| a cane/walking stick described as `concealing a wand`           | the wand, not the cane                     | state the cane's length and material only — drop the concealment clause                                             |
+| `X, like Santa` or any named public figure as a mood comparison | the figure's costume (a red suit, a beard) | the specific visual trait itself — `a wide jolly grin, rosy cheeks, twinkling warm eyes`                            |
+| `duck lips` as a pout                                           | a literal duck                             | `extremely full plump pouty lips, an exaggerated overfilled pout` — describe the shape, never the slang term for it |
 
 **Place & architecture**
 
-| Don't use                               | Renders                    | Use instead                |
-| :-------------------------------------- | :------------------------- | :------------------------- |
-| `stained glass` in a setting            | saints, animals in windows | `tall arched windows`      |
-| `jungle temple ruins` + a snake character | extra snakes             | a plain background         |
+| Don't use                                 | Renders                    | Use instead           |
+| :---------------------------------------- | :------------------------- | :-------------------- |
+| `stained glass` in a setting              | saints, animals in windows | `tall arched windows` |
+| `jungle temple ruins` + a snake character | extra snakes               | a plain background    |
 
 **Camera & framing**
 
-| Don't use          | Renders                | Use instead                       |
-| :----------------- | :--------------------- | :-------------------------------- |
-| `low angle camera` | a camera in the scene  | `low-angle shot`, `shot from below` |
+| Don't use          | Renders               | Use instead                         |
+| :----------------- | :-------------------- | :---------------------------------- |
+| `low angle camera` | a camera in the scene | `low-angle shot`, `shot from below` |
 
 **Disambiguating beats avoiding.** The right-hand column swaps the word out, but most ambiguous nouns are fixable in place with one qualifier that rules the other reading out: `a ship captain's wheel` rather than `a ship's wheel`, `a register till` rather than `a till`, `a lifesaver ring` rather than `a life ring`, `windows barred with iron` rather than `barred windows`. Swap the word when the wrong reading owns it outright (`hourglass figure`); qualify it when the word is merely underdetermined out of context.
 
@@ -608,7 +610,7 @@ ENVIRONMENT
 
 **Reserve the near ground.** Everything above decides what is in the frame. This decides whether a person can be. A block that composes with a character has to hold back the lower foreground for two separate things, and they fail independently, with two symptoms that look unrelated:
 
-**A — a standing position. Missing, and the subject is not rendered at all.** Not small, not in the background: absent, because the composition offered nowhere to put a body and the most photogenic noun took the frame. A standing position is a *described surface at the viewer's own level, in the lower foreground* — `worn flagstone paving underfoot`, `churned mud underfoot`, `a wide crescent of pale sand across the foreground`.
+**A — a standing position. Missing, and the subject is not rendered at all.** Not small, not in the background: absent, because the composition offered nowhere to put a body and the most photogenic noun took the frame. A standing position is a _described surface at the viewer's own level, in the lower foreground_ — `worn flagstone paving underfoot`, `churned mud underfoot`, `a wide crescent of pale sand across the foreground`.
 
 **A vantage is a camera position, not a floor.** This is the failure, and it is the one that looks most like diligence, because naming where the camera stands feels like placing the viewer. It isn't:
 
@@ -620,7 +622,7 @@ ENVIRONMENT
     a massive forge burning at the very bottom of the shaft, orange light rising from it
 ```
 
-Some framings delete the standing position by construction, so a block using one has to put it back explicitly: **looking down into, looking up at, seen from above, seen from outside, aerial, across open space, in orbit, in a void.** The reference that is an *object* rather than a place is the same error without the vantage — a moon written as the moon seen from space renders a character floating in it. Write the view from somewhere: `a moor at night under a huge low moon`. If you cannot say where the subject's feet are, the block is not an environment yet.
+Some framings delete the standing position by construction, so a block using one has to put it back explicitly: **looking down into, looking up at, seen from above, seen from outside, aerial, across open space, in orbit, in a void.** The reference that is an _object_ rather than a place is the same error without the vantage — a moon written as the moon seen from space renders a character floating in it. Write the view from somewhere: `a moor at night under a huge low moon`. If you cannot say where the subject's feet are, the block is not an environment yet.
 
 **B — a scale anchor. Missing, and the subject renders as a giant.** An environment written wide and a shot framed close give the model two scales to satisfy, and it satisfies both — a person at portrait size against a landscape at landscape size, which is a person the height of a building. An anchor settles it: **one object in that near ground whose height in feet a reader already knows without being told.** A door, a gate, a fence, a balustrade, a windowsill, a table, a chair, a cart, a barrel, a moored boat, a flight of steps, a handrail, a brazier.
 
@@ -658,11 +660,11 @@ Before you write a single modifier, the noun you chose has already produced an i
 
 The gloss describes your reference; it does not invent one (§2). That makes this the least speculative work in the format and the most commonly skipped — the name is right there in the source and reads as sufficient. **Test: would someone have to already know this setting to draw it?** If yes, gloss it. Keep the name as well: it costs little and anchors the gloss if the model turns out to know it after all.
 
-**The gloss for a species comes from the species, not from the individual.** This is where non-human characters and unusual skin fail most often, and it fails for a structural reason: a description *of a character* tells you what is unusual about that one person and silently assumes everything that makes the species read at all. Nobody writing about an individual mentions the ears, the nose and the fur, because within the setting those are not worth saying. So the file inherits nothing distinguishing, and the render comes back as a tall human — the model's nearest neighbour to a description that is, in fact, of a tall human.
+**The gloss for a species comes from the species, not from the individual.** This is where non-human characters and unusual skin fail most often, and it fails for a structural reason: a description _of a character_ tells you what is unusual about that one person and silently assumes everything that makes the species read at all. Nobody writing about an individual mentions the ears, the nose and the fur, because within the setting those are not worth saying. So the file inherits nothing distinguishing, and the render comes back as a tall human — the model's nearest neighbour to a description that is, in fact, of a tall human.
 
 Go and read the entry for the **kind of thing**, separately from the entry for the individual, and take the three or four features that fix the silhouette. For one such species that is `long floppy pointed ears, a broad flat pink nose, thick fur` — none of which appears in any description of any individual member, and all of which is what the word was supposed to carry. Then weight them, because these are exactly the rare pairings §3.6 predicts the prior will average away.
 
-The two sources can disagree — a portrait draws the ears upright where the species entry says they droop — and the resolution is not a rule about precedence but a question about which failure you are fixing. §2.2 says the picture governs an individual's traits. When the *species itself* is what is not reading, the species description is what supplies the missing silhouette, and the individual portrait is a variation on a body the model has not built yet.
+The two sources can disagree — a portrait draws the ears upright where the species entry says they droop — and the resolution is not a rule about precedence but a question about which failure you are fixing. §2.2 says the picture governs an individual's traits. When the _species itself_ is what is not reading, the species description is what supplies the missing silhouette, and the individual portrait is a variation on a body the model has not built yet.
 
 **Describe the body; a label is not a silhouette.** A species name, a race label, a class or a title is a pointer, and if the model has no prior for it the pointer resolves to nothing. This also settles the case where the source contradicts itself about a label — an infobox saying one species and the text another. The argument is not yours to resolve: skip the contested word and describe the body, which is the only part that renders either way.
 
@@ -676,23 +678,23 @@ The two failures are one observation from opposite ends: the prior is never neut
 
 §3.1–§3.13 are what you can settle before generating. What remains genuinely requires looking at output, and symptom does not map to block the way intuition suggests — most wrong answers are "add a negative," which is usually the last thing that helps (§3.2b).
 
-| Symptom                                                | Look at                                                                                    |
-| :----------------------------------------------------- | :------------------------------------------------------------------------------------------ |
-| a defining trait missing, or averaged toward generic   | weight — generate flat first, then weight only what came back wrong (§3.6)                  |
-| a trait renders as the wrong _thing_ entirely          | the word, not the weight; it probably carries a second meaning (§3.11)                      |
-| a named tag renders a different shape than you meant   | replace the name with its geometry, and negate the name (§3.2c)                             |
-| the trait is right but goes too far                    | the overshoot half of the bracket (§3.2c)                                                   |
-| the subject is lost, small, or shoved off-centre       | the environment's selection and depth staging (§3.12) — not the subject                     |
+| Symptom                                                          | Look at                                                                                                                                                                                               |
+| :--------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a defining trait missing, or averaged toward generic             | weight — generate flat first, then weight only what came back wrong (§3.6)                                                                                                                            |
+| a trait renders as the wrong _thing_ entirely                    | the word, not the weight; it probably carries a second meaning (§3.11)                                                                                                                                |
+| a named tag renders a different shape than you meant             | replace the name with its geometry, and negate the name (§3.2c)                                                                                                                                       |
+| the trait is right but goes too far                              | the overshoot half of the bracket (§3.2c)                                                                                                                                                             |
+| the subject is lost, small, or shoved off-centre                 | the environment's selection and depth staging (§3.12) — not the subject                                                                                                                               |
 | the environment renders with nobody in it, or the subject floats | the block reserved no standing position — a vantage was named, or an object described instead of a place, and no ground at the viewer's level (§3.12). Nothing to negate; the fix is positive (§3.2d) |
-| one element renders enormous, or becomes the subject   | give it a position in depth, or move it to its own file (§3.12)                             |
-| the scene is right but the era, class or condition isn't | a register anchor on the positive noun (§3.13)                                              |
-| a specific object comes back generic or absent         | it has no prior — gloss its silhouette (§3.13)                                              |
-| elements from two views appear composited              | the block is describing a place rather than a frame (§3.12)                                 |
-| the same drift survives everything                     | out of distribution — negate what it drifts toward, or use a `LORA` (§3.6)                  |
-| a species reads as its nearest human neighbour         | the gloss is missing, and it comes from the species entry rather than the character's (§3.13) |
-| a weighted trait is simply absent, however hard you push | a negative sharing its geometry is deleting it (§3.2d), or the weighted span is long enough to dilute itself (§3.6) |
-| the subject is the size of a building, or of a doll    | the near ground has no scale anchor — an object of known height, not vegetation, terrain, or a stated measurement (§3.12) |
-| a body comes back the default shape below the neck     | the parts you didn't name — waist, shoulders, hips (§3.2c)                                  |
+| one element renders enormous, or becomes the subject             | give it a position in depth, or move it to its own file (§3.12)                                                                                                                                       |
+| the scene is right but the era, class or condition isn't         | a register anchor on the positive noun (§3.13)                                                                                                                                                        |
+| a specific object comes back generic or absent                   | it has no prior — gloss its silhouette (§3.13)                                                                                                                                                        |
+| elements from two views appear composited                        | the block is describing a place rather than a frame (§3.12)                                                                                                                                           |
+| the same drift survives everything                               | out of distribution — negate what it drifts toward, or use a `LORA` (§3.6)                                                                                                                            |
+| a species reads as its nearest human neighbour                   | the gloss is missing, and it comes from the species entry rather than the character's (§3.13)                                                                                                         |
+| a weighted trait is simply absent, however hard you push         | a negative sharing its geometry is deleting it (§3.2d), or the weighted span is long enough to dilute itself (§3.6)                                                                                   |
+| the subject is the size of a building, or of a doll              | the near ground has no scale anchor — an object of known height, not vegetation, terrain, or a stated measurement (§3.12)                                                                             |
+| a body comes back the default shape below the neck               | the parts you didn't name — waist, shoulders, hips (§3.2c)                                                                                                                                            |
 
 A symptom you cannot trace to anything in the merged composition is not a file problem — it is the checkpoint, the LoRA, the workflow or the sampler. Say so rather than editing declarations.
 
@@ -922,14 +924,14 @@ The test is **why the caller selected this file**. Explicit blocks are what the 
 
 Selecting `leotorin` asks for the character — his face is the thing you asked for, his tunic and his farm merely arrive with him. Selecting `winter-coat` or `tavern` means you wanted the outfit or the place, so nothing in those files defers to anything.
 
-| File kind        | Explicit                                                                              | `?` default                                                                       |
-| :--------------- | :------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------- |
-| Character        | `NAME`, `APPEARANCE`/`!`, `CHARACTER`, `PERSONALITY`/`!`, `BACKSTORY`, `VOICE` when asked for | `?PROMPT` — its default composition; `?APPAREL`; `?ENVIRONMENT` only when the source establishes a home, shop, or city |
-| Scene / one-off render (no `NAME`/`CHARACTER`) | `PROMPT`/`!`, `APPEARANCE`/`!`, `APPAREL`/`!`, `ENVIRONMENT`/`!` — whatever the brief describes | —                                                                                 |
-| Shot / view      | `PROMPT`/`!`                                                                          | —                                                                                 |
-| Apparel          | `APPAREL`/`!`                                                                         | —                                                                                 |
-| Place / location | `ENVIRONMENT`/`!`                                                                     | —                                                                                 |
-| Style / pipeline | `IMAGE` text, quality anchors                                                          | settings a shot file should be free to raise                                      |
+| File kind                                      | Explicit                                                                                        | `?` default                                                                                                            |
+| :--------------------------------------------- | :---------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------- |
+| Character                                      | `NAME`, `APPEARANCE`/`!`, `CHARACTER`, `PERSONALITY`/`!`, `BACKSTORY`, `VOICE` when asked for   | `?PROMPT` — its default composition; `?APPAREL`; `?ENVIRONMENT` only when the source establishes a home, shop, or city |
+| Scene / one-off render (no `NAME`/`CHARACTER`) | `PROMPT`/`!`, `APPEARANCE`/`!`, `APPAREL`/`!`, `ENVIRONMENT`/`!` — whatever the brief describes | —                                                                                                                      |
+| Shot / view                                    | `PROMPT`/`!`                                                                                    | —                                                                                                                      |
+| Apparel                                        | `APPAREL`/`!`                                                                                   | —                                                                                                                      |
+| Place / location                               | `ENVIRONMENT`/`!`                                                                               | —                                                                                                                      |
+| Style / pipeline                               | `IMAGE` text, quality anchors                                                                   | settings a shot file should be free to raise                                                                           |
 
 - **A scene file has nothing to default.** It has no reusable identity behind it for a block to "come along with," so nothing in it is `?` — not even `APPAREL` or `ENVIRONMENT`, which take `?` on a character file for the opposite reason. If the brief describes clothing or a place, that's the whole assertion, not a fallback. And it never gets `NAME` or `CHARACTER` regardless of how specific or vivid the brief is — see SKILL.md's "What is this file?".
 - **`APPEARANCE` is never `?`.** A character's face is not a fallback — there is no composition where you want a different file's face substituted for it, and in a two-character composition accumulation is already the behavior you want.
