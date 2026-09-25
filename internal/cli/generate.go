@@ -607,7 +607,8 @@ func composeAndSubmit(ctx context.Context, cmd string, rawArgs []string, verbose
 		fmt.Println()
 
 		composition := evoke.Merge(docs)
-		composition.Inputs = inputArgs
+		composition.Inputs = sanitizeSources(inputArgs, res.roots)
+		composition.Sources = sanitizeSources(composition.Sources, res.roots)
 
 		if verbose {
 			fmt.Println("=== Composition ===")

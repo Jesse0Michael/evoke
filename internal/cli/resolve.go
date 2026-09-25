@@ -281,6 +281,22 @@ func displayPath(path string, roots []sourceRoot) string {
 	return path
 }
 
+// sanitizeSources renders resolved source paths the same way displayPath does
+// for terminal output, but for embedding in generated images: these leave the
+// machine, so the absolute-path fallback displayPath allows is replaced with
+// just the basename — the user's home directory must never end up in a PNG.
+func sanitizeSources(sources []string, roots []sourceRoot) []string {
+	sanitized := make([]string, len(sources))
+	for i, source := range sources {
+		rel := displayPath(source, roots)
+		if filepath.IsAbs(rel) {
+			rel = filepath.Base(rel)
+		}
+		sanitized[i] = rel
+	}
+	return sanitized
+}
+
 // close releases the index without reporting a persistence error (used on the
 // error path).
 func (r *resolution) close() {

@@ -13,6 +13,38 @@ func testPick(input, path string) variantPick {
 	return variantPick{input: input, candidate: indexCandidate{Path: path}}
 }
 
+func TestSanitizeSources(t *testing.T) {
+	root := filepath.Join(string(filepath.Separator), "Users", "tester", "evoke-library")
+	roots := []sourceRoot{{Path: root}}
+
+	tests := []struct {
+		name    string
+		sources []string
+		want    []string
+	}{
+		{
+			name:    "path under a source root becomes root-relative",
+			sources: []string{filepath.Join(root, "characters", "gem.evoke")},
+			want:    []string{filepath.Join("characters", "gem.evoke")},
+		},
+		{
+			name:    "path outside any root and the working directory falls back to basename",
+			sources: []string{filepath.Join(string(filepath.Separator), "tmp", "outside", "gem.evoke")},
+			want:    []string{"gem.evoke"},
+		},
+		{
+			name:    "registry reference is left unchanged",
+			sources: []string{"@namespace/gem"},
+			want:    []string{"@namespace/gem"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, sanitizeSources(tt.sources, roots))
+		})
+	}
+}
+
 func TestCrossProduct(t *testing.T) {
 	tests := []struct {
 		name  string
