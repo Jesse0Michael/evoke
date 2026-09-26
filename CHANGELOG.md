@@ -1,3 +1,27 @@
+# [1.4.0](https://github.com/Jesse0Michael/evoke/compare/v1.3.0...v1.4.0) (2026-09-26)
+
+### Bug Fixes
+
+- better authoring ([f77f45c](https://github.com/Jesse0Michael/evoke/commit/f77f45c4ea4139a78cb6910e9488ae18ab2b94e8))
+- chat top bar ([cabf97e](https://github.com/Jesse0Michael/evoke/commit/cabf97e1893eb81011188c35b340e41e79f8a411))
+- sanitize sources ([a72e10d](https://github.com/Jesse0Michael/evoke/commit/a72e10ddd2a67915692e4ff2801c85fac5a7e96b))
+
+### Documentation
+
+- evoke environments ([20eaef1](https://github.com/Jesse0Michael/evoke/commit/20eaef1d40506f7adbfedbbd52d687c4fa3ba809))
+- update avoiding bad render words ([0c3f804](https://github.com/Jesse0Michael/evoke/commit/0c3f804ba71538198a33c4d66b54152f42e6be98))
+
+### Features
+
+- add cli tag support ([90254da](https://github.com/Jesse0Michael/evoke/commit/90254dac9468dfd50960d60ac382666eee9ed58d))
+- chat images ([e87748a](https://github.com/Jesse0Michael/evoke/commit/e87748acd83c66160f6411e5645970d4ce160500))
+- support krea 2 ([031766a](https://github.com/Jesse0Michael/evoke/commit/031766a05ef69d655b86760f2b5c4473a80321cf))
+
+### Other
+
+- style up ([e445ffe](https://github.com/Jesse0Michael/evoke/commit/e445ffe196320d41e9267cb5118a23f54cba8e22))
+- evoke chat cli ([f7e639b](https://github.com/Jesse0Michael/evoke/commit/f7e639b2d5cd5daa00fbacc12fe9bfbad716f52d))
+
 # [1.3.0](https://github.com/Jesse0Michael/evoke/compare/v1.2.0...v1.3.0) (2026-09-05)
 
 ### Bug Fixes
