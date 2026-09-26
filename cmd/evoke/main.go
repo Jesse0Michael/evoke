@@ -50,6 +50,8 @@ func run(args []string) int {
 		return cli.Chat(rest, verbose)
 	case "inspect":
 		return cli.Inspect(rest, verbose)
+	case "tag":
+		return cli.Tag(rest, verbose)
 	case "knowledge":
 		return cli.KnowledgeCmd(rest, verbose)
 	case "settings":
@@ -91,6 +93,7 @@ Image:
     evoke edit        Redraw an existing image through a composition
     evoke paint       Alter an existing image by instruction (instruction-edit model)
     evoke inspect     List files matching a tag, or show what the selected files compose into
+    evoke tag         Add, remove, or list local tags on a file (never written into the file)
     evoke queue       View the current generation queue
     evoke clear       Clear the generation queue
     evoke view        Interactive image viewer for recent output

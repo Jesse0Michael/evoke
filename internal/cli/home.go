@@ -191,6 +191,52 @@ func saveManifest(m *Manifest) error {
 	return os.WriteFile(filepath.Join(h, "manifest.json"), append(data, '\n'), 0o644)
 }
 
+// Tags holds local tag associations for .evoke files — e.g. marking a
+// favorite — keyed by file basename rather than the file's own TAGS block.
+// A file's TAGS are a statement about the file, shareable with anyone who
+// uses it; these are the caller's own preference and never leave this
+// machine or get written into a .evoke file.
+type Tags struct {
+	Files map[string][]string `json:"files"`
+}
+
+// tags reads tags.json from the Evoke home directory.
+// Returns an empty Tags if the file does not exist.
+func tags() (*Tags, error) {
+	h, err := home()
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Join(h, "tags.json"))
+	if os.IsNotExist(err) {
+		return &Tags{Files: make(map[string][]string)}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read tags: %w", err)
+	}
+	var t Tags
+	if err := json.Unmarshal(data, &t); err != nil {
+		return nil, fmt.Errorf("failed to parse tags: %w", err)
+	}
+	if t.Files == nil {
+		t.Files = make(map[string][]string)
+	}
+	return &t, nil
+}
+
+// saveTags writes tags.json to the Evoke home directory.
+func saveTags(t *Tags) error {
+	h, err := home()
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(t, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to encode tags: %w", err)
+	}
+	return os.WriteFile(filepath.Join(h, "tags.json"), append(data, '\n'), 0o644)
+}
+
 // expandPath expands ~ to the user's home directory and returns an absolute path.
 func expandPath(p string) (string, error) {
 	if strings.HasPrefix(p, "~/") || p == "~" {

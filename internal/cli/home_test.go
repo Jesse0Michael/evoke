@@ -143,3 +143,28 @@ func TestManifestMissing(t *testing.T) {
 	require.NotNil(t, m.Artifacts)
 	require.Empty(t, m.Artifacts)
 }
+
+func TestTagsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("EVOKE_HOME", dir)
+
+	want := &Tags{
+		Files: map[string][]string{
+			"aela-the-huntress.evoke": {"favorite", "nsfw"},
+		},
+	}
+	require.NoError(t, saveTags(want))
+
+	got, err := tags()
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+}
+
+func TestTagsMissing(t *testing.T) {
+	t.Setenv("EVOKE_HOME", t.TempDir())
+
+	got, err := tags()
+	require.NoError(t, err)
+	require.NotNil(t, got.Files)
+	require.Empty(t, got.Files)
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -14,7 +15,7 @@ func Complete(args []string) int {
 	// Shell scripts pass: evoke __complete image <words...> <current>
 	if len(args) < 2 {
 		// Complete subcommands.
-		for _, cmd := range []string{"login", "image", "edit", "paint", "chat", "inspect", "knowledge", "push", "pull", "queue", "clear", "view", "settings", "completion"} {
+		for _, cmd := range []string{"login", "image", "edit", "paint", "chat", "inspect", "tag", "knowledge", "push", "pull", "queue", "clear", "view", "settings", "completion"} {
 			fmt.Println(cmd)
 		}
 		return 0
@@ -28,13 +29,15 @@ func Complete(args []string) int {
 	// they differ only in flags.
 	switch subcmd {
 	case "image":
-		return completeInputs(current, []string{"-b", "-v", "--verbose"})
+		return completeInputs(current, []string{"-b", "-v", "--verbose"}, false)
 	case "edit", "paint":
-		return completeInputs(current, []string{"-i", "--input", "-b", "-v", "--verbose"})
+		return completeInputs(current, []string{"-i", "--input", "-b", "-v", "--verbose"}, false)
 	case "chat":
-		return completeInputs(current, []string{"--stream", "--no-tui", "--new", "-v", "--verbose"})
+		return completeInputs(current, []string{"--stream", "--no-tui", "--new", "-v", "--verbose"}, false)
 	case "inspect":
-		return completeInputs(current, []string{"-v", "--verbose"})
+		return completeInputs(current, []string{"-v", "--verbose"}, false)
+	case "tag":
+		return completeTag(args[1:])
 	case "knowledge":
 		// knowledge takes a corpus directory, not .evoke inputs.
 		return completeKnowledge(current)
@@ -85,8 +88,11 @@ func completeDirs(prefix string) int {
 }
 
 // completeInputs outputs completion candidates for commands that compose .evoke
-// inputs: registry references, local paths, the given flags, or index tags.
-func completeInputs(current string, flags []string) int {
+// inputs: registry references, local paths, the given flags, or index tags
+// and file names. filesOnly restricts the default case to file names only —
+// evoke tag names one specific file, and a tag-selector suggestion usually
+// resolves to several, which would just error as ambiguous.
+func completeInputs(current string, flags []string, filesOnly bool) int {
 	// Registry references.
 	if strings.HasPrefix(current, "@") {
 		return completeRegistryRefs(current)
@@ -105,6 +111,10 @@ func completeInputs(current string, flags []string) int {
 			}
 		}
 		return 0
+	}
+
+	if filesOnly {
+		return completeFileNames(current)
 	}
 
 	// Default: complete tags and file names from the index.
@@ -140,15 +150,93 @@ func completeTags(prefix string) int {
 
 	// Also suggest file names (as local path completions) when not in multi-tag mode.
 	if base == "" {
-		names, err := idx.allFileNames(context.Background(), tagPrefix)
-		if err != nil {
+		if err := printFileNames(idx, tagPrefix); err != nil {
 			return 0
-		}
-		for _, name := range names {
-			fmt.Println(name + ".evoke")
 		}
 	}
 
+	return 0
+}
+
+// completeFileNames queries the index.db for file names matching the prefix,
+// with no tag-selector suggestions.
+func completeFileNames(prefix string) int {
+	idx, err := openDefaultIndex()
+	if err != nil {
+		return 0 // silently fail — don't break the shell
+	}
+	defer func() { _ = idx.Close() }()
+
+	if err := printFileNames(idx, prefix); err != nil {
+		return 0
+	}
+	return 0
+}
+
+// printFileNames prints every indexed file name matching prefix as a
+// completion candidate, suffixed with .evoke.
+func printFileNames(idx *sqliteIndex, prefix string) error {
+	names, err := idx.allFileNames(context.Background(), prefix)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		fmt.Println(name + ".evoke")
+	}
+	return nil
+}
+
+// completeTag completes the tag command: its subcommand (add/remove/list),
+// then a target position completed like any other .evoke input — but file
+// names only, never bare tag strings — then (for add/remove) a tag-name
+// position completed against every tag already recorded in tags.json.
+func completeTag(words []string) int {
+	current := words[len(words)-1]
+	prior := words[:len(words)-1]
+
+	if len(prior) == 0 {
+		for _, sub := range []string{"add", "remove", "list"} {
+			if strings.HasPrefix(sub, current) {
+				fmt.Println(sub)
+			}
+		}
+		return 0
+	}
+
+	if len(prior) == 1 {
+		return completeInputs(current, []string{"-v", "--verbose"}, true)
+	}
+
+	// add/remove take one or more tag names; list takes none.
+	if prior[0] == "add" || prior[0] == "remove" {
+		return completeKnownTags(current)
+	}
+	return 0
+}
+
+// completeKnownTags lists every distinct tag already recorded in tags.json.
+func completeKnownTags(prefix string) int {
+	t, err := tags()
+	if err != nil {
+		return 0
+	}
+
+	seen := make(map[string]bool)
+	for _, list := range t.Files {
+		for _, tag := range list {
+			seen[tag] = true
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for tag := range seen {
+		names = append(names, tag)
+	}
+	sort.Strings(names)
+	for _, tag := range names {
+		if strings.HasPrefix(tag, prefix) {
+			fmt.Println(tag)
+		}
+	}
 	return 0
 }
 
