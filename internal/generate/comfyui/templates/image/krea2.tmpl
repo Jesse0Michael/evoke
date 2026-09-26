@@ -1,0 +1,347 @@
+{{- $seed := RandomSeed -}}
+{
+  {{- /* Krea2 loads as three files — the diffusion model, a Qwen3-VL text
+         encoder, and the Qwen-Image VAE — so there is no CheckpointLoaderSimple
+         and no CLIPSetLastLayer. It is a turbo architecture: it samples at cfg 1
+         in single-digit steps and buys detail back with a second partial-denoise
+         pass over the latent. Everything from the upscale down is shared with
+         anima.tmpl. */}}
+  "unet": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "{{ .Prompt.Unet }}",
+      "weight_dtype": "{{ .Prompt.WeightDtype }}"
+    }
+  },
+
+  "clip": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "{{ .Prompt.Clip }}",
+      "type": "{{ .Prompt.ClipType }}",
+      "device": "default"
+    }
+  },
+
+  "vae": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "{{ .Prompt.Vae }}"
+    }
+  },
+
+  {{- /* ================= LoRA CHAIN ================= */ -}}
+  {{- /* Model-only: the text encoder is Qwen3-VL, not a CLIP that carries
+         LoRA weights, so there is no clip strength to apply. */}}
+  {{- $prev := "unet" -}}
+  {{- range $i, $l := .Prompt.Loras }}
+  "lora_{{ $i }}": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "lora_name": "{{ $l.Name }}",
+      "strength_model": {{ $l.Strength }},
+      "model": ["{{ $prev }}", 0]
+    }
+  },
+  {{- $prev = printf "lora_%d" $i -}}
+  {{- end }}
+
+  {{- /* ================= LATENT ================= */ -}}
+  "latent": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": {{ .Prompt.Sampler.Width }},
+      "height": {{ .Prompt.Sampler.Height }},
+      "batch_size": 1
+    }
+  },
+
+  {{- /* ================= PROMPTS ================= */ -}}
+  "prompt_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Positive }}, {{ .Prompt.Apparel.Positive }}, {{ .Prompt.Environment.Positive }}",
+      "clip": ["clip", 0]
+    }
+  },
+
+  "prompt_neg": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Negative }}, {{ .Prompt.Apparel.Negative }}, {{ .Prompt.Environment.Negative }}",
+      "clip": ["clip", 0]
+    }
+  },
+
+  {{- /* ================= SAMPLER ================= */ -}}
+  "sampler": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": {{ $seed }},
+      "steps": {{ .Prompt.Sampler.Steps }},
+      "cfg": {{ .Prompt.Sampler.CFG }},
+      "sampler_name": "{{ .Prompt.Sampler.SamplerName }}",
+      "scheduler": "{{ .Prompt.Sampler.Scheduler }}",
+      "denoise": {{ .Prompt.Sampler.Denoise }},
+      "model": ["{{ $prev }}", 0],
+      "positive": ["prompt_pos", 0],
+      "negative": ["prompt_neg", 0],
+      "latent_image": ["latent", 0]
+    }
+  },
+
+  {{- /* ================= REFINE ================= */ -}}
+  {{- /* A second pass over the same latent at partial denoise, on its own
+         scheduler. It is where the turbo path's detail comes from, which is why
+         it runs unless an IMAGE refine stage turns it off. */}}
+  {{- $latent := "sampler" -}}
+  {{- if not .Prompt.Refine.Disabled }}
+  "refine": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": {{ RandomSeed }},
+      "steps": {{ .Prompt.Refine.Steps }},
+      "cfg": {{ .Prompt.Refine.CFG }},
+      "sampler_name": "{{ .Prompt.Refine.SamplerName }}",
+      "scheduler": "{{ .Prompt.Refine.Scheduler }}",
+      "denoise": {{ .Prompt.Refine.Denoise }},
+      "model": ["{{ $prev }}", 0],
+      "positive": ["prompt_pos", 0],
+      "negative": ["prompt_neg", 0],
+      "latent_image": ["sampler", 0]
+    }
+  },
+  {{- $latent = "refine" -}}
+  {{- end }}
+
+  {{- /* ================= DECODE ================= */ -}}
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["{{ $latent }}", 0],
+      "vae": ["vae", 0]
+    }
+  },
+
+  {{- /* ================= UPSCALE ================= */ -}}
+  {{- if not .Prompt.Upscale.Disabled }}
+  {{- if .Prompt.Upscale.Positive }}
+  "upscale_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Upscale.Positive }}",
+      "clip": ["clip", 0]
+    }
+  },
+  {{- end }}
+  {{- if .Prompt.Upscale.Negative }}
+  "upscale_neg": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Upscale.Negative }}",
+      "clip": ["clip", 0]
+    }
+  },
+  {{- end }}
+  "upscale_model_loader": {
+    "class_type": "UpscaleModelLoader",
+    "inputs": {
+      "model_name": "{{ .Prompt.Upscale.Model }}"
+    }
+  },
+
+  "upscale": {
+    "class_type": "UltimateSDUpscale",
+    "inputs": {
+      "image": ["decode", 0],
+      "model": ["{{ $prev }}", 0],
+      "positive": ["{{ if .Prompt.Upscale.Positive }}upscale_pos{{ else }}prompt_pos{{ end }}", 0],
+      "negative": ["{{ if .Prompt.Upscale.Negative }}upscale_neg{{ else }}prompt_neg{{ end }}", 0],
+      "vae": ["vae", 0],
+      "upscale_model": ["upscale_model_loader", 0],
+      "upscale_by": {{ .Prompt.Upscale.Factor }},
+      "seed": {{ RandomSeed }},
+      "steps": {{ .Prompt.Upscale.Steps }},
+      "cfg": {{ .Prompt.Upscale.CFG }},
+      "sampler_name": "{{ .Prompt.Upscale.SamplerName }}",
+      "scheduler": "{{ .Prompt.Upscale.Scheduler }}",
+      "denoise": {{ .Prompt.Upscale.Denoise }},
+      "mode_type": "Chess",
+      "tile_width": {{ .Prompt.Upscale.TileWidth }},
+      "tile_height": {{ .Prompt.Upscale.TileHeight }},
+      "mask_blur": 8,
+      "tile_padding": 32,
+      {{- /* A seam fix re-samples every tile boundary; at "None" the numbers
+             below are inert, so they are zeroed rather than left dangling. */}}
+      "seam_fix_mode": "{{ .Prompt.Upscale.SeamFix }}",
+      {{- if eq .Prompt.Upscale.SeamFix "None" }}
+      "seam_fix_denoise": 0,
+      "seam_fix_width": 0,
+      "seam_fix_mask_blur": 0,
+      "seam_fix_padding": 0,
+      {{- else }}
+      "seam_fix_denoise": 0.08,
+      "seam_fix_width": 8,
+      "seam_fix_mask_blur": 8,
+      "seam_fix_padding": 32,
+      {{- end }}
+      "force_uniform_tiles": true,
+      "tiled_decode": false,
+      "batch_size": 1
+    }
+  },
+  {{- end }}
+
+  {{- /* ================= FACE DETAILER ================= */ -}}
+  {{- /* The face is the only region this architecture details today. The
+         remaining DETAILER arguments resolve and go unread, so a pipeline file
+         shared with another base still renders. */}}
+  {{- if not .Prompt.Face.Disabled }}
+  "face_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Face.Positive }}",
+      "clip": ["clip", 0]
+    }
+  },
+
+  "face_neg": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{ .Prompt.Face.Negative }}",
+      "clip": ["clip", 0]
+    }
+  },
+
+  "face_detector": {
+    "class_type": "UltralyticsDetectorProvider",
+    "inputs": {
+      "model_name": "{{ .Prompt.Face.Detector }}"
+    }
+  },
+
+  "face_segs": {
+    "class_type": "BboxDetectorSEGS",
+    "inputs": {
+      "bbox_detector": ["face_detector", 0],
+      "image": ["{{ if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "threshold": {{ .Prompt.Face.BBoxThreshold }},
+      "dilation": {{ .Prompt.Face.BBoxDialation }},
+      "crop_factor": {{ .Prompt.Face.BBoxCropFactor }},
+      "drop_size": {{ if .Prompt.Face.DropSize }}{{ .Prompt.Face.DropSize }}{{ else }}50{{ end }},
+      "labels": "all"
+    }
+  },
+
+  {{- if .Prompt.Face.MaxDetections }}
+  "face_filter": {
+    "class_type": "ImpactSEGSOrderedFilter",
+    "inputs": {
+      "segs": ["face_segs", 0],
+      "target": "area(=w*h)",
+      "order": true,
+      "take_start": 0,
+      "take_count": {{ .Prompt.Face.MaxDetections }}
+    }
+  },
+  {{- end }}
+
+  "face_detail": {
+    "class_type": "DetailerForEach",
+    "inputs": {
+      "image": ["{{ if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "segs": ["{{ if .Prompt.Face.MaxDetections }}face_filter{{ else }}face_segs{{ end }}", 0],
+      "model": ["{{ $prev }}", 0],
+      "clip": ["clip", 0],
+      "vae": ["vae", 0],
+      "positive": ["face_pos", 0],
+      "negative": ["face_neg", 0],
+
+      "guide_size": {{ .Prompt.Face.GuideSize }},
+      "guide_size_for": true,
+      "max_size": {{ .Prompt.Face.MaxSize }},
+
+      "seed": {{ RandomSeed }},
+      "steps": {{ .Prompt.Face.Steps }},
+      "cfg": {{ .Prompt.Face.CFG }},
+      "sampler_name": "{{ .Prompt.Face.SamplerName }}",
+      "scheduler": "{{ .Prompt.Face.Scheduler }}",
+      "denoise": {{ .Prompt.Face.Denoise }},
+
+      "feather": {{ .Prompt.Face.Feather }},
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+
+      "noise_mask_feather": {{ .Prompt.Face.NoiseMaskFeather }}
+    }
+  },
+  {{- end }}
+
+  {{- /* ================= DEBUG ================= */ -}}
+  {{- if .Debug }}
+  "debug_base": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_1_base",
+      "images": ["decode", 0]
+    }
+  },
+  {{- if not .Prompt.Upscale.Disabled }}
+  "debug_upscale": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_2_upscale",
+      "images": ["upscale", 0]
+    }
+  },
+  {{- end }}
+  {{- if not .Prompt.Face.Disabled }}
+  "debug_face": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "images/tmp/{{ .Time }}_{{ .Index }}_3_face",
+      "images": ["face_detail", 0]
+    }
+  },
+  {{- end }}
+  {{- end }}
+
+  {{- /* ================= SAVE ================= */ -}}
+  "save": {
+    "class_type": "Image Saver",
+    "inputs": {
+      "images": ["{{ if not .Prompt.Face.Disabled }}face_detail{{ else if not .Prompt.Upscale.Disabled }}upscale{{ else }}decode{{ end }}", 0],
+      "path": "images/{{ .OutputDir }}",
+      "filename": "{{ .Name }}",
+      "extension": "png",
+
+      {{- /* Metadata only: this text is never encoded, so the <lora:> tags Civitai
+             needs are appended here rather than to the CLIPTextEncode prompt. The
+             node reads LoRAs by regex over this string and cannot see the loader
+             chain; easy_remix strips the tags again once they are hashed. */}}
+      "positive": "{{ .Prompt.Positive }}, {{ .Prompt.Apparel.Positive }}, {{ .Prompt.Environment.Positive }}{{ range .Prompt.Loras }} <lora:{{ StripExt .Name }}:{{ .Strength }}>{{ end }}",
+      "negative": "{{ .Prompt.Negative }}, {{ .Prompt.Apparel.Negative }}, {{ .Prompt.Environment.Negative }}",
+
+      "modelname": "{{ .Prompt.Unet }}",
+      "seed_value": {{ $seed }},
+      "steps": {{ .Prompt.Sampler.Steps }},
+      "cfg": {{ .Prompt.Sampler.CFG }},
+      "sampler_name": "{{ .Prompt.Sampler.SamplerName }}",
+      "scheduler_name": "{{ .Prompt.Sampler.Scheduler }}",
+      "denoise": {{ .Prompt.Sampler.Denoise }},
+
+      {{- /* A1111 convention records the pre-upscale latent size: it is the size
+             that reproduces the image, not the size of the file on disk. */}}
+      "width": {{ .Prompt.Sampler.Width }},
+      "height": {{ .Prompt.Sampler.Height }},
+      "clip_skip": 0,
+
+      "download_civitai_data": false,
+      "easy_remix": true,
+      "embed_workflow": true,
+      "show_preview": true
+    }
+  }
+}

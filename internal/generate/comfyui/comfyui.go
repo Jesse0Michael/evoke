@@ -140,6 +140,7 @@ type promptData struct {
 	Sampler     sampler  `json:"sampler"`
 	Apparel     prompt   `json:"apparel"`
 	Environment prompt   `json:"environment"`
+	Refine      refine   `json:"refine"`
 	Upscale     upscale  `json:"upscale"`
 	Edit        edit     `json:"edit"`
 	Paint       paint    `json:"paint"`
@@ -170,6 +171,20 @@ type lora struct {
 	Name     string  `json:"name"`
 	Strength float64 `json:"strength"`
 	Clip     float64 `json:"clip"`
+}
+
+// refine is the IMAGE refine stage: a second sampler pass over the base pass's
+// latent, before anything is decoded. It is a partial-denoise re-sample, so it
+// carries its own step count and scheduler rather than the base stage's — the
+// base pass has to keep sampling from noise at denoise 1.0 for the same
+// pipeline file to serve a single-pass architecture.
+type refine struct {
+	Disabled    bool    `json:"disabled"`
+	Steps       int     `json:"steps"`
+	CFG         float64 `json:"cfg"`
+	SamplerName string  `json:"sampler_name"`
+	Scheduler   string  `json:"scheduler"`
+	Denoise     float64 `json:"denoise"`
 }
 
 type upscale struct {
@@ -492,6 +507,16 @@ func renderPromptData(doc *evoke.Composition, kind Kind, base string) (promptDat
 		pd.Negative = joinComma(joinAll(base.Text.Negative), pd.Negative)
 	}
 
+	// Apply IMAGE refine stage settings. Only an architecture whose template
+	// samples twice reads them; the rest resolve the stage and ignore it.
+	if rf := doc.ImageStageByArgument("refine"); rf != nil {
+		if rf.Disabled {
+			pd.Refine.Disabled = true
+		} else {
+			applyRefineSettings(&pd.Refine, rf)
+		}
+	}
+
 	// Apply IMAGE upscale stage settings.
 	if up := doc.ImageStageByArgument("upscale"); up != nil {
 		if up.Disabled {
@@ -602,6 +627,24 @@ func applyImageSettings(pd *promptData, stage *evoke.ImageStage) {
 	}
 	if v, ok := stage.Settings["denoise"]; ok {
 		pd.Sampler.Denoise = parseFloat(v)
+	}
+}
+
+func applyRefineSettings(rf *refine, stage *evoke.ImageStage) {
+	if v, ok := stage.Settings["steps"]; ok {
+		rf.Steps = parseInt(v)
+	}
+	if v, ok := stage.Settings["cfg"]; ok {
+		rf.CFG = parseFloat(v)
+	}
+	if v, ok := stage.Settings["sampler_name"]; ok {
+		rf.SamplerName = v
+	}
+	if v, ok := stage.Settings["scheduler"]; ok {
+		rf.Scheduler = v
+	}
+	if v, ok := stage.Settings["denoise"]; ok {
+		rf.Denoise = parseFloat(v)
 	}
 }
 
@@ -893,6 +936,36 @@ var architectureDefaults = map[string]promptData{
 			Denoise:     1.0,
 		},
 	},
+	// A turbo architecture: it samples at cfg 1 in single-digit steps, then
+	// re-samples the latent at partial denoise on a second scheduler. The
+	// refine pass is what the step count buys back, so it is on by default
+	// here and absent everywhere else.
+	"krea2": {
+		Upscale: upscale{SeamFix: "None"},
+		Unet:    "krealism_v10Turbo.safetensors",
+		Clip:    "Qwen3-VL-4B-Instruct-Heretic.safetensors",
+		// The encoder is Qwen3-VL rather than a CLIP, and this build of ComfyUI
+		// dispatches it on its own name.
+		ClipType:    "krea2",
+		Vae:         "qwen_image_vae.safetensors",
+		WeightDtype: "default",
+		Sampler: sampler{
+			Steps:       8,
+			CFG:         1.0,
+			SamplerName: "euler",
+			Scheduler:   "simple",
+			Denoise:     1.0,
+			Width:       1600,
+			Height:      1000,
+		},
+		Refine: refine{
+			Steps:       3,
+			CFG:         1.0,
+			SamplerName: "euler",
+			Scheduler:   "beta57",
+			Denoise:     0.6,
+		},
+	},
 	"anima": {
 		Upscale: upscale{SeamFix: "None"},
 		Edit: edit{
@@ -980,6 +1053,21 @@ func applyDefaults(data *promptData, def promptData) {
 	if data.Sampler.Height == 0 {
 		data.Sampler.Height = def.Sampler.Height
 	}
+	if data.Refine.Steps == 0 {
+		data.Refine.Steps = def.Refine.Steps
+	}
+	if data.Refine.CFG == 0 {
+		data.Refine.CFG = def.Refine.CFG
+	}
+	if data.Refine.SamplerName == "" {
+		data.Refine.SamplerName = def.Refine.SamplerName
+	}
+	if data.Refine.Scheduler == "" {
+		data.Refine.Scheduler = def.Refine.Scheduler
+	}
+	if data.Refine.Denoise == 0 {
+		data.Refine.Denoise = def.Refine.Denoise
+	}
 	if data.Upscale.SeamFix == "" {
 		data.Upscale.SeamFix = def.Upscale.SeamFix
 	}
@@ -1035,7 +1123,11 @@ func applyDefaults(data *promptData, def promptData) {
 		data.Paint.Denoise = def.Paint.Denoise
 	}
 
-	// Disable upscale/detailers if not explicitly configured.
+	// Disable the optional passes nothing configured: a refine pass with no
+	// steps and an upscale with no model are both a pass that cannot run.
+	if data.Refine.Steps == 0 {
+		data.Refine.Disabled = true
+	}
 	if data.Upscale.Model == "" {
 		data.Upscale.Disabled = true
 	}

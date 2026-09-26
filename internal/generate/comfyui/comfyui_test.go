@@ -419,9 +419,10 @@ func TestRenderTemplateCivitaiMetadata(t *testing.T) {
 }
 
 // fullComposition exercises every optional branch a workflow template has:
-// a lora chain, the upscale pass, and all five detailers. It carries one LORA
-// per architecture so exactly one resolves whichever base is rendered — an
-// untagged LORA is an SDXL LORA and would leave the chain empty elsewhere.
+// a lora chain, the refine and upscale passes, and all five detailers. It
+// carries one LORA per architecture so exactly one resolves whichever base is
+// rendered — an untagged LORA is an SDXL LORA and would leave the chain empty
+// elsewhere.
 func fullComposition() *evoke.Composition {
 	det := func(arg, detector string) evoke.DetailerConfig {
 		return evoke.DetailerConfig{
@@ -446,10 +447,15 @@ func fullComposition() *evoke.Composition {
 			{Argument: "test-lora-sdxl", Settings: map[string]string{"model": "test-lora-1.safetensors", "strength": "0.8", "clip": "0.7", "base": "sdxl"}},
 			{Argument: "test-lora-anima", Settings: map[string]string{"model": "test-lora-2.safetensors", "strength": "0.6", "clip": "0.5", "base": "anima"}},
 			{Argument: "test-lora-qwen", Settings: map[string]string{"model": "test-lora-3.safetensors", "strength": "1.0", "base": "qwen"}},
+			{Argument: "test-lora-krea2", Settings: map[string]string{"model": "test-lora-4.safetensors", "strength": "0.9", "base": "krea2"}},
 		},
 		Images: []evoke.ImageStage{
-			{Loras: []string{"test-lora-sdxl", "test-lora-anima"}, Settings: map[string]string{
+			{Loras: []string{"test-lora-sdxl", "test-lora-anima", "test-lora-krea2"}, Settings: map[string]string{
 				"shift": "3.1", "nag_scale": "5.0", "nag_alpha": "0.5", "nag_tau": "1.5",
+			}},
+			{Argument: "refine", Settings: map[string]string{
+				"steps": "5", "cfg": "1.5", "sampler_name": "dpmpp_2m",
+				"scheduler": "beta57", "denoise": "0.55",
 			}},
 			{Argument: "upscale", Settings: map[string]string{
 				"upscale_model": "test-upscale.pth", "factor": "1.5", "steps": "10", "cfg": "4.0",

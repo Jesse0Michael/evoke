@@ -33,6 +33,14 @@ const (
 	classTextEncodeQwenEdit = "TextEncodeQwenImageEditPlus"
 )
 
+// The node keys this package's templates give their sampler passes. A graph is
+// a map, so the key is the only thing that distinguishes two nodes of the same
+// class.
+const (
+	nodeSampler = "sampler"
+	nodeRefine  = "refine"
+)
+
 // maxChunk caps a chunk this reader will hold in memory. A workflow graph runs
 // to tens of kilobytes; anything larger is not text we wrote.
 const maxChunk = 8 << 20
@@ -55,9 +63,22 @@ type Metadata struct {
 	LoRAs     []LoRA
 	FileSize  int64
 	Detailers []Detailer
+	Refine    Refine
 	Upscale   Upscale
 	Sources   []string
 	Inputs    []string
+}
+
+// Refine is the second sampler pass over the base latent, if the workflow ran
+// one. Denoise is the whole of what it did, so a zero Steps means it did not
+// run rather than that it ran for free.
+type Refine struct {
+	Steps     int
+	CFG       float64
+	Sampler   string
+	Scheduler string
+	Denoise   float64
+	Seed      uint64
 }
 
 // Upscale is the UltimateSDUpscale pass, if the workflow ran one.
@@ -200,12 +221,25 @@ func parseWorkflow(raw string, m *Metadata) {
 		case classUNETLoader:
 			m.Model = str(node.Inputs, "unet_name")
 		case classKSampler:
-			m.Sampler = str(node.Inputs, "sampler_name")
-			m.Scheduler = str(node.Inputs, "scheduler")
-			m.Steps = integer(node.Inputs, "steps")
-			m.CFG = float(node.Inputs, "cfg")
-			m.Seed = unsigned(node.Inputs, "seed")
-			m.Denoise = float(node.Inputs, "denoise")
+			// A template may sample more than once, and the node key is what
+			// tells the passes apart — the same way prompt_pos/prompt_neg are
+			// resolved below. Every template names its base pass "sampler".
+			switch id {
+			case nodeSampler:
+				m.Sampler = str(node.Inputs, "sampler_name")
+				m.Scheduler = str(node.Inputs, "scheduler")
+				m.Steps = integer(node.Inputs, "steps")
+				m.CFG = float(node.Inputs, "cfg")
+				m.Seed = unsigned(node.Inputs, "seed")
+				m.Denoise = float(node.Inputs, "denoise")
+			case nodeRefine:
+				m.Refine.Sampler = str(node.Inputs, "sampler_name")
+				m.Refine.Scheduler = str(node.Inputs, "scheduler")
+				m.Refine.Steps = integer(node.Inputs, "steps")
+				m.Refine.CFG = float(node.Inputs, "cfg")
+				m.Refine.Seed = unsigned(node.Inputs, "seed")
+				m.Refine.Denoise = float(node.Inputs, "denoise")
+			}
 		case classLoraLoader, classLoraLoaderModelOnly:
 			if name := str(node.Inputs, "lora_name"); name != "" {
 				m.LoRAs = append(m.LoRAs, LoRA{

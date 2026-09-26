@@ -41,6 +41,20 @@ func renderFullWorkflow(t *testing.T, kind Kind, name string, debug bool) (promp
 	return data, string(payload)
 }
 
+// imageTemplatePasses is the set of optional passes each image template
+// renders. Architectures do not run the same graph — a turbo base details only
+// the face and re-samples its latent, an SDXL one details five regions and
+// samples once — so the round trip needs to know what to expect from each. A
+// base missing from here fails rather than being read loosely.
+var imageTemplatePasses = map[string]struct {
+	detailers []string
+	refine    bool
+}{
+	"sdxl":  {detailers: []string{"eye", "face", "hand", "lower_body", "upper_body"}},
+	"anima": {detailers: []string{"eye", "face", "hand", "lower_body", "upper_body"}},
+	"krea2": {detailers: []string{"face"}, refine: true},
+}
+
 // TestMetadataRoundTrip renders each architecture and reads the result back
 // with the parser the viewer uses. It is the guard against writer/reader drift:
 // renaming a node class in a template, or adding an architecture that loads its
@@ -48,6 +62,9 @@ func renderFullWorkflow(t *testing.T, kind Kind, name string, debug bool) (promp
 func TestMetadataRoundTrip(t *testing.T) {
 	for _, name := range bases(KindImage) {
 		t.Run(name, func(t *testing.T) {
+			passes, ok := imageTemplatePasses[name]
+			require.True(t, ok, "add %s to imageTemplatePasses with the passes its template renders", name)
+
 			data, workflow := renderFullWorkflow(t, KindImage, name, false)
 
 			var m Metadata
@@ -85,6 +102,21 @@ func TestMetadataRoundTrip(t *testing.T) {
 				require.Equal(t, want.Strength, m.LoRAs[i].Model)
 			}
 
+			// A refine pass shares the prompt and the model with the base pass,
+			// so its own sampler spec is the whole of what it contributes.
+			if passes.refine {
+				require.Equal(t, Refine{
+					Steps:     data.Refine.Steps,
+					CFG:       data.Refine.CFG,
+					Sampler:   data.Refine.SamplerName,
+					Scheduler: data.Refine.Scheduler,
+					Denoise:   data.Refine.Denoise,
+					Seed:      m.Refine.Seed,
+				}, m.Refine)
+			} else {
+				require.Zero(t, m.Refine)
+			}
+
 			require.Equal(t, data.Upscale.Model, m.Upscale.Model)
 			require.Equal(t, data.Upscale.Factor, m.Upscale.Factor)
 			require.Equal(t, data.Upscale.SamplerName, m.Upscale.Sampler)
@@ -103,7 +135,7 @@ func TestMetadataRoundTrip(t *testing.T) {
 				require.Equal(t, data.Face.Positive, d.Positive, "detailer %s", d.Name)
 				require.Equal(t, data.Face.Negative, d.Negative, "detailer %s", d.Name)
 			}
-			require.Equal(t, []string{"eye", "face", "hand", "lower_body", "upper_body"}, names)
+			require.Equal(t, passes.detailers, names)
 		})
 	}
 }
@@ -121,6 +153,10 @@ func TestSeedsAreIndependent(t *testing.T) {
 			// may coincide.
 			seeds := map[uint64]string{first.Seed: "base", first.Upscale.Seed: "upscale"}
 			require.Len(t, seeds, 2, "base and upscale share a seed")
+			if imageTemplatePasses[name].refine {
+				require.NotContains(t, seeds, first.Refine.Seed, "refine reuses the %s seed", seeds[first.Refine.Seed])
+				seeds[first.Refine.Seed] = "refine"
+			}
 			for _, d := range first.Detailers {
 				require.NotContains(t, seeds, d.Seed, "detailer %s reuses the %s seed", d.Name, seeds[d.Seed])
 				seeds[d.Seed] = d.Name
