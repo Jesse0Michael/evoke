@@ -6,8 +6,10 @@ import (
 	"hash/crc32"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -117,7 +119,14 @@ func TestMetadataRoundTrip(t *testing.T) {
 				require.Zero(t, m.Refine)
 			}
 
+			require.Equal(t, data.Clip, m.Clip)
+			require.Equal(t, data.Vae, m.VAE)
+			require.Equal(t, data.WeightDtype, m.WeightDtype)
+
 			require.Equal(t, data.Upscale.Model, m.Upscale.Model)
+			require.Equal(t, data.Upscale.TileWidth, m.Upscale.TileWidth)
+			require.Equal(t, data.Upscale.TileHeight, m.Upscale.TileHeight)
+			require.Equal(t, data.Upscale.SeamFix, m.Upscale.SeamFix)
 			require.Equal(t, data.Upscale.Factor, m.Upscale.Factor)
 			require.Equal(t, data.Upscale.SamplerName, m.Upscale.Sampler)
 			require.Equal(t, data.Upscale.Scheduler, m.Upscale.Scheduler)
@@ -125,15 +134,35 @@ func TestMetadataRoundTrip(t *testing.T) {
 			require.Equal(t, data.Upscale.CFG, m.Upscale.CFG)
 			require.Equal(t, data.Upscale.Denoise, m.Upscale.Denoise)
 
+			// Each pass is checked against its own region rather than against a
+			// single one: the settings a detailer reads back have to be the ones
+			// that region was given, or a graph wiring the hand pass to the face
+			// detector reads as correct.
+			regions := map[string]detailer{
+				"face": data.Face, "eye": data.Eye, "hand": data.Hand,
+				"upper_body": data.UpperBody, "lower_body": data.LowerBody,
+			}
 			names := make([]string, 0, len(m.Detailers))
 			for _, d := range m.Detailers {
 				names = append(names, d.Name)
-				require.Equal(t, data.Face.SamplerName, d.Sampler, "detailer %s", d.Name)
-				require.Equal(t, data.Face.Steps, d.Steps, "detailer %s", d.Name)
-				require.Equal(t, data.Face.CFG, d.CFG, "detailer %s", d.Name)
-				require.Equal(t, data.Face.Denoise, d.Denoise, "detailer %s", d.Name)
-				require.Equal(t, data.Face.Positive, d.Positive, "detailer %s", d.Name)
-				require.Equal(t, data.Face.Negative, d.Negative, "detailer %s", d.Name)
+				want, ok := regions[d.Name]
+				require.True(t, ok, "template renders an unknown detailer %s", d.Name)
+				require.Equal(t, want.SamplerName, d.Sampler, "detailer %s", d.Name)
+				require.Equal(t, want.Steps, d.Steps, "detailer %s", d.Name)
+				require.Equal(t, want.CFG, d.CFG, "detailer %s", d.Name)
+				require.Equal(t, want.Denoise, d.Denoise, "detailer %s", d.Name)
+				require.Equal(t, want.Positive, d.Positive, "detailer %s", d.Name)
+				require.Equal(t, want.Negative, d.Negative, "detailer %s", d.Name)
+				require.Equal(t, want.Detector, d.Detector, "detailer %s", d.Name)
+				require.Equal(t, want.GuideSize, d.GuideSize, "detailer %s", d.Name)
+				require.Equal(t, want.MaxSize, d.MaxSize, "detailer %s", d.Name)
+				require.Equal(t, want.MaxDetections, d.MaxDetections, "detailer %s", d.Name)
+				require.Equal(t, want.BBoxThreshold, d.Threshold, "detailer %s", d.Name)
+				require.Equal(t, want.BBoxDialation, d.Dilation, "detailer %s", d.Name)
+				require.Equal(t, want.BBoxCropFactor, d.CropFactor, "detailer %s", d.Name)
+				require.Equal(t, want.DropSize, d.DropSize, "detailer %s", d.Name)
+				require.Equal(t, want.Feather, d.Feather, "detailer %s", d.Name)
+				require.Equal(t, want.NoiseMaskFeather, d.NoiseMaskFeather, "detailer %s", d.Name)
 			}
 			require.Equal(t, passes.detailers, names)
 		})
@@ -384,6 +413,65 @@ func TestParseWorkflowPreservesLargeSeeds(t *testing.T) {
 	require.NotEqual(t, first.Seed, second.Seed)
 }
 
+// TestParseWorkflowReadsRewrittenNumbers covers the shape a graph has once
+// ComfyUI has seen it, which is the only shape the viewer ever reads. ComfyUI
+// rewrites every submitted value to the type its node declares, so a whole
+// number comes back with a decimal point wherever that node declares the widget
+// FLOAT — Impact's guide_size and max_size among them. The round-trip tests
+// parse the rendered template, which is the value before ComfyUI touches it, so
+// this is the only place the rewritten form is exercised.
+func TestParseWorkflowReadsRewrittenNumbers(t *testing.T) {
+	graph := func(dot string) string {
+		num := func(v int) string { return strconv.Itoa(v) + dot }
+		return `{
+  "face_detector": {"class_type": "` + classDetectorProvider + `", "inputs": {
+    "model_name": "bbox/face_yolov8m.pt"}},
+  "face_segs": {"class_type": "` + classBboxSEGS + `", "inputs": {
+    "bbox_detector": ["face_detector", 0], "threshold": 0.5,
+    "dilation": ` + num(10) + `, "crop_factor": 3.0, "drop_size": ` + num(9) + `}},
+  "face_filter": {"class_type": "` + classSEGSFilter + `", "inputs": {
+    "segs": ["face_segs", 0], "take_count": ` + num(2) + `}},
+  "face_detail": {"class_type": "` + classDetailer + `", "inputs": {
+    "segs": ["face_filter", 0], "guide_size": ` + num(728) + `, "max_size": ` + num(1024) + `,
+    "feather": ` + num(5) + `, "noise_mask_feather": ` + num(20) + `,
+    "steps": ` + num(3) + `, "cfg": 1.0, "denoise": 0.25, "seed": 42}}
+}`
+	}
+
+	want := Detailer{
+		Name:             "face",
+		Steps:            3,
+		CFG:              1,
+		Denoise:          0.25,
+		Seed:             42,
+		Detector:         "bbox/face_yolov8m.pt",
+		Threshold:        0.5,
+		Dilation:         10,
+		CropFactor:       3,
+		DropSize:         9,
+		MaxDetections:    2,
+		GuideSize:        728,
+		MaxSize:          1024,
+		Feather:          5,
+		NoiseMaskFeather: 20,
+	}
+
+	tests := []struct {
+		name string
+		dot  string
+	}{
+		{name: "as the template renders them", dot: ""},
+		{name: "as ComfyUI rewrites them", dot: ".0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var m Metadata
+			parseWorkflow(graph(tt.dot), &m)
+			require.Equal(t, []Detailer{want}, m.Detailers)
+		})
+	}
+}
+
 // chunk builds one PNG chunk with a valid CRC.
 func chunk(ctype string, data []byte) []byte {
 	out := make([]byte, 0, len(data)+12)
@@ -409,7 +497,8 @@ func TestReadPNG(t *testing.T) {
 	png := []byte("\x89PNG\r\n\x1a\n")
 	png = append(png, chunk("IHDR", ihdr)...)
 	png = append(png, textChunk("prompt", workflow)...)
-	png = append(png, textChunk("evoke", `{"sources":["/src/test-character.evoke"],"inputs":["test-character"]}`)...)
+	png = append(png, textChunk("evoke", `{"sources":["/src/test-character.evoke"],"inputs":["test-character"],`+
+		`"job_id":"3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d","created":"2026-09-26T10:05:00Z","base":"sdxl","kind":"image"}`)...)
 	png = append(png, chunk("IEND", nil)...)
 
 	path := filepath.Join(t.TempDir(), "test-image.png")
@@ -423,6 +512,12 @@ func TestReadPNG(t *testing.T) {
 	require.Equal(t, int64(len(png)), m.FileSize)
 	require.Equal(t, []string{"/src/test-character.evoke"}, m.Sources)
 	require.Equal(t, []string{"test-character"}, m.Inputs)
+	require.Equal(t, Job{
+		ID:      "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+		Created: time.Date(2026, 9, 26, 10, 5, 0, 0, time.UTC),
+		Base:    "sdxl",
+		Kind:    "image",
+	}, m.Job)
 	require.NotZero(t, m.Seed)
 	require.Len(t, m.Detailers, 5)
 	require.Contains(t, m.Positive, "test-appearance")

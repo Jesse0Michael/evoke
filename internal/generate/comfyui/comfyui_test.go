@@ -432,6 +432,7 @@ func fullComposition() *evoke.Composition {
 				"steps": "20", "cfg": "4.0", "sampler_name": "euler", "scheduler": "simple",
 				"denoise": "0.3", "feather": "10", "bbox_threshold": "0.25",
 				"bbox_dilation": "10", "bbox_crop_factor": "2.0", "max_detection": "2",
+				"drop_size": "9", "noise_mask_feather": "20",
 			},
 			Text: evoke.Prompt{Positive: []string{"test-detailer"}, Negative: []string{"test-detailer-negative"}},
 		}

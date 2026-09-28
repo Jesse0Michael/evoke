@@ -107,6 +107,33 @@ func (b *detailBuilder) sampling(sampler, scheduler string, steps int, cfg, deno
 	}
 }
 
+// detection renders what a detailer pass looked for, so every detailer reads
+// identically whether it is shown in the full record or on its own debug frame.
+func (b *detailBuilder) detection(d comfyui.Detailer) {
+	b.field("Detector", d.Detector)
+	if d.GuideSize > 0 {
+		b.field("Guide", fmt.Sprintf("%d / %d", d.GuideSize, d.MaxSize))
+	}
+	if d.MaxDetections > 0 {
+		b.field("Max det", fmt.Sprintf("%d", d.MaxDetections))
+	}
+	if d.Threshold > 0 {
+		b.field("Threshold", fmt.Sprintf("%.2f", d.Threshold))
+	}
+	if d.Dilation != 0 {
+		b.field("Dilation", fmt.Sprintf("%d", d.Dilation))
+	}
+	if d.CropFactor > 0 {
+		b.field("Crop", fmt.Sprintf("%.1fx", d.CropFactor))
+	}
+	if d.DropSize > 0 {
+		b.field("Drop", fmt.Sprintf("%d", d.DropSize))
+	}
+	if d.Feather > 0 || d.NoiseMaskFeather > 0 {
+		b.field("Feather", fmt.Sprintf("%d / %d", d.Feather, d.NoiseMaskFeather))
+	}
+}
+
 // detailPane is the scrollable right-hand column: rendered lines plus the
 // offset the wheel moves.
 type detailPane struct {
@@ -182,6 +209,9 @@ func formatDetails(m comfyui.Metadata, path string, width int) []string {
 
 	b.blank()
 	b.field("Model", m.Model)
+	b.field("CLIP", m.Clip)
+	b.field("VAE", m.VAE)
+	b.field("Dtype", m.WeightDtype)
 	b.sampling(m.Sampler, m.Scheduler, m.Steps, m.CFG, m.Denoise, m.Seed)
 	for _, l := range m.LoRAs {
 		b.field("LoRA", fmt.Sprintf("%s (%.1f/%.1f)", l.Name, l.Model, l.Clip))
@@ -190,20 +220,41 @@ func formatDetails(m comfyui.Metadata, path string, width int) []string {
 	b.block("Positive", m.Positive)
 	b.block("Negative", m.Negative)
 
+	if m.Refine.Steps > 0 {
+		b.section("Refine")
+		b.sampling(m.Refine.Sampler, m.Refine.Scheduler, m.Refine.Steps, m.Refine.CFG, m.Refine.Denoise, m.Refine.Seed)
+	}
+
 	if m.Upscale.Model != "" || m.Upscale.Seed != 0 {
-		b.section("upscale")
+		b.section("Upscale")
 		b.field("Model", m.Upscale.Model)
 		if m.Upscale.Factor > 0 {
 			b.field("Factor", fmt.Sprintf("%.1fx", m.Upscale.Factor))
 		}
+		if m.Upscale.TileWidth > 0 {
+			b.field("Tiles", fmt.Sprintf("%dx%d", m.Upscale.TileWidth, m.Upscale.TileHeight))
+		}
+		b.field("Mode", m.Upscale.Mode)
+		b.field("Seam fix", m.Upscale.SeamFix)
 		b.sampling(m.Upscale.Sampler, m.Upscale.Scheduler, m.Upscale.Steps, m.Upscale.CFG, m.Upscale.Denoise, m.Upscale.Seed)
 	}
 
 	for _, d := range m.Detailers {
-		b.section(d.Name)
+		b.section("Detailer: " + d.Name)
+		b.detection(d)
 		b.sampling(d.Sampler, d.Scheduler, d.Steps, d.CFG, d.Denoise, d.Seed)
 		b.block("+", d.Positive)
 		b.block("-", d.Negative)
+	}
+
+	if m.Job.ID != "" || m.Job.Base != "" {
+		b.section("Workflow")
+		b.field("Job", m.Job.ID)
+		if !m.Job.Created.IsZero() {
+			b.field("Created", m.Job.Created.Local().Format("2006-01-02 15:04"))
+		}
+		b.field("Base", m.Job.Base)
+		b.field("Kind", m.Job.Kind)
 	}
 
 	return b.lines
@@ -219,6 +270,7 @@ func formatStageDetails(m comfyui.Metadata, filename string, width int) []string
 			continue
 		}
 		b.field("Stage", d.Name)
+		b.detection(d)
 		b.sampling(d.Sampler, d.Scheduler, d.Steps, d.CFG, d.Denoise, d.Seed)
 		b.block("Positive", d.Positive)
 		b.block("Negative", d.Negative)

@@ -25,6 +25,8 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/jesse0michael/evoke/internal/generate"
 	evoke "github.com/jesse0michael/evoke/pkg/evoke"
 )
@@ -419,11 +421,27 @@ func (c *Client) submit(ctx context.Context, doc *evoke.Composition, kind Kind, 
 	type evokePNGMeta struct {
 		Sources []string `json:"sources,omitempty"`
 		Inputs  []string `json:"inputs,omitempty"`
+		JobID   string   `json:"job_id,omitempty"`
+		Created string   `json:"created,omitempty"`
+		Base    string   `json:"base,omitempty"`
+		Kind    string   `json:"kind,omitempty"`
 	}
-	meta := evokePNGMeta{Sources: doc.Sources, Inputs: doc.Inputs}
+	// extra_pnginfo is frozen at submission, so an id the saved image can carry
+	// has to exist before the graph runs. ComfyUI accepts a client-supplied
+	// prompt_id when it is a canonical UUID, which is what lets an image name
+	// the queue entry that produced it.
+	jobID := uuid.NewString()
+	meta := evokePNGMeta{
+		Sources: doc.Sources,
+		Inputs:  doc.Inputs,
+		JobID:   jobID,
+		Created: time.Now().UTC().Format(time.RFC3339),
+		Base:    base,
+		Kind:    string(kind),
+	}
 	metaJSON, _ := json.Marshal(meta)
 
-	body := fmt.Sprintf(`{"prompt": %s, "extra_data": {"extra_pnginfo": {"evoke": %s}}, "client_id": "evoke-cli"}`, string(payload), string(metaJSON))
+	body := fmt.Sprintf(`{"prompt": %s, "prompt_id": %q, "extra_data": {"extra_pnginfo": {"evoke": %s}}, "client_id": "evoke-cli"}`, string(payload), jobID, string(metaJSON))
 
 	// A rejected workflow is precisely when the rendered graph is needed, and the
 	// caller only prints it on success, so print it here before failing.
@@ -467,6 +485,12 @@ func (c *Client) submit(ctx context.Context, doc *evoke.Composition, kind Kind, 
 	result := &generate.Result{
 		Message:  fmt.Sprintf("ComfyUI accepted (status: %s)", resp.Status),
 		PromptID: promptResp.PromptID,
+	}
+	if promptResp.PromptID != "" && promptResp.PromptID != jobID {
+		// A ComfyUI predating client-supplied ids mints its own, leaving the id
+		// already embedded in the image naming nothing.
+		result.Message = fmt.Sprintf("ComfyUI assigned job id %s; the id embedded in the image will not match\n%s",
+			promptResp.PromptID, result.Message)
 	}
 	if len(skipped) > 0 {
 		result.Message = fmt.Sprintf("skipped LoRA %s: not built for %s\n%s", strings.Join(skipped, ", "), base, result.Message)

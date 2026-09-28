@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // The class types this package's templates emit. The reader matches on them,
@@ -19,12 +20,17 @@ import (
 const (
 	classCheckpointLoader    = "CheckpointLoaderSimple"
 	classUNETLoader          = "UNETLoader"
+	classCLIPLoader          = "CLIPLoader"
+	classVAELoader           = "VAELoader"
 	classLoraLoader          = "LoraLoader"
 	classLoraLoaderModelOnly = "LoraLoaderModelOnly"
 	classKSampler            = "KSampler"
 	classUpscaleModelLoader  = "UpscaleModelLoader"
 	classUpscale             = "UltimateSDUpscale"
 	classDetailer            = "DetailerForEach"
+	classDetectorProvider    = "UltralyticsDetectorProvider"
+	classBboxSEGS            = "BboxDetectorSEGS"
+	classSEGSFilter          = "ImpactSEGSOrderedFilter"
 	classTextEncode          = "CLIPTextEncode"
 	// The instruction-edit encoder holds its text in "prompt" rather than
 	// "text". It is a text node for this reader's purposes all the same: the
@@ -49,24 +55,40 @@ const maxChunk = 8 << 20
 // Seeds are uint64 because ComfyUI accepts the full unsigned range; anything
 // narrower silently collapses distinct seeds onto one value.
 type Metadata struct {
-	Model     string
-	Width     int
-	Height    int
-	Positive  string
-	Negative  string
-	Sampler   string
-	Scheduler string
-	Steps     int
-	CFG       float64
-	Seed      uint64
-	Denoise   float64
-	LoRAs     []LoRA
-	FileSize  int64
-	Detailers []Detailer
-	Refine    Refine
-	Upscale   Upscale
-	Sources   []string
-	Inputs    []string
+	Model string
+	// Clip and VAE are set only by the architectures loaded as separate
+	// files; a single-checkpoint base carries all three in Model.
+	Clip        string
+	VAE         string
+	WeightDtype string
+	Width       int
+	Height      int
+	Positive    string
+	Negative    string
+	Sampler     string
+	Scheduler   string
+	Steps       int
+	CFG         float64
+	Seed        uint64
+	Denoise     float64
+	LoRAs       []LoRA
+	FileSize    int64
+	Detailers   []Detailer
+	Refine      Refine
+	Upscale     Upscale
+	Sources     []string
+	Inputs      []string
+	Job         Job
+}
+
+// Job is what the CLI knew at submission time. The id is minted client-side
+// and handed to ComfyUI as the prompt_id, so a saved image names the queue
+// entry that produced it.
+type Job struct {
+	ID      string
+	Created time.Time
+	Base    string
+	Kind    string
 }
 
 // Refine is the second sampler pass over the base latent, if the workflow ran
@@ -83,14 +105,18 @@ type Refine struct {
 
 // Upscale is the UltimateSDUpscale pass, if the workflow ran one.
 type Upscale struct {
-	Model     string
-	Steps     int
-	CFG       float64
-	Sampler   string
-	Scheduler string
-	Denoise   float64
-	Seed      uint64
-	Factor    float64
+	Model      string
+	Steps      int
+	CFG        float64
+	Sampler    string
+	Scheduler  string
+	Denoise    float64
+	Seed       uint64
+	Factor     float64
+	TileWidth  int
+	TileHeight int
+	Mode       string
+	SeamFix    string
 }
 
 // Detailer is one DetailerForEach pass. Name is the template's node key with
@@ -106,6 +132,18 @@ type Detailer struct {
 	Scheduler string
 	Denoise   float64
 	Seed      uint64
+	// Detector and the bbox settings come from the nodes upstream of the pass:
+	// what it looked for, and how permissively.
+	Detector         string
+	Threshold        float64
+	Dilation         int
+	CropFactor       float64
+	DropSize         int
+	MaxDetections    int
+	GuideSize        int
+	MaxSize          int
+	Feather          int
+	NoiseMaskFeather int
 }
 
 // LoRA is one loader in the chain. Clip is zero for model-only loaders.
@@ -205,12 +243,24 @@ func parseWorkflow(raw string, m *Metadata) {
 
 	// Node id -> encoded text, so a detailer can resolve its prompt links.
 	texts := make(map[string]string)
+	// A detailer names the segs it refined, which name the detector that found
+	// them. What a pass looked for sits two nodes upstream of the pass itself,
+	// so it is resolved by following those links rather than by node key.
+	detectors := make(map[string]string)
+	segs := make(map[string]map[string]any)
+	filters := make(map[string]map[string]any)
 	for id, node := range nodes {
 		switch node.ClassType {
 		case classTextEncode:
 			texts[id] = str(node.Inputs, "text")
 		case classTextEncodeQwenEdit:
 			texts[id] = str(node.Inputs, "prompt")
+		case classDetectorProvider:
+			detectors[id] = str(node.Inputs, "model_name")
+		case classBboxSEGS:
+			segs[id] = node.Inputs
+		case classSEGSFilter:
+			filters[id] = node.Inputs
 		}
 	}
 
@@ -220,6 +270,11 @@ func parseWorkflow(raw string, m *Metadata) {
 			m.Model = str(node.Inputs, "ckpt_name")
 		case classUNETLoader:
 			m.Model = str(node.Inputs, "unet_name")
+			m.WeightDtype = str(node.Inputs, "weight_dtype")
+		case classCLIPLoader:
+			m.Clip = str(node.Inputs, "clip_name")
+		case classVAELoader:
+			m.VAE = str(node.Inputs, "vae_name")
 		case classKSampler:
 			// A template may sample more than once, and the node key is what
 			// tells the passes apart — the same way prompt_pos/prompt_neg are
@@ -258,18 +313,41 @@ func parseWorkflow(raw string, m *Metadata) {
 			m.Upscale.Seed = unsigned(node.Inputs, "seed")
 			m.Upscale.Denoise = float(node.Inputs, "denoise")
 			m.Upscale.Factor = float(node.Inputs, "upscale_by")
+			m.Upscale.TileWidth = integer(node.Inputs, "tile_width")
+			m.Upscale.TileHeight = integer(node.Inputs, "tile_height")
+			m.Upscale.Mode = str(node.Inputs, "mode_type")
+			m.Upscale.SeamFix = str(node.Inputs, "seam_fix_mode")
 		case classDetailer:
-			m.Detailers = append(m.Detailers, Detailer{
-				Name:      strings.TrimSuffix(id, "_detail"),
-				Positive:  texts[link(node.Inputs, "positive")],
-				Negative:  texts[link(node.Inputs, "negative")],
-				Steps:     integer(node.Inputs, "steps"),
-				CFG:       float(node.Inputs, "cfg"),
-				Sampler:   str(node.Inputs, "sampler_name"),
-				Scheduler: str(node.Inputs, "scheduler"),
-				Denoise:   float(node.Inputs, "denoise"),
-				Seed:      unsigned(node.Inputs, "seed"),
-			})
+			d := Detailer{
+				Name:             strings.TrimSuffix(id, "_detail"),
+				Positive:         texts[link(node.Inputs, "positive")],
+				Negative:         texts[link(node.Inputs, "negative")],
+				Steps:            integer(node.Inputs, "steps"),
+				CFG:              float(node.Inputs, "cfg"),
+				Sampler:          str(node.Inputs, "sampler_name"),
+				Scheduler:        str(node.Inputs, "scheduler"),
+				Denoise:          float(node.Inputs, "denoise"),
+				Seed:             unsigned(node.Inputs, "seed"),
+				GuideSize:        integer(node.Inputs, "guide_size"),
+				MaxSize:          integer(node.Inputs, "max_size"),
+				Feather:          integer(node.Inputs, "feather"),
+				NoiseMaskFeather: integer(node.Inputs, "noise_mask_feather"),
+			}
+			// A cap on detections is an optional filter between the detector
+			// and the pass, so the chain is walked one hop at a time.
+			source := link(node.Inputs, "segs")
+			if f, ok := filters[source]; ok {
+				d.MaxDetections = integer(f, "take_count")
+				source = link(f, "segs")
+			}
+			if s, ok := segs[source]; ok {
+				d.Detector = detectors[link(s, "bbox_detector")]
+				d.Threshold = float(s, "threshold")
+				d.Dilation = integer(s, "dilation")
+				d.CropFactor = float(s, "crop_factor")
+				d.DropSize = integer(s, "drop_size")
+			}
+			m.Detailers = append(m.Detailers, d)
 		}
 	}
 
@@ -286,12 +364,20 @@ func parseEvokeChunk(raw string, m *Metadata) {
 	var meta struct {
 		Sources []string `json:"sources"`
 		Inputs  []string `json:"inputs"`
+		JobID   string   `json:"job_id"`
+		Created string   `json:"created"`
+		Base    string   `json:"base"`
+		Kind    string   `json:"kind"`
 	}
 	if err := json.Unmarshal([]byte(raw), &meta); err != nil {
 		return
 	}
 	m.Sources = meta.Sources
 	m.Inputs = meta.Inputs
+	m.Job = Job{ID: meta.JobID, Base: meta.Base, Kind: meta.Kind}
+	if t, err := time.Parse(time.RFC3339, meta.Created); err == nil {
+		m.Job.Created = t
+	}
 }
 
 func str(inputs map[string]any, key string) string {
@@ -315,12 +401,22 @@ func number(inputs map[string]any, key string) json.Number {
 	return v
 }
 
+// integer reads a whole-number input. ComfyUI rewrites every submitted value to
+// the type its node declares before the graph is embedded, so a field rendered
+// as 728 reads back as 728.0 wherever the node declares it FLOAT — Impact's
+// guide_size and max_size among them. Accepting only the integer form yields a
+// silent zero, and the round trip cannot catch it: that test parses the
+// rendered template, which is the value before ComfyUI ever sees it.
 func integer(inputs map[string]any, key string) int {
-	n, err := strconv.Atoi(string(number(inputs, key)))
+	raw := string(number(inputs, key))
+	if n, err := strconv.Atoi(raw); err == nil {
+		return n
+	}
+	f, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
 		return 0
 	}
-	return n
+	return int(f)
 }
 
 func unsigned(inputs map[string]any, key string) uint64 {
