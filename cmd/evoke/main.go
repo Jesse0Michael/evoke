@@ -67,6 +67,8 @@ func run(args []string) int {
 		return cli.ClearCmd(rest, verbose)
 	case "view":
 		return cli.ViewCmd(rest, verbose)
+	case "discover":
+		return cli.DiscoverCmd(rest, verbose)
 	case "completion":
 		return cli.CompletionCmd(rest, verbose)
 	case "__complete":
@@ -94,6 +96,7 @@ Image:
     evoke paint       Alter an existing image by instruction (instruction-edit model)
     evoke inspect     List files matching a tag, or show what the selected files compose into
     evoke tag         Add, remove, or list local tags on a file (never written into the file)
+    evoke discover    Interactive browser for every known .evoke file
     evoke queue       View the current generation queue
     evoke clear       Clear the generation queue
     evoke view        Interactive image viewer for recent output

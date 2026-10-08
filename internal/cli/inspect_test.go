@@ -37,21 +37,12 @@ func TestInspectComposition(t *testing.T) {
 }
 
 func TestInspectGroups(t *testing.T) {
-	dir := t.TempDir()
-	files := map[string]string{
-		"alpha.evoke": "TAGS\n    red\n\nAPPAREL\n    dress\n",
-		"beta.evoke":  "TAGS\n    blue\n\nENVIRONMENT\n    forest\n",
-	}
-	for name, src := range files {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644))
-	}
-
 	// One target matches several files, one matches nothing: each is grouped
 	// under its raw input, and the empty target is called out.
 	results := []inspectResult{
 		{input: classifiedInput{Raw: "wardrobe"}, candidates: []indexCandidate{
-			{Path: filepath.Join(dir, "beta.evoke")},
-			{Path: filepath.Join(dir, "alpha.evoke")},
+			{Path: "/dir/beta.evoke"},
+			{Path: "/dir/alpha.evoke"},
 		}},
 		{input: classifiedInput{Raw: "missing"}, candidates: nil},
 	}
@@ -60,8 +51,8 @@ func TestInspectGroups(t *testing.T) {
 	inspectGroups(&out, results, chatStyle{})
 
 	expected := "wardrobe:\n" +
-		"alpha.evoke  [red]\n" +
-		"beta.evoke   [blue]\n" +
+		"alpha.evoke\n" +
+		"beta.evoke\n" +
 		"\n" +
 		"missing:\n" +
 		"  (no matches)\n"
@@ -69,28 +60,20 @@ func TestInspectGroups(t *testing.T) {
 }
 
 func TestInspectList(t *testing.T) {
-	dir := t.TempDir()
-	files := map[string]string{
-		"alpha.evoke": "TAGS\n    red\n\nAPPAREL\n    dress\n",
-		"beta.evoke":  "TAGS\n    blue\n\nENVIRONMENT\n    forest\n",
-		"gamma.evoke": "APPAREL\n    hat\n", // no tags
-	}
-	for name, src := range files {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644))
-	}
-
 	// Candidates deliberately out of order to exercise the filename sort.
+	// evoke inspect's listing is just the matching filenames — never a
+	// file's tags, declared or local.
 	candidates := []indexCandidate{
-		{Path: filepath.Join(dir, "gamma.evoke"), Name: "gamma"},
-		{Path: filepath.Join(dir, "beta.evoke"), Name: "beta"},
-		{Path: filepath.Join(dir, "alpha.evoke"), Name: "alpha"},
+		{Path: "/dir/gamma.evoke", Name: "gamma"},
+		{Path: "/dir/beta.evoke", Name: "beta"},
+		{Path: "/dir/alpha.evoke", Name: "alpha"},
 	}
 
 	var out bytes.Buffer
 	inspectList(&out, candidates, chatStyle{})
 
-	expected := "alpha.evoke  [red]\n" +
-		"beta.evoke   [blue]\n" +
+	expected := "alpha.evoke\n" +
+		"beta.evoke\n" +
 		"gamma.evoke\n"
 	require.Equal(t, expected, out.String())
 }

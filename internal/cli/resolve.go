@@ -281,6 +281,21 @@ func displayPath(path string, roots []sourceRoot) string {
 	return path
 }
 
+// rootRelativeKey returns path relative to whichever source root contains it,
+// or its basename when no root does — the same identity sanitizeSources embeds
+// into generated images and evoke tag keys local associations under. Unlike
+// displayPath, there is no working-directory fallback tier: a key that changed
+// with wherever a command happened to be run from would silently split one
+// tag or lookup from another.
+func rootRelativeKey(path string, roots []sourceRoot) string {
+	for _, root := range roots {
+		if rel, err := filepath.Rel(root.Path, path); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+			return rel
+		}
+	}
+	return filepath.Base(path)
+}
+
 // sanitizeSources renders resolved source paths the same way displayPath does
 // for terminal output, but for embedding in generated images: these leave the
 // machine, so the absolute-path fallback displayPath allows is replaced with

@@ -222,44 +222,16 @@ func inspectMatches(ctx context.Context, raw string, idx *sqliteIndex, roots []s
 	return candidates, nil
 }
 
-// inspectList prints one line per matching file: its filename and tags, sorted
-// by filename. The filename is the exact token to pass back to `evoke inspect`.
+// inspectList prints one line per matching file: its filename, sorted. The
+// filename is the exact token to pass back to `evoke inspect`.
 func inspectList(w io.Writer, candidates []indexCandidate, st chatStyle) {
 	sort.Slice(candidates, func(i, j int) bool {
 		return strings.ToLower(filepath.Base(candidates[i].Path)) < strings.ToLower(filepath.Base(candidates[j].Path))
 	})
 
-	nameWidth := 0
 	for _, c := range candidates {
-		if n := len(filepath.Base(c.Path)); n > nameWidth {
-			nameWidth = n
-		}
+		fmt.Fprintln(w, st.character(filepath.Base(c.Path)))
 	}
-	if nameWidth > 32 {
-		nameWidth = 32
-	}
-
-	for _, c := range candidates {
-		line := st.character(fmt.Sprintf("%-*s", nameWidth, filepath.Base(c.Path)))
-		if tags := fileTags(c.Path); len(tags) > 0 {
-			line += "  " + st.dim("["+strings.Join(tags, ", ")+"]")
-		}
-		fmt.Fprintln(w, line)
-	}
-}
-
-// fileTags reads a file's declared tags. Best-effort: an unreadable or
-// unparseable file yields no tags rather than an error.
-func fileTags(path string) []string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	doc, err := evoke.Parse(data)
-	if err != nil {
-		return nil
-	}
-	return doc.Metadata.Tags
 }
 
 // registryOnDiskPath returns the local library path backing a registry

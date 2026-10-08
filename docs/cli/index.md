@@ -18,6 +18,7 @@ $ go install ./cmd/evoke
 | `evoke login` | Sign in to the registry via Google OAuth. |
 | [`evoke settings`](settings.md) | Manage user settings (source paths, registry URL). |
 | `evoke view` | Interactive terminal image viewer with metadata display. |
+| `evoke discover` | Interactive browser for every known `.evoke` file — the current directory plus every configured source root. |
 | `evoke queue` | Display the ComfyUI generation queue. |
 | `evoke clear` | Clear the ComfyUI generation queue. |
 | `evoke completion` | Output shell completion script. |

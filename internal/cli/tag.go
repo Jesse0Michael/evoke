@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -216,25 +215,15 @@ func resolveTagTarget(ctx context.Context, raw string, verbose bool) (string, er
 
 // tagKey returns the identity tags.json stores associations under for a
 // resolved target. A registry reference already has a unique namespace/name;
-// a source file's key is its path relative to whichever configured root
-// contains it — the same identity sanitizeSources embeds into generated
-// images — falling back to the basename only for a file outside every root.
-// Root-relative rather than bare basename because two files can share a name
-// in different collections, and a favorite must not jump from one to the
-// other just because they're both named "greenhouse.evoke". Unlike
-// displayPath, there is no working-directory fallback tier: a key that
-// changed with wherever the command happened to be run from would silently
-// split one favorite into two.
+// a source file's key is root-relative (see rootRelativeKey) rather than a
+// bare basename, because two files can share a name in different collections
+// and a favorite must not jump from one to the other just because they're
+// both named "greenhouse.evoke".
 func tagKey(ci classifiedInput, candidate indexCandidate, roots []sourceRoot) string {
 	if ci.Kind == inputRegistryRef {
 		return ci.Namespace + "/" + ci.Name
 	}
-	for _, root := range roots {
-		if rel, err := filepath.Rel(root.Path, candidate.Path); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
-			return rel
-		}
-	}
-	return filepath.Base(candidate.Path)
+	return rootRelativeKey(candidate.Path, roots)
 }
 
 func tagUsage() {
