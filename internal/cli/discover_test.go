@@ -131,7 +131,7 @@ func TestDiscoverModelNavigation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newDiscoverModel(syntheticTree(), nil, nil)
+			m := newDiscoverModel(syntheticTree(), nil, sourceIndex{})
 			m = discoverPress(m, keys(tt.keys...)...)
 
 			require.Len(t, m.stack, tt.wantDepth)
@@ -145,9 +145,64 @@ func TestDiscoverModelNavigation(t *testing.T) {
 	}
 }
 
+// TestDiscoverModelImageNavigation covers stepping through a file's past
+// examples with [ and ] — independent keys from the tree cursor's arrows —
+// clamped at both ends and reset the moment the selection moves to a
+// different file.
+func TestDiscoverModelImageNavigation(t *testing.T) {
+	t.Setenv("EVOKE_HOME", t.TempDir())
+	dir := t.TempDir()
+	newest := writeSourceImage(t, dir, "three.png", []string{"alpha.evoke"}, time.Minute)
+	middle := writeSourceImage(t, dir, "two.png", []string{"alpha.evoke"}, time.Hour)
+	oldest := writeSourceImage(t, dir, "one.png", []string{"alpha.evoke"}, 2*time.Hour)
+	sources := testSourceIndex(t, dir)
+
+	m := newDiscoverModel(syntheticTree(), []sourceRoot{{Path: "/root"}}, sources)
+	m = discoverPress(m, key("down")) // select "alpha.evoke"
+
+	require.Equal(t, newest, m.currentImagePath())
+	require.Contains(t, m.statusBar(), "1/3")
+	require.Contains(t, m.controlsBar(), "[ ] examples")
+
+	m = discoverPress(m, key("]"))
+	require.Equal(t, middle, m.currentImagePath())
+	require.Contains(t, m.statusBar(), "2/3")
+
+	m = discoverPress(m, key("]"))
+	require.Equal(t, oldest, m.currentImagePath())
+	require.Contains(t, m.statusBar(), "3/3")
+
+	m = discoverPress(m, key("]")) // clamps at the oldest example
+	require.Equal(t, oldest, m.currentImagePath())
+
+	m = discoverPress(m, key("["))
+	require.Equal(t, middle, m.currentImagePath())
+
+	// Stepping off the file and back resets to the newest example.
+	m = discoverPress(m, key("up"), key("down"))
+	require.Equal(t, newest, m.currentImagePath())
+}
+
+// TestDiscoverModelImageNavigationSingleExample covers the common case: one
+// example offers nothing to page through, so neither the position nor the
+// step hint should appear.
+func TestDiscoverModelImageNavigationSingleExample(t *testing.T) {
+	t.Setenv("EVOKE_HOME", t.TempDir())
+	dir := t.TempDir()
+	only := writeSourceImage(t, dir, "one.png", []string{"alpha.evoke"}, time.Minute)
+	sources := testSourceIndex(t, dir)
+
+	m := newDiscoverModel(syntheticTree(), []sourceRoot{{Path: "/root"}}, sources)
+	m = discoverPress(m, key("down"), key("]")) // select "alpha.evoke", attempt to step
+
+	require.Equal(t, only, m.currentImagePath())
+	require.NotContains(t, m.statusBar(), "1/1")
+	require.NotContains(t, m.controlsBar(), "[ ] examples")
+}
+
 func TestDiscoverModelTagPrompt(t *testing.T) {
 	t.Run("t opens the prompt only on a file", func(t *testing.T) {
-		m := newDiscoverModel(syntheticTree(), nil, nil)
+		m := newDiscoverModel(syntheticTree(), nil, sourceIndex{})
 		m = discoverPress(m, key("t"))
 		require.Equal(t, discoverBrowse, m.mode, "the root listing entry is a directory")
 
@@ -157,7 +212,7 @@ func TestDiscoverModelTagPrompt(t *testing.T) {
 
 	t.Run("esc cancels without submitting", func(t *testing.T) {
 		var called bool
-		m := newDiscoverModel(syntheticTree(), nil, nil)
+		m := newDiscoverModel(syntheticTree(), nil, sourceIndex{})
 		m.runTag = func(string, []string) (string, error) { called = true; return "", nil }
 
 		m = discoverPress(m, key("down"), key("t"))
@@ -171,7 +226,7 @@ func TestDiscoverModelTagPrompt(t *testing.T) {
 	t.Run("enter submits the typed tags for the selected file", func(t *testing.T) {
 		var gotPath string
 		var gotTags []string
-		m := newDiscoverModel(syntheticTree(), nil, nil)
+		m := newDiscoverModel(syntheticTree(), nil, sourceIndex{})
 		m.runTag = func(path string, tags []string) (string, error) {
 			gotPath, gotTags = path, tags
 			return "/root/alpha.evoke => favorite", nil
@@ -189,7 +244,7 @@ func TestDiscoverModelTagPrompt(t *testing.T) {
 
 	t.Run("a blank line submits nothing", func(t *testing.T) {
 		var called bool
-		m := newDiscoverModel(syntheticTree(), nil, nil)
+		m := newDiscoverModel(syntheticTree(), nil, sourceIndex{})
 		m.runTag = func(string, []string) (string, error) { called = true; return "", nil }
 
 		m = discoverPress(m, key("down"), key("t"), key("enter"))
@@ -199,7 +254,7 @@ func TestDiscoverModelTagPrompt(t *testing.T) {
 	})
 
 	t.Run("a failure is reported in the status bar", func(t *testing.T) {
-		m := newDiscoverModel(syntheticTree(), nil, nil)
+		m := newDiscoverModel(syntheticTree(), nil, sourceIndex{})
 		m.runTag = func(string, []string) (string, error) { return "", fmt.Errorf("boom") }
 
 		m = discoverPress(m, key("down"), key("t"), key("f"), key("enter"))
@@ -271,15 +326,18 @@ func TestDiscoverDetailLines(t *testing.T) {
 // image to show, rather than leaving a blank gap above the detail text.
 func TestDiscoverLayoutImageGap(t *testing.T) {
 	t.Run("no image leaves no gap", func(t *testing.T) {
-		m := newDiscoverModel(syntheticTree(), nil, nil) // nil sources: nothing resolves
-		m = discoverPress(m, key("down"))                // select the file "alpha.evoke"
+		m := newDiscoverModel(syntheticTree(), nil, sourceIndex{}) // zero-value sources: nothing resolves
+		m = discoverPress(m, key("down"))                          // select the file "alpha.evoke"
 
 		require.Equal(t, 0, m.imgRows)
 		require.Equal(t, 1, m.detailTop)
 	})
 
 	t.Run("an image reserves its own block", func(t *testing.T) {
-		sources := sourceIndex{"alpha.evoke": "/out/recent.png"}
+		t.Setenv("EVOKE_HOME", t.TempDir())
+		dir := t.TempDir()
+		writeSourceImage(t, dir, "recent.png", []string{"alpha.evoke"}, time.Minute)
+		sources := testSourceIndex(t, dir)
 		m := newDiscoverModel(syntheticTree(), []sourceRoot{{Path: "/root"}}, sources)
 		m = discoverPress(m, key("down")) // select the file "alpha.evoke"
 
@@ -358,7 +416,20 @@ func writeSourceImage(t *testing.T, dir, name string, sources []string, age time
 	return path
 }
 
-func TestBuildSourceIndexRecentFor(t *testing.T) {
+// testSourceIndex builds a source index over dir's output images and closes
+// it when the test finishes.
+func testSourceIndex(t *testing.T, dir string) sourceIndex {
+	t.Helper()
+	idx := buildSourceIndex(dir)
+	t.Cleanup(idx.close)
+	return idx
+}
+
+// TestBuildSourceIndexImagesFor covers matching: the root-relative identity,
+// the basename fallback for a source embedded outside every root, no match at
+// all, and — the reason the JSON cache was replaced — every example for a
+// source surviving rather than only the newest, ordered newest first.
+func TestBuildSourceIndexImagesFor(t *testing.T) {
 	t.Setenv("EVOKE_HOME", t.TempDir())
 	dir := t.TempDir()
 	roots := []sourceRoot{{Path: "/root/characters"}}
@@ -370,48 +441,48 @@ func TestBuildSourceIndexRecentFor(t *testing.T) {
 	outside := writeSourceImage(t, dir, "outside.png", []string{"/elsewhere/beta.evoke"}, time.Minute)
 	writeSourceImage(t, dir, "unrelated.png", []string{"gamma.evoke"}, time.Minute)
 
-	idx := buildSourceIndex(dir)
+	idx := testSourceIndex(t, dir)
 
-	require.Equal(t, newer, idx.recentFor("/root/characters/aria.evoke", roots))
-	require.Equal(t, outside, idx.recentFor("/root/characters/beta.evoke", roots))
-	require.Empty(t, idx.recentFor("/root/characters/delta.evoke", roots))
-	require.NotEqual(t, older, newer)
+	require.Equal(t, []string{newer, older}, idx.imagesFor("/root/characters/aria.evoke", roots))
+	require.Equal(t, []string{outside}, idx.imagesFor("/root/characters/beta.evoke", roots))
+	require.Empty(t, idx.imagesFor("/root/characters/delta.evoke", roots))
 }
 
-func TestSourceIndexNilIsSafe(t *testing.T) {
+func TestSourceIndexZeroValueIsSafe(t *testing.T) {
 	var idx sourceIndex
-	require.Empty(t, idx.recentFor("/anything.evoke", nil))
+	require.Empty(t, idx.imagesFor("/anything.evoke", nil))
+	idx.close()
 }
 
-// TestBuildSourceIndexInvalidatesMissingImages covers the only way a cached
-// entry needs to change without a new image appearing: the file it pointed
+// TestBuildSourceIndexInvalidatesMissingImages covers the only way a recorded
+// example needs to change without a new image appearing: the file it pointed
 // at was deleted (e.g. by `evoke view`'s d), which must stop being offered as
-// "the recent source image" rather than pointing at nothing.
+// an example rather than pointing at nothing.
 func TestBuildSourceIndexInvalidatesMissingImages(t *testing.T) {
 	t.Setenv("EVOKE_HOME", t.TempDir())
 	dir := t.TempDir()
 	roots := []sourceRoot{{Path: "/root/characters"}}
 
 	img := writeSourceImage(t, dir, "one.png", []string{"aria.evoke"}, time.Minute)
-	require.Equal(t, img, buildSourceIndex(dir).recentFor("/root/characters/aria.evoke", roots))
+	require.Equal(t, []string{img}, testSourceIndex(t, dir).imagesFor("/root/characters/aria.evoke", roots))
 
 	require.NoError(t, os.Remove(img))
-	require.Empty(t, buildSourceIndex(dir).recentFor("/root/characters/aria.evoke", roots))
+	require.Empty(t, testSourceIndex(t, dir).imagesFor("/root/characters/aria.evoke", roots))
 }
 
-// TestBuildSourceIndexIsIncremental covers the point of persisting the cache:
+// TestBuildSourceIndexIsIncremental covers the point of persisting the index:
 // a second call only has to read the image generated since the first call,
-// not reparse everything again. This is asserted through behavior — the
-// newer image wins — since the cache file is an implementation detail, but a
-// stale ScannedThrough would make the second image invisible entirely.
+// not reparse everything again. This is asserted through behavior — both
+// images end up recorded — since scanned_through_ns is an implementation
+// detail, but a stale value would make the second image invisible entirely.
 func TestBuildSourceIndexIsIncremental(t *testing.T) {
 	t.Setenv("EVOKE_HOME", t.TempDir())
 	dir := t.TempDir()
 	roots := []sourceRoot{{Path: "/root/characters"}}
 
-	writeSourceImage(t, dir, "one.png", []string{"aria.evoke"}, time.Hour)
-	require.NotEmpty(t, buildSourceIndex(dir).recentFor("/root/characters/aria.evoke", roots))
+	older := writeSourceImage(t, dir, "one.png", []string{"aria.evoke"}, time.Hour)
+	require.Equal(t, []string{older}, testSourceIndex(t, dir).imagesFor("/root/characters/aria.evoke", roots))
 
 	newer := writeSourceImage(t, dir, "two.png", []string{"aria.evoke"}, time.Minute)
-	require.Equal(t, newer, buildSourceIndex(dir).recentFor("/root/characters/aria.evoke", roots))
+	require.Equal(t, []string{newer, older}, testSourceIndex(t, dir).imagesFor("/root/characters/aria.evoke", roots))
 }

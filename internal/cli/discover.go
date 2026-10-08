@@ -71,7 +71,8 @@ func runDiscover(_ context.Context) error {
 		_ = term.Restore(fd, cooked)
 	}()
 
-	m := newDiscoverModel(tree, roots, nil)
+	m := newDiscoverModel(tree, roots, sourceIndex{})
+	defer func() { m.sources.close() }()
 	m.sourcesReady = sourcesReady
 	m.out = os.Stdout
 	m.draw = drawImage
@@ -256,6 +257,16 @@ type discoverModel struct {
 	// sourcesReady delivers the source index once the background scan
 	// finishes; nil once received (or if there was nothing to scan).
 	sourcesReady chan sourceIndex
+	// imageCache holds each file's examples (newest first) once queried, so
+	// stepping through them with [ and ] costs no further lookups.
+	imageCache map[string][]string
+	// imageOffset is how far back from the newest example the selected file
+	// is currently showing; 0 is the newest.
+	imageOffset int
+	// loadedPath is the file imageOffset currently applies to, so load()
+	// only resets it when the selection has actually changed — a repaint or
+	// a [ / ] step must not reset it.
+	loadedPath string
 
 	width, height           int
 	treeWidth, treeHeight   int
@@ -286,6 +297,7 @@ func newDiscoverModel(tree *discoverNode, roots []sourceRoot, sources sourceInde
 		stack:       []navFrame{{node: tree}},
 		sources:     sources,
 		detailCache: map[string][]string{},
+		imageCache:  map[string][]string{},
 		draw:        func(string, int, int) {},
 		size:        func() (int, int) { return 120, 40 },
 		out:         io.Discard,
@@ -375,8 +387,10 @@ func (m *discoverModel) pollSources() {
 		m.sourcesReady = nil
 		// The panel text records whether there was an image above it to rule
 		// off from, and that has just changed for every file the scan found
-		// one for.
+		// one for. The image cache was built against a sourceIndex with
+		// nothing in it yet, so it's stale too.
 		m.detailCache = map[string][]string{}
+		m.imageCache = map[string][]string{}
 		m.load()
 	default:
 	}
@@ -423,6 +437,10 @@ func (m *discoverModel) handle(ev event) bool {
 		m.enter()
 	case "left", "h":
 		m.back()
+	case "]":
+		m.stepImage(1)
+	case "[":
+		m.stepImage(-1)
 	case "t", "T":
 		if sel := m.selected(); sel != nil && !sel.isDir {
 			m.mode, m.promptInput = discoverPrompt, ""
@@ -525,14 +543,50 @@ func (m *discoverModel) layout() {
 	}
 }
 
-// currentImagePath is the recent output image for the selected file, or ""
-// when it's a directory or nothing generated ever named it as a source.
-func (m *discoverModel) currentImagePath() string {
+// currentImages is every output image for the selected file, newest first,
+// cached per path so stepping through them with [ and ] re-queries nothing.
+func (m *discoverModel) currentImages() []string {
 	sel := m.selected()
 	if sel == nil || sel.isDir {
+		return nil
+	}
+	images, ok := m.imageCache[sel.path]
+	if !ok {
+		images = m.sources.imagesFor(sel.path, m.roots)
+		if len(m.imageCache) > detailCacheLimit {
+			m.imageCache = map[string][]string{}
+		}
+		m.imageCache[sel.path] = images
+	}
+	return images
+}
+
+// currentImagePath is the example at imageOffset for the selected file, or ""
+// when it's a directory, nothing generated ever named it as a source, or the
+// offset has run past the last example (e.g. one was just deleted).
+func (m *discoverModel) currentImagePath() string {
+	images := m.currentImages()
+	if m.imageOffset < 0 || m.imageOffset >= len(images) {
 		return ""
 	}
-	return m.sources.recentFor(sel.path, m.roots)
+	return images[m.imageOffset]
+}
+
+// stepImage moves imageOffset by n examples for the selected file, clamped to
+// the available range. Positive n steps toward older examples; negative
+// steps back toward the newest.
+func (m *discoverModel) stepImage(n int) {
+	images := m.currentImages()
+	if len(images) == 0 {
+		return
+	}
+	m.imageOffset += n
+	if m.imageOffset < 0 {
+		m.imageOffset = 0
+	}
+	if last := len(images) - 1; m.imageOffset > last {
+		m.imageOffset = last
+	}
 }
 
 // load refreshes the right panel for the current selection: local tags and
@@ -542,7 +596,12 @@ func (m *discoverModel) load() {
 	sel := m.selected()
 	if sel == nil || sel.isDir {
 		m.details.setLines(nil)
+		m.loadedPath = ""
 		return
+	}
+	if sel.path != m.loadedPath {
+		m.imageOffset = 0
+		m.loadedPath = sel.path
 	}
 
 	lines, ok := m.detailCache[sel.path]
@@ -744,6 +803,9 @@ func (m *discoverModel) statusBar() string {
 		name = strings.TrimSuffix(sel.name, ".evoke")
 	}
 	bar := fmt.Sprintf("\033[1m%s\033[0m", name)
+	if images := m.currentImages(); len(images) > 1 {
+		bar += fmt.Sprintf("   \033[2m%d/%d\033[0m", m.imageOffset+1, len(images))
+	}
 	if m.errMsg != "" {
 		bar += fmt.Sprintf("   \033[1;31m%s\033[0m", m.errMsg)
 	}
@@ -760,6 +822,9 @@ func (m *discoverModel) controlsBar() string {
 	}
 
 	hints := []string{"↑ ↓ ← → navigate"}
+	if images := m.currentImages(); len(images) > 1 {
+		hints = append(hints, "[ ] examples")
+	}
 	if sel := m.selected(); sel != nil && !sel.isDir {
 		hints = append(hints, "t tag")
 	}
