@@ -6,3 +6,10 @@ site/
 # misc
 .DS_Store
 .env
+
+# local-only extension: a private generation backend, never part of this
+# repository. See internal/cli/external_backend.go for the hook it wires into.
+/go.work
+/go.work.sum
+/internal/external/
+/internal/cli/external_backend_local.go

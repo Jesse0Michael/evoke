@@ -26,6 +26,9 @@ type generateConfig struct {
 	ComfyURL string `envconfig:"COMFY_URL" default:"http://127.0.0.1:8188"`
 }
 
+// externalBackend is an optional hook a local, untracked file may set during init.
+var externalBackend func(ctx context.Context, composition *evoke.Composition) (gen generate.Generator, claimed bool, err error)
+
 // Image resolves inputs (selectors, local paths, registry references),
 // merges the selected .evoke documents, and submits the result to ComfyUI.
 func Image(args []string, verbose bool) int {
@@ -51,6 +54,14 @@ func Image(args []string, verbose bool) int {
 	}
 
 	return composeAndSubmit(ctx, "image", fs.Args(), verbose, func(ctx context.Context, composition *evoke.Composition) (*generate.Result, error) {
+		if externalBackend != nil {
+			if extGen, claimed, err := externalBackend(ctx, composition); claimed {
+				if err != nil {
+					return nil, err
+				}
+				return extGen.Generate(ctx, composition)
+			}
+		}
 		return gen.Generate(ctx, composition)
 	}, *batch)
 }
