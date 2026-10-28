@@ -219,6 +219,46 @@ func TestResolutionVariantsNoMatch(t *testing.T) {
 	require.Equal(t, `no files match selector "nonexistent"`, err.Error())
 }
 
+func TestResolutionVariantsOverrideTag(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("EVOKE_HOME", t.TempDir())
+
+	createEvokeFile(t, dir, "alice.evoke", "TAGS\n    character\n\nNAME\n    Alice\n")
+	createEvokeFile(t, dir, "bob.evoke", "TAGS\n    character\n\nNAME\n    Bob\n")
+
+	tagged, err := tags()
+	require.NoError(t, err)
+	tagged.Files["alice.evoke"] = []string{"fav"}
+	require.NoError(t, saveTags(tagged))
+
+	t.Run("tag set only via tags.json resolves like a native tag", func(t *testing.T) {
+		res := testResolution(t, dir, "fav")
+		variants, err := res.variants(t.Context())
+		require.NoError(t, err)
+		require.Len(t, variants, 1)
+		require.Equal(t, filepath.Join(dir, "alice.evoke"), variants[0][0].candidate.Path)
+	})
+
+	t.Run("native and override tags combine in one selector", func(t *testing.T) {
+		res := testResolution(t, dir, "character+fav")
+		variants, err := res.variants(t.Context())
+		require.NoError(t, err)
+		require.Len(t, variants, 1)
+		require.Equal(t, filepath.Join(dir, "alice.evoke"), variants[0][0].candidate.Path)
+	})
+
+	t.Run("override tag narrows out files that lack it", func(t *testing.T) {
+		res := testResolution(t, dir, "fav")
+		docs, err := res.documentsFor([]variantPick{{
+			input:     "fav",
+			selector:  evoke.Selector{Tags: []string{"fav"}},
+			candidate: indexCandidate{Path: filepath.Join(dir, "bob.evoke"), Name: "bob.evoke"},
+		}})
+		require.Error(t, err)
+		require.Nil(t, docs)
+	})
+}
+
 func TestLiteralDocument(t *testing.T) {
 	src := `?PROMPT
     1girl, solo

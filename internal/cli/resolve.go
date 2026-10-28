@@ -253,7 +253,7 @@ func (r *resolution) documentsFor(picks []variantPick) ([]*evoke.Document, error
 	copy(docs, r.staticDocs)
 
 	for _, p := range picks {
-		doc, path, err := loadCandidate(p.candidate, p.selector, p.input)
+		doc, path, err := loadCandidate(p.candidate, p.selector, p.input, r.roots)
 		if err != nil {
 			return nil, err
 		}

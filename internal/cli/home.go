@@ -192,10 +192,13 @@ func saveManifest(m *Manifest) error {
 }
 
 // Tags holds local tag associations for .evoke files — e.g. marking a
-// favorite — keyed by file basename rather than the file's own TAGS block.
-// A file's TAGS are a statement about the file, shareable with anyone who
-// uses it; these are the caller's own preference and never leave this
-// machine or get written into a .evoke file.
+// favorite — keyed root-relative (see tagKey in tag.go) rather than written
+// into the file's own TAGS block. A file's TAGS are a statement about the
+// file, shareable with anyone who uses it; these are the caller's own
+// preference and never leave this machine or get written into a .evoke file.
+// They still participate in selector resolution (see candidatesMatchingSelector
+// in generate.go) exactly as a native tag would — a selector doesn't
+// distinguish where a tag came from.
 type Tags struct {
 	Files map[string][]string `json:"files"`
 }

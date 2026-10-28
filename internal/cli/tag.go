@@ -15,7 +15,10 @@ import (
 // live in tags.json (see Tags in home.go) rather than the SQLite index,
 // which is a disposable cache rebuilt from file content: a favorite isn't
 // derived from any file, so it would be lost on the next rescan if it lived
-// there instead.
+// there instead. Storage is separate, but resolution is not: selectors
+// consult tags.json alongside the index (see candidatesMatchingSelector in
+// generate.go), so "evoke image fav" works the same whether "fav" came from
+// a file's TAGS block or from here.
 func Tag(args []string, verbose bool) int {
 	fs := flag.NewFlagSet("tag", flag.ContinueOnError)
 	fs.BoolVar(&verbose, "v", verbose, "verbose output")

@@ -192,34 +192,8 @@ func inspectGroups(w io.Writer, results []inspectResult, st chatStyle) {
 // working directory, deduplicated by path. Unlike generate's resolveSelector it
 // never picks one — inspect wants the whole set.
 func inspectMatches(ctx context.Context, raw string, idx *sqliteIndex, roots []sourceRoot) ([]indexCandidate, error) {
-	sel, err := evoke.ParseSelector(raw)
-	if err != nil {
-		return nil, err
-	}
-
-	candidates, err := idx.find(ctx, roots, sel.Tags)
-	if err != nil {
-		return nil, fmt.Errorf("index lookup failed: %w", err)
-	}
-	candidates = append(candidates, findInCwd(sel)...)
-	candidates = deduplicateCandidates(candidates)
-
-	// A stale index can miss recent files; refresh and retry once when empty.
-	if len(candidates) == 0 {
-		for _, root := range roots {
-			if _, refreshErr := idx.refreshRoot(ctx, root); refreshErr != nil {
-				fmt.Fprintf(os.Stderr, "warning: failed to refresh %s: %v\n", root.Path, refreshErr)
-			}
-		}
-		candidates, err = idx.find(ctx, roots, sel.Tags)
-		if err != nil {
-			return nil, fmt.Errorf("index lookup failed after refresh: %w", err)
-		}
-		candidates = append(candidates, findInCwd(sel)...)
-		candidates = deduplicateCandidates(candidates)
-	}
-
-	return candidates, nil
+	candidates, _, err := candidatesForSelector(ctx, raw, idx, roots)
+	return candidates, err
 }
 
 // inspectList prints one line per matching file: its filename, sorted. The

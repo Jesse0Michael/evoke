@@ -17,11 +17,16 @@ type viewImage struct {
 	subfolder string
 }
 
-// label is the status-bar name: the containing group plus the file name, since
-// IMAGE groups are what separate one shoot from another.
+// label is the status-bar name: up to two containing directories plus the
+// file name, since IMAGE groups are what separate one shoot from another and
+// a character's groups commonly nest under a collection directory.
 func (v viewImage) label() string {
 	if v.subfolder != "" {
-		return filepath.Base(v.subfolder) + "/" + v.filename
+		name := filepath.Base(v.subfolder)
+		if parent := filepath.Dir(v.subfolder); parent != "." {
+			name = filepath.Base(parent) + "/" + name
+		}
+		return name + "/" + v.filename
 	}
 	return v.filename
 }

@@ -293,25 +293,37 @@ func resolveSelector(ctx context.Context, raw string, idx *sqliteIndex, roots []
 	if err != nil {
 		return nil, "", err
 	}
-	return pickCandidate(candidates, sel, raw, affinityTags, idx, ctx)
+	return pickCandidate(candidates, sel, raw, affinityTags, idx, ctx, roots)
 }
 
 // selectorCandidates resolves a selector to every .evoke file that matches it,
-// refreshing the index once when the first lookup finds nothing.
+// erroring if none do.
 func selectorCandidates(ctx context.Context, raw string, idx *sqliteIndex, roots []sourceRoot) ([]indexCandidate, evoke.Selector, error) {
+	candidates, sel, err := candidatesForSelector(ctx, raw, idx, roots)
+	if err != nil {
+		return nil, sel, err
+	}
+	if len(candidates) == 0 {
+		return nil, sel, fmt.Errorf("no files match selector %q", raw)
+	}
+	return candidates, sel, nil
+}
+
+// candidatesForSelector resolves a selector to every .evoke file that matches
+// it, refreshing the index once when the first lookup finds nothing. It never
+// errors on an empty result, leaving that to the caller (generate's
+// selectorCandidates wants an error immediately; inspect wants to report "no
+// matches" itself).
+func candidatesForSelector(ctx context.Context, raw string, idx *sqliteIndex, roots []sourceRoot) ([]indexCandidate, evoke.Selector, error) {
 	sel, err := evoke.ParseSelector(raw)
 	if err != nil {
 		return nil, sel, err
 	}
 
-	candidates, err := idx.find(ctx, roots, sel.Tags)
+	candidates, err := candidatesMatchingSelector(ctx, sel, idx, roots)
 	if err != nil {
-		return nil, sel, fmt.Errorf("index lookup failed: %w", err)
+		return nil, sel, err
 	}
-
-	// Also check .evoke files in the immediate working directory.
-	candidates = append(candidates, findInCwd(sel)...)
-	candidates = deduplicateCandidates(candidates)
 
 	if len(candidates) == 0 {
 		// Refresh and retry once.
@@ -320,21 +332,145 @@ func selectorCandidates(ctx context.Context, raw string, idx *sqliteIndex, roots
 				fmt.Fprintf(os.Stderr, "warning: failed to refresh %s: %v\n", root.Path, refreshErr)
 			}
 		}
-		candidates, err = idx.find(ctx, roots, sel.Tags)
+		candidates, err = candidatesMatchingSelector(ctx, sel, idx, roots)
 		if err != nil {
 			return nil, sel, fmt.Errorf("index lookup failed after refresh: %w", err)
-		}
-		if len(candidates) == 0 {
-			return nil, sel, fmt.Errorf("no files match selector %q", raw)
 		}
 	}
 
 	return candidates, sel, nil
 }
 
+// candidatesMatchingSelector resolves every file whose effective tag set —
+// its parsed TAGS block, the implicit filename tag, and any local override
+// recorded by `evoke tag add` (tags.json) — satisfies the selector. Each
+// requested tag is resolved independently against the index, the working
+// directory, and tags.json, and the per-tag results are intersected, so a
+// selector mixing a native and an override tag ("nurse+fav") matches a file
+// carrying one of each; a selector is otherwise unaware of which store a tag
+// came from.
+func candidatesMatchingSelector(ctx context.Context, sel evoke.Selector, idx *sqliteIndex, roots []sourceRoot) ([]indexCandidate, error) {
+	sets := make([][]indexCandidate, 0, len(sel.Tags))
+	for _, tag := range sel.Tags {
+		tagSel := evoke.Selector{Tags: []string{tag}}
+		matches, err := idx.find(ctx, roots, tagSel.Tags)
+		if err != nil {
+			return nil, fmt.Errorf("index lookup failed: %w", err)
+		}
+		matches = append(matches, findInCwd(tagSel)...)
+		matches = append(matches, overrideCandidatesForTag(tag, roots)...)
+		sets = append(sets, deduplicateCandidates(matches))
+	}
+	return intersectCandidates(sets), nil
+}
+
+// intersectCandidates returns the candidates present, by path, in every set.
+func intersectCandidates(sets [][]indexCandidate) []indexCandidate {
+	if len(sets) == 0 {
+		return nil
+	}
+	counts := make(map[string]int)
+	byPath := make(map[string]indexCandidate)
+	for _, set := range sets {
+		seen := make(map[string]bool, len(set))
+		for _, c := range set {
+			if seen[c.Path] {
+				continue
+			}
+			seen[c.Path] = true
+			counts[c.Path]++
+			byPath[c.Path] = c
+		}
+	}
+	var result []indexCandidate
+	for path, count := range counts {
+		if count == len(sets) {
+			result = append(result, byPath[path])
+		}
+	}
+	return result
+}
+
+// overrideCandidatesForTag returns files whose local tag association — set by
+// `evoke tag add` and stored in tags.json rather than the file itself (see
+// Tags in home.go) — carries tag, resolved back to a path the same way tag.go
+// keyed it: root-relative, or a bare basename for a file outside every root.
+// A selector doesn't care whether a tag came from the file's own TAGS block
+// or from here, so these are unioned with native matches.
+func overrideCandidatesForTag(tag string, roots []sourceRoot) []indexCandidate {
+	t, err := tags()
+	if err != nil {
+		return nil
+	}
+	var candidates []indexCandidate
+	for key, fileTags := range t.Files {
+		if !containsTagFold(fileTags, tag) {
+			continue
+		}
+		path, rootPath, ok := resolveOverrideKey(key, roots)
+		if !ok {
+			continue
+		}
+		candidates = append(candidates, indexCandidate{
+			Path:         path,
+			RelativePath: key,
+			Name:         filepath.Base(key),
+			RootPath:     rootPath,
+		})
+	}
+	return candidates
+}
+
+// overrideTagsFor returns path's tags.json tags, lowercased to match the case
+// selectors and native tags are compared in.
+func overrideTagsFor(path string, roots []sourceRoot) []string {
+	t, err := tags()
+	if err != nil {
+		return nil
+	}
+	raw := t.Files[rootRelativeKey(path, roots)]
+	lowered := make([]string, len(raw))
+	for i, tag := range raw {
+		lowered[i] = strings.ToLower(tag)
+	}
+	return lowered
+}
+
+// containsTagFold reports whether tags contains tag, case-insensitively —
+// local tags are typed ad hoc at the CLI rather than authored under the style
+// guide's lowercase convention, so matching them is lenient.
+func containsTagFold(tags []string, tag string) bool {
+	for _, t := range tags {
+		if strings.EqualFold(t, tag) {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveOverrideKey resolves a tags.json key back to a file on disk: a
+// root-relative path under one of roots, or a bare basename in the working
+// directory for a file tagged outside every root — the same fallback
+// rootRelativeKey uses when keying it.
+func resolveOverrideKey(key string, roots []sourceRoot) (path, rootPath string, ok bool) {
+	for _, root := range roots {
+		candidate := filepath.Join(root.Path, key)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, root.Path, true
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		candidate := filepath.Join(cwd, key)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, "", true
+		}
+	}
+	return "", "", false
+}
+
 // pickCandidate selects a candidate (weighted by affinity tag overlap if provided),
 // reads/parses/validates it, and confirms it matches.
-func pickCandidate(candidates []indexCandidate, sel evoke.Selector, raw string, affinityTags []string, idx *sqliteIndex, ctx context.Context) (*evoke.Document, string, error) {
+func pickCandidate(candidates []indexCandidate, sel evoke.Selector, raw string, affinityTags []string, idx *sqliteIndex, ctx context.Context, roots []sourceRoot) (*evoke.Document, string, error) {
 	candidates = preferNameMatches(candidates, sel)
 
 	var chosen indexCandidate
@@ -346,13 +482,13 @@ func pickCandidate(candidates []indexCandidate, sel evoke.Selector, raw string, 
 		chosen = pickByAffinity(ctx, candidates, affinityTags, idx)
 	}
 
-	return loadCandidate(chosen, sel, raw)
+	return loadCandidate(chosen, sel, raw, roots)
 }
 
 // loadCandidate reads, parses, and validates a chosen file, applying the
-// implicit base-name tag the indexer adds and confirming the file still matches
-// the selector it was found by.
-func loadCandidate(chosen indexCandidate, sel evoke.Selector, raw string) (*evoke.Document, string, error) {
+// implicit base-name tag the indexer adds and any local tags.json override,
+// and confirming the file still matches the selector it was found by.
+func loadCandidate(chosen indexCandidate, sel evoke.Selector, raw string, roots []sourceRoot) (*evoke.Document, string, error) {
 	data, err := os.ReadFile(chosen.Path)
 	if err != nil {
 		return nil, "", fmt.Errorf("selected file %s is no longer accessible: %w", chosen.Path, err)
@@ -371,6 +507,11 @@ func loadCandidate(chosen indexCandidate, sel evoke.Selector, raw string) (*evok
 	baseName := strings.ToLower(strings.TrimSuffix(chosen.Name, ".evoke"))
 	if baseName != "" && !containsTag(doc.Metadata.Tags, baseName) {
 		doc.Metadata.Tags = append(doc.Metadata.Tags, baseName)
+	}
+	for _, tag := range overrideTagsFor(chosen.Path, roots) {
+		if !containsTag(doc.Metadata.Tags, tag) {
+			doc.Metadata.Tags = append(doc.Metadata.Tags, tag)
+		}
 	}
 
 	if !evoke.MatchSelector(doc, sel) {
