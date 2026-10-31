@@ -23,7 +23,7 @@ Rules:
 - **UTF-8 only.** Invalid UTF-8 is rejected.
 - **Empty blocks are invalid.** Every header needs at least one value line.
 - **A newline ends a value.** Never wrap one sentence across two lines; only trailing whitespace is trimmed, internal punctuation and spacing are preserved.
-- **Structured declarations** (`IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE`) take an optional or required argument on the header line and `key = value` settings as values. Every other declaration rejects text after the name — `NAME Sumi` is an error; the value belongs on an indented line.
+- **Structured declarations** (`IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE`, `AUDIO`) take an optional or required argument on the header line and `key = value` settings as values. Every other declaration rejects text after the name — `NAME Sumi` is an error; the value belongs on an indented line.
 
 ### Syntax errors
 
@@ -77,7 +77,7 @@ A default yields to an explicit contribution of **the same thing**, and the unit
 | The default contributes                                                                    | An explicit contribution replaces                                                       |
 | :------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------- |
 | **values in a channel** — `?APPAREL`, `?APPEARANCE`, `?PERSONALITY`, prompt text on `?IMAGE`/`?DETAILER`/`?CHAT` | **the whole channel** — one explicit line replaces every default line; you cannot add to an inherited list |
-| **a `key = value` setting** on `?IMAGE`, `?LORA`, `?DETAILER`, `?CHAT`, `?KNOWLEDGE`       | **that one key** — settings the explicit block never named still apply                   |
+| **a `key = value` setting** on `?IMAGE`, `?LORA`, `?DETAILER`, `?CHAT`, `?KNOWLEDGE`, `?AUDIO` | **that one key** — settings the explicit block never named still apply                   |
 
 One rule at two granularities: a setting is addressable by name, a prompt line isn't. So an explicit `IMAGE` block containing only `steps = 20` inherits the default's `checkpoint`, `cfg`, and text; add a prompt line to it and the default's text drops out entirely.
 
@@ -120,20 +120,21 @@ Resolution, per declaration and channel: collect explicit → collect defaults �
 | `DETAILER`    | singular     |  ✓  |  ✓  | required |  120  |
 | `CHAT`        | singular     |  —  |  ✓  |    —     |  130  |
 | `KNOWLEDGE`   | singular     |  —  |  ✓  | required |  140  |
+| `AUDIO`       | singular     |  —  |  ✓  |    —     |  150  |
 
 **Order** is the canonical ascending order — it makes output depend on the declaration rather than on file order, and it is what `evoke inspect` prints. It is **not** the image prompt order: that leads with `IMAGE` text, then `PROMPT`, then `APPEARANCE`, and position there is weight. For both, see [Style Guide](style-guide.md) §1.
 
 Notes on the non-obvious ones:
 
 - `CHARACTER` is **positive only**. An identity has no meaningful "not this"; contradictions go in `!PERSONALITY`. Drawable detail goes in `APPEARANCE`.
-- `VOICE` is read by **no target yet** — see [Style Guide](style-guide.md) §1. It parses, merges, and inspects like any other block; nothing renders it. Write it only when asked for it, and never to carry material that belongs in `PERSONALITY`.
+- `VOICE` is read by `evoke audio` and nothing else — see [Style Guide](style-guide.md) §1. It describes the speaker; the model and sampling that render it live in `AUDIO`. Never use it to carry material that belongs in `PERSONALITY`.
 - `SCENARIO` is **singular** — only one file in a composition may supply it.
 - `PROMPT` is the **shot composition** channel — subject count, framing, and what the subject is doing. A character file carries it as a `?` default so it renders coherently alone; a shot file states it explicitly and replaces that default whole. See [Style Guide](style-guide.md) §3.10.
 - `APPAREL` is deliberately broad (no `OUTFIT`/`FOOTWEAR`); `ENVIRONMENT` carries the whole scene/setting role (no `LOCATION`).
 
 ## Structured declarations
 
-`IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE`. Singular **per argument**, values a mix of `key = value` settings and free prompt text where the declaration accepts it. They do **not** follow the all-or-nothing singular rule — every block contributing to the same declaration and argument merges **setting by setting**:
+`IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE`, `AUDIO`. Singular **per argument**, values a mix of `key = value` settings and free prompt text where the declaration accepts it. They do **not** follow the all-or-nothing singular rule — every block contributing to the same declaration and argument merges **setting by setting**:
 
 One file carries the canonical configuration:
 
@@ -260,6 +261,20 @@ KNOWLEDGE lore
 
 `db` is a SQLite file **name**, resolved the same way as `CHAT` `model`. Omit `embed_model` normally — the database records the model it was built with and chat adopts it; setting a conflicting one is an error rather than a silent drop in retrieval quality.
 
+### AUDIO
+
+Audio-only. No argument. Settings: `model`, `reference`, `ref_text`, `voice`, `format`, plus sampling controls (`speed`, `cfg_scale`, `ddpm_steps`, `temperature`, `top_p`, `top_k`, `lang_code`, `max_tokens`).
+
+```text
+AUDIO
+    model = mlx-community/VoxCPM2-bf16
+    reference = sumi.wav
+```
+
+`AUDIO` is to `VOICE` what `IMAGE` is to `APPEARANCE`: `VOICE` says what the speaker sounds like, `AUDIO` says what renders it. Settings are a whitelist — an unlisted name is reported and ignored.
+
+`reference` names a clip to clone, resolved like a `CHAT` `model`. It does not replace `VOICE`: a description alone produces a recognisably different speaker on every run, so the description casts the voice and the clip pins the take you kept.
+
 ### Disabling a stage
 
 `IMAGE`, `LORA`, and `DETAILER` accept `disabled`, so a composition can switch off a pass another file supplied:
@@ -283,7 +298,7 @@ IMAGE upscale
 - **Exactly `true` disables.** `TRUE`, `1`, `yes` leave the stage on, with no warning.
 - **It layers like any setting**, so a later argument can set `disabled = false` to switch a stage back on; last file naming the key wins.
 - **`evoke inspect` prints a disabled block with a leading `!`** (`!DETAILER face`) — the fastest way to confirm what a composition turned off.
-- `CHAT` and `KNOWLEDGE` don't support it; `evoke chat` reports it as an ignored unknown setting.
+- `CHAT`, `KNOWLEDGE`, and `AUDIO` don't support it; the consuming command reports it as an ignored unknown setting.
 
 Two other ways a stage ends up off, both worth checking when a detailer never ran:
 

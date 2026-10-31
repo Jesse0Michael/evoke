@@ -196,7 +196,7 @@ On an interactive terminal, chat runs as a full-screen UI: a pinned header, a sc
 
 ```text
 Yasmin · qwen3-8b-q4.gguf · 8192 ctx
-/reset · /context · /image
+/reset · /context · /image · /voice
 ────────────────────────────────────────────────────────
 ```
 
@@ -213,6 +213,7 @@ The plain line-based interface is used automatically when output is piped or non
 | `/reset` | Clear the conversation, discard the [stored transcript](#conversation-memory), and replay the opening scene (the compiled character is kept; the character re-opens from the `SCENARIO`). |
 | `/context` | Show retained turns, estimated input tokens, and the budget. |
 | `/image [inputs]` | Set the extra inputs [scene images](#scene-images) compose with, and generate one from the reply on screen. A bare `/image` clears them, which turns generation off. The setting is [remembered](#conversation-memory) with the conversation. |
+| `/voice` | Toggle [spoken replies](#spoken-replies): on speaks the reply already on screen and every one after it; off stops speaking but leaves the backend running. The setting is [remembered](#conversation-memory) with the conversation. |
 
 There is deliberately no quit command. Both interfaces end on interrupt (**Ctrl-C**), and the line interface also on EOF (**Ctrl-D**); either shuts the backend down cleanly and loses at most a reply still generating, since the [transcript is stored](#conversation-memory) after every completed turn. Slash commands are handled locally and never sent to the model.
 
@@ -267,6 +268,50 @@ The matching `?!PROMPT` negative is untouched, since channels resolve separately
 
 The aside is one short request at a low temperature with a small output cap, and it runs while you are reading the reply — the backend is idle at that moment, and the conversation never waits on it. Measured against `mlx_lm.server` on a 4-bit 27B model: **~1s for ~20 tokens** once the prefix is cached. It carries **no seed**, which matters more than it looks: `mlx_lm.server` only batches a request into a generation already running when it has none, so a seed here would make the aside queue behind your next message instead of decoding alongside it.
 
+## Spoken replies
+
+Chat can speak every reply aloud as it arrives, through the same [`VOICE`/`AUDIO`](../file-format/declarations.md#voice) declarations [`evoke audio`](audio.md) reads. It is **off until you turn it on** with `/voice`, for the same reason scene images are: nothing about a conversation says it wants to be heard, and starting a second local model is not free.
+
+```text
+> /voice
+(voice on)
+```
+
+```text
+> /voice
+(voice off)
+```
+
+Unlike `/image`, there is nothing to set — `/voice` is a bare toggle, because the speaker is a fact about the character (its `VOICE`/`AUDIO` declarations), not something the caller tunes per message. Turning it on speaks the reply already on screen immediately, the same way changing `/image`'s inputs redraws the current scene; turning it off does not stop the backend, only the speaking — see below.
+
+The header shows the setting the same way `/image`'s does (`/voice` dim while off, highlighted while on), so it stays on screen rather than scrolling out of the log.
+
+### A resident backend, not a one-shot process
+
+`evoke audio` loads its model, writes one file, and exits — exactly right for speaking a single line, and wrong for a conversation that speaks every reply: paying a full model load on each turn would make every reply wait on it. So `/voice` instead launches [`mlx_audio.server`](https://github.com/Blaizzy/mlx-audio) once, the same lifecycle `evoke chat` already gives the LLM backend, and keeps it running until the session ends. Turning `/voice` off does not stop it — it idles, so turning voice back on later is instant rather than re-paying the model load.
+
+The server ships behind mlx-audio's `server` extra, which the base install `evoke audio` needs does not pull in:
+
+```bash
+uv tool install --force "mlx-audio[server]" --prerelease=allow --python 3.12
+```
+
+Like `mlx_lm.server`, it answers immediately and loads the requested model on the first real request, so "voice on" means the backend is up, not that a model is already in memory — the first spoken reply pays that load.
+
+A resumed conversation that was speaking reopens still speaking, acquiring the backend again at startup — the same way a resumed `/image` setting generates again without being asked twice.
+
+### How a reply is spoken
+
+Unlike scene images, the reply itself is the text spoken — there is no aside asking the model to restate it, since there is nothing to translate the way narration is translated into image tags. Speaking is fire and forget, exactly like image generation: the conversation never waits on it, and a failed take is reported as a line in the log rather than silently dropped.
+
+The synthesized audio is written to a temporary file, played to completion, and deleted — nothing of a spoken reply is kept. A roleplay reply containing action text in asterisks (`*smiles* Hello there.`) is spoken exactly as written; nothing strips it before it reaches the synthesizer.
+
+### Configuration
+
+The resident backend's host, port, and binary are machine-local, read from the environment the same way the LLM backend's are (see [Environment variables](#environment-variables)) — a portable `.evoke` file names a speaker, never a host or a port.
+
+The [`AUDIO`](../file-format/declarations.md#audio) settings travel with the character, so the same block means the same thing whether `evoke audio` or `/voice` reads it. Two are the exception: `cfg_scale` and `ddpm_steps` have no field in the server's request schema, so they reach the one-shot runtime and not this one. A reply spoken while either is set is reported rather than silently losing them.
+
 ## Flags
 
 | Flag | Default | Description |
@@ -285,6 +330,11 @@ The aside is one short request at a low temperature with a small output cap, and
 | `EVOKE_LLAMA_SERVER` | `llama-server` | The `llama-server` executable (name on `PATH` or absolute path). |
 | `EVOKE_CHAT_MODEL_PATH` | — | Extra model directories to search (OS path-list separated). Combined with `chat.model_paths`. |
 | `EVOKE_CHAT_STARTUP_TIMEOUT` | `180s` | How long to wait for the backend to become healthy before giving up. |
+| `EVOKE_AUDIO_HOST` | `127.0.0.1` | Loopback host the resident [voice backend](#spoken-replies) binds to. |
+| `EVOKE_AUDIO_PORT` | `8090` | Port the resident voice backend binds to. Distinct from the LLM backend's so both can run at once. |
+| `EVOKE_AUDIO_SERVER_EXECUTABLE` | `mlx_audio.server` | The resident voice backend executable (name on `PATH` or absolute path). |
+| `EVOKE_AUDIO_PLAYER` | `afplay` | The audio player `/voice` plays a synthesized reply through. |
+| `EVOKE_AUDIO_STARTUP_TIMEOUT` | `180s` | How long to wait for the voice backend to become healthy before giving up. |
 
 Settings in `~/.evoke/settings.json` (`chat.executable`, `chat.host`, `chat.port`) override these.
 
@@ -303,7 +353,7 @@ Character: assistant
 Backend:   llama.cpp (managed)
 Model:     mistral-nemo
 Context:   8192 tokens
-Ctrl-C or Ctrl-D to quit · /reset · /context · /image
+Ctrl-C or Ctrl-D to quit · /reset · /context · /image · /voice
 
 You> What's the capital of France?
 

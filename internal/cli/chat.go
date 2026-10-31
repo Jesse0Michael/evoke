@@ -58,6 +58,11 @@ func Chat(args []string, verbose bool) int {
 		fmt.Fprintf(os.Stderr, "evoke chat: %v\n", err)
 		return 1
 	}
+	var voiceCfg voiceConfig
+	if err := envconfig.Process("", &voiceCfg); err != nil {
+		fmt.Fprintf(os.Stderr, "evoke chat: %v\n", err)
+		return 1
+	}
 
 	// Interrupt/terminate cancel the session context so an in-flight request is
 	// aborted; a backend Evoke launched is then shut down by the deferred Close.
@@ -185,6 +190,24 @@ func Chat(args []string, verbose bool) int {
 		}
 	}()
 
+	// The voice backend is resident for the same reason the LLM one is: a
+	// voice-enabled turn must not pay a full TTS model load every reply. It is
+	// only launched if /voice is resumed on, or the user issues it mid-session —
+	// an ordinary chat never starts a second local model it was not asked for.
+	voice := newChatVoice(composition, trustedAudio(settings), trustedAudioServer(voiceCfg), voiceCfg.Player, voiceCfg.StartupTimeout)
+	if sess.VoiceOn() {
+		if verr := voice.toggle(ctx, sess, reportLine(os.Stdout)); verr != nil {
+			fmt.Fprintf(os.Stderr, "evoke chat: voice: %v\n", verr)
+		}
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if verr := voice.close(shutdownCtx); verr != nil {
+			fmt.Fprintf(os.Stderr, "evoke chat: voice backend shutdown: %v\n", verr)
+		}
+	}()
+
 	client := chat.NewClient(backend.Endpoint().String(), "")
 
 	var colorPref *bool
@@ -208,9 +231,9 @@ func Chat(args []string, verbose bool) int {
 	// test) falls back to the line-based loop.
 	var runErr error
 	if !*noTUI && !stream && isInteractive() {
-		runErr = runChatTUI(ctx, plan, client, sess, st, verbose, backend.Done(), backend.Err, knowledgeBases)
+		runErr = runChatTUI(ctx, plan, client, sess, st, verbose, backend.Done(), backend.Err, knowledgeBases, &voice)
 	} else {
-		runErr = runChatLoop(ctx, plan, client, sess, stream, verbose, os.Stdin, os.Stdout, backend.Done(), backend.Err, backend.DrainLog, st, knowledgeBases, backendOrigin(backend))
+		runErr = runChatLoop(ctx, plan, client, sess, stream, verbose, os.Stdin, os.Stdout, backend.Done(), backend.Err, backend.DrainLog, st, knowledgeBases, backendOrigin(backend), &voice)
 	}
 	if runErr != nil {
 		fmt.Fprintf(os.Stderr, "evoke chat: %v\n", runErr)
@@ -391,7 +414,7 @@ type chatBackend interface {
 //
 // sess arrives already carrying any transcript restored for these inputs, and
 // is saved after every completed turn.
-func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, stream, verbose bool, in io.Reader, out io.Writer, backendDone <-chan struct{}, backendErr func() error, backendLog func() string, st chatStyle, knowledgeBases []*knowledge.Base, backendOrigin string) error {
+func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, stream, verbose bool, in io.Reader, out io.Writer, backendDone <-chan struct{}, backendErr func() error, backendLog func() string, st chatStyle, knowledgeBases []*knowledge.Base, backendOrigin string, voice *chatVoice) error {
 	printStartupSummary(out, plan, st, len(sess.Turns()), backendOrigin)
 
 	// save records the transcript after each completed turn, so an interrupt has
@@ -435,6 +458,25 @@ func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, sess 
 			select {
 			case imageResults <- strings.Join(lines, "\n"):
 			default:
+			}
+		}()
+	}
+
+	// Spoken replies run the same fire-and-forget shape as scene images: a
+	// synthesis-and-playback round trip has no business making the next turn
+	// wait, and a failure is worth a line in the log rather than silence.
+	voiceResults := make(chan string, 8)
+	fireVoice := func(reply string) {
+		if !voice.on() {
+			return
+		}
+		v := *voice
+		go func() {
+			if err := v.speak(ctx, reply); err != nil {
+				select {
+				case voiceResults <- st.errorText("voice: ") + err.Error():
+				default:
+				}
 			}
 		}()
 	}
@@ -493,6 +535,7 @@ func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, sess 
 		sess.AddAssistant(reply)
 		save()
 		fireImage(reply)
+		fireVoice(reply)
 		if verbose {
 			printTurnDiagnostics(out, sess, plan, usage, backendLog, st)
 		}
@@ -549,12 +592,15 @@ func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, sess 
 		case result := <-imageResults:
 			fmt.Fprintf(out, "\n%s\n", result)
 			continue
+		case result := <-voiceResults:
+			fmt.Fprintf(out, "\n%s\n", result)
+			continue
 		}
 
 		if msg == "" {
 			continue
 		}
-		if action, handled := handleSlashCommand(out, sess, &image, msg); handled {
+		if action, handled := handleSlashCommand(ctx, out, sess, &image, voice, msg); handled {
 			switch action {
 			case slashReset:
 				// A reset clears the transcript, including the seeded scene;
@@ -570,6 +616,10 @@ func runChatLoop(ctx context.Context, plan *chat.Plan, client chatBackend, sess 
 				// Redraw the scene already on screen, so a changed setting can
 				// be judged against the reply it will apply to.
 				fireImage(lastAssistantReply(sess))
+			case slashVoice:
+				// Speak the reply already on screen, so turning voice on is
+				// heard immediately rather than waiting for the next turn.
+				fireVoice(lastAssistantReply(sess))
 			case slashNone:
 			}
 			continue
@@ -703,6 +753,7 @@ const (
 	slashNone  slashAction = iota
 	slashReset             // replay the opening scene
 	slashImage             // generate from the reply already on screen
+	slashVoice             // speak the reply already on screen
 )
 
 // handleSlashCommand executes local commands. Slash commands are never sent to
@@ -712,7 +763,7 @@ const (
 // There is no quit command: the session ends on EOF (Ctrl-D) or interrupt
 // (Ctrl-C), both of which shut the backend down cleanly and lose at most a reply
 // still generating, since the transcript is stored after every completed turn.
-func handleSlashCommand(out io.Writer, sess *chat.Session, img *chatImage, msg string) (slashAction, bool) {
+func handleSlashCommand(ctx context.Context, out io.Writer, sess *chat.Session, img *chatImage, voice *chatVoice, msg string) (slashAction, bool) {
 	if isImageCommand(msg) {
 		status, fire := img.set(msg, sess)
 		fmt.Fprintf(out, "(%s)\n", status)
@@ -722,6 +773,21 @@ func handleSlashCommand(out io.Writer, sess *chat.Session, img *chatImage, msg s
 		if fire {
 			return slashImage, true
 		}
+		return slashNone, true
+	}
+	if isVoiceCommand(msg) {
+		if err := voice.toggle(ctx, sess, reportLine(out)); err != nil {
+			fmt.Fprintf(out, "voice: %v\n", err)
+			return slashNone, true
+		}
+		if err := sess.Save(); err != nil {
+			fmt.Fprintf(out, "warning: %v\n", err)
+		}
+		if voice.on() {
+			fmt.Fprintln(out, "(voice on)")
+			return slashVoice, true
+		}
+		fmt.Fprintln(out, "(voice off)")
 		return slashNone, true
 	}
 	switch msg {
@@ -737,7 +803,7 @@ func handleSlashCommand(out io.Writer, sess *chat.Session, img *chatImage, msg s
 		return slashNone, true
 	}
 	if strings.HasPrefix(msg, "/") {
-		fmt.Fprintf(out, "unknown command %q (try /reset, /context, /image)\n", msg)
+		fmt.Fprintf(out, "unknown command %q (try /reset, /context, /image, /voice)\n", msg)
 		return slashNone, true
 	}
 	return slashNone, false
@@ -751,5 +817,5 @@ func printStartupSummary(out io.Writer, plan *chat.Plan, st chatStyle, restored 
 	if restored > 0 {
 		fmt.Fprintf(out, "Resumed:   %d stored turns\n", restored)
 	}
-	fmt.Fprintln(out, st.dim("Ctrl-C or Ctrl-D to quit · /reset · /context · /image"))
+	fmt.Fprintln(out, st.dim("Ctrl-C or Ctrl-D to quit · /reset · /context · /image · /voice"))
 }

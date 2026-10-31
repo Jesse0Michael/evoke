@@ -63,7 +63,7 @@ func TestRunChatLoop(t *testing.T) {
 	in := strings.NewReader("hello\n/context\n/reset\n")
 	var out bytes.Buffer
 
-	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), true, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched")
+	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), true, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched", &chatVoice{})
 
 	require.NoError(t, err)
 	s := out.String()
@@ -88,7 +88,7 @@ func TestRunChatLoopSeedsOpening(t *testing.T) {
 	in := strings.NewReader("hi\n")
 	var out bytes.Buffer
 
-	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), false, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched")
+	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), false, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched", &chatVoice{})
 
 	require.NoError(t, err)
 	s := out.String()
@@ -113,7 +113,7 @@ func TestRunChatLoopResetReplaysOpening(t *testing.T) {
 	in := strings.NewReader("/reset\n")
 	var out bytes.Buffer
 
-	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), false, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched")
+	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), false, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched", &chatVoice{})
 
 	require.NoError(t, err)
 	s := out.String()
@@ -138,7 +138,7 @@ func TestRunChatLoopVerboseDiagnostics(t *testing.T) {
 	var out bytes.Buffer
 	backendLog := func() string { return "slot released\ncontext shift" }
 
-	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), true, true, in, &out, nil, nil, backendLog, chatStyle{}, nil, "launched")
+	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), true, true, in, &out, nil, nil, backendLog, chatStyle{}, nil, "launched", &chatVoice{})
 
 	require.NoError(t, err)
 	s := out.String()
@@ -154,7 +154,7 @@ func TestRunChatLoopExitsOnEOF(t *testing.T) {
 	in := strings.NewReader("hey\n") // input ends, loop exits on EOF
 	var out bytes.Buffer
 
-	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), false, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched")
+	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), false, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched", &chatVoice{})
 
 	require.NoError(t, err)
 	require.Contains(t, out.String(), "Yasmin: yo")
@@ -167,7 +167,7 @@ func TestRunChatLoopUnknownCommand(t *testing.T) {
 	in := strings.NewReader("/bogus\n")
 	var out bytes.Buffer
 
-	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), true, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched")
+	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), true, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched", &chatVoice{})
 
 	require.NoError(t, err)
 	require.Contains(t, out.String(), `unknown command "/bogus"`)
@@ -182,7 +182,7 @@ func TestRunChatLoopImageCommand(t *testing.T) {
 	in := strings.NewReader("/image ill\n/image\n")
 	var out bytes.Buffer
 
-	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), true, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched")
+	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), true, false, in, &out, nil, nil, nil, chatStyle{}, nil, "launched", &chatVoice{})
 
 	require.NoError(t, err)
 	require.Contains(t, out.String(), "(image generation on: ill)")
@@ -198,7 +198,7 @@ func TestRunChatLoopExitsWhenBackendDies(t *testing.T) {
 	var out bytes.Buffer
 
 	err := runChatLoop(t.Context(), plan, fb, chat.NewSession(plan), true, false, strings.NewReader(""), &out,
-		backendDone, func() error { return context.Canceled }, nil, chatStyle{}, nil, "launched")
+		backendDone, func() error { return context.Canceled }, nil, chatStyle{}, nil, "launched", &chatVoice{})
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "backend exited")
@@ -357,7 +357,7 @@ func TestRunChatLoopMemory(t *testing.T) {
 			fb := &fakeBackend{replies: []string{"reply 1", "reply 2"}}
 			var out bytes.Buffer
 
-			err := runChatLoop(t.Context(), plan, fb, sess, false, false, strings.NewReader(tt.input), &out, nil, nil, nil, chatStyle{}, nil, "launched")
+			err := runChatLoop(t.Context(), plan, fb, sess, false, false, strings.NewReader(tt.input), &out, nil, nil, nil, chatStyle{}, nil, "launched", &chatVoice{})
 
 			require.NoError(t, err)
 			var gotRequests [][]string

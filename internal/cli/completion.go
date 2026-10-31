@@ -15,7 +15,7 @@ func Complete(args []string) int {
 	// Shell scripts pass: evoke __complete image <words...> <current>
 	if len(args) < 2 {
 		// Complete subcommands.
-		for _, cmd := range []string{"login", "image", "edit", "paint", "chat", "inspect", "tag", "discover", "knowledge", "push", "pull", "queue", "clear", "view", "settings", "completion"} {
+		for _, cmd := range []string{"login", "image", "edit", "paint", "chat", "audio", "inspect", "tag", "discover", "knowledge", "push", "pull", "queue", "clear", "view", "settings", "completion"} {
 			fmt.Println(cmd)
 		}
 		return 0
@@ -25,8 +25,8 @@ func Complete(args []string) int {
 	// current is the word being completed (may be empty).
 	current := args[len(args)-1]
 
-	// image and chat take the same inputs (selectors, paths, registry refs);
-	// they differ only in flags.
+	// image, chat and audio take the same inputs (selectors, paths, registry
+	// refs); they differ only in flags.
 	switch subcmd {
 	case "image":
 		return completeInputs(current, []string{"-b", "-v", "--verbose"}, false)
@@ -34,6 +34,8 @@ func Complete(args []string) int {
 		return completeInputs(current, []string{"-i", "--input", "-b", "-v", "--verbose"}, false)
 	case "chat":
 		return completeInputs(current, []string{"--stream", "--no-tui", "--new", "-v", "--verbose"}, false)
+	case "audio":
+		return completeInputs(current, []string{"-o", "--output", "-v", "--verbose"}, false)
 	case "inspect":
 		return completeInputs(current, []string{"-v", "--verbose"}, false)
 	case "tag":

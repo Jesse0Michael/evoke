@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/jesse0michael/evoke/internal/audio"
 	"github.com/jesse0michael/evoke/internal/chat"
 	"github.com/jesse0michael/evoke/internal/knowledge"
 )
@@ -22,8 +23,8 @@ import (
 // the next message can be composed but not submitted until the current one
 // resolves. It is used only on an interactive terminal; piped or non-interactive
 // runs use runChatLoop instead.
-func runChatTUI(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base) error {
-	m := newChatTUIModel(ctx, plan, client, sess, st, verbose, backendDone, backendErr, knowledgeBases)
+func runChatTUI(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base, voice *chatVoice) error {
+	m := newChatTUIModel(ctx, plan, client, sess, st, verbose, backendDone, backendErr, knowledgeBases, voice)
 	// Deliberately do NOT capture the mouse: mouse reporting would steal native
 	// click-drag text selection. Most terminals translate the wheel into ↑/↓ keys
 	// for an alt-screen app when the mouse isn't captured, so the viewport still
@@ -62,6 +63,7 @@ type chatTUIModel struct {
 	backendErr     func() error
 	knowledgeBases []*knowledge.Base
 	image          chatImage
+	voice          *chatVoice
 
 	viewport viewport.Model
 	input    textinput.Model
@@ -95,10 +97,27 @@ type replyMsg struct {
 // loop.
 type imageMsg sceneGeneration
 
+// voiceReadyMsg carries the result of a /voice toggle-on back into the update
+// loop. plan and backend are only ever set on success; Update is the only place
+// that assigns them onto the model, since the acquireVoiceBackend call this
+// wraps runs on its own goroutine and must not touch shared model state (see
+// chatVoice.toggle's doc).
+type voiceReadyMsg struct {
+	plan    *audio.Plan
+	backend *audio.Backend
+	status  []string
+	err     error
+}
+
+// voiceMsg carries the result of speaking one reply back into the update loop.
+// Nothing is shown on success — the point is heard, not logged — only a failed
+// take is worth a line.
+type voiceMsg struct{ err error }
+
 // backendDeadMsg signals the backend exited unexpectedly.
 type backendDeadMsg struct{}
 
-func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base) chatTUIModel {
+func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, sess *chat.Session, st chatStyle, verbose bool, backendDone <-chan struct{}, backendErr func() error, knowledgeBases []*knowledge.Base, voice *chatVoice) chatTUIModel {
 	ti := textinput.New()
 	ti.Prompt = "> "
 	ti.Placeholder = "type a message"
@@ -117,6 +136,7 @@ func newChatTUIModel(ctx context.Context, plan *chat.Plan, client chatBackend, s
 		backendErr:     backendErr,
 		knowledgeBases: knowledgeBases,
 		image:          newChatImage(plan, sess),
+		voice:          voice,
 		input:          ti,
 		spinner:        sp,
 		sess:           sess,
@@ -223,10 +243,10 @@ func (m chatTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.verbose {
 				m.transcript = append(m.transcript, m.renderDiagnostics(msg.usage))
 			}
-			// Draw the scene the character just described. Fire and forget: the
-			// conversation never waits on a generation, and its result arrives as
-			// its own message whenever ComfyUI answers.
-			cmd := m.imageCmd(msg.reply)
+			// Draw the scene the character just described and speak it. Both are
+			// fire and forget: the conversation never waits on either, and each
+			// result arrives as its own message whenever it answers.
+			cmd := tea.Batch(m.imageCmd(msg.reply), m.voiceSpeakCmd(msg.reply))
 			m.refreshViewport()
 			return m, cmd
 		}
@@ -244,6 +264,36 @@ func (m chatTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.transcript = append(m.transcript, m.st.dim("image: "+lastLine(msg.out)))
 		}
 		m.refreshViewport()
+		return m, nil
+
+	case voiceReadyMsg:
+		// This is the only place a voice toggle-on's plan/backend are assigned:
+		// the Cmd that produced this message ran on its own goroutine and
+		// deliberately touched none of m.voice, to avoid racing this update loop.
+		for _, line := range msg.status {
+			m.transcript = append(m.transcript, m.st.dim(line))
+		}
+		if msg.err != nil {
+			m.voice.plan = msg.plan // keep a successfully compiled plan for the next attempt
+			m.transcript = append(m.transcript, m.st.errorText("voice: ")+msg.err.Error())
+			m.refreshViewport()
+			return m, nil
+		}
+		m.voice.plan, m.voice.backend, m.voice.enabled = msg.plan, msg.backend, true
+		m.sess.SetVoiceOn(true)
+		m.save()
+		m.transcript = append(m.transcript, m.st.dim("voice on"))
+		// Speak the reply already on screen, so turning voice on is heard
+		// immediately rather than waiting for the next turn.
+		cmd := m.voiceSpeakCmd(lastAssistantReply(m.sess))
+		m.refreshViewport()
+		return m, cmd
+
+	case voiceMsg:
+		if msg.err != nil {
+			m.transcript = append(m.transcript, m.st.errorText("voice: ")+msg.err.Error())
+			m.refreshViewport()
+		}
 		return m, nil
 
 	case backendDeadMsg:
@@ -275,7 +325,7 @@ func (m chatTUIModel) header() string {
 	clip := lipgloss.NewStyle().MaxWidth(width)
 	return strings.Join([]string{
 		clip.Render(m.st.dim(status)),
-		clip.Render(m.st.dim(chatCommands+" · ") + m.image.label(m.st)),
+		clip.Render(m.st.dim(chatCommands+" · ") + m.image.label(m.st) + m.st.dim(" · ") + m.voice.label(m.st)),
 		m.st.dim(strings.Repeat("─", width)),
 	}, "\n")
 }
@@ -314,6 +364,22 @@ func (m chatTUIModel) slash(cmd string) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 		return m, gen
 	}
+	if isVoiceCommand(cmd) {
+		if m.voice.on() {
+			m.voice.enabled = false
+			m.sess.SetVoiceOn(false)
+			m.save()
+			m.transcript = append(m.transcript, m.st.dim("voice off"))
+			m.refreshViewport()
+			return m, nil
+		}
+		// Acquiring the backend the first time is slow enough to block the UI
+		// goroutine if done inline, so it runs as a tea.Cmd instead; see
+		// voiceToggleCmd and the voiceReadyMsg case in Update.
+		m.transcript = append(m.transcript, m.st.dim("Starting voice backend ..."))
+		m.refreshViewport()
+		return m, m.voiceToggleCmd()
+	}
 	switch cmd {
 	case "/reset":
 		m.sess.Reset()
@@ -338,7 +404,7 @@ func (m chatTUIModel) slash(cmd string) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 		return m, nil
 	default:
-		m.transcript = append(m.transcript, m.st.dim(fmt.Sprintf("unknown command %q (try /reset, /context, /image)", cmd)))
+		m.transcript = append(m.transcript, m.st.dim(fmt.Sprintf("unknown command %q (try /reset, /context, /image, /voice)", cmd)))
 		m.refreshViewport()
 		return m, nil
 	}
@@ -381,6 +447,35 @@ func (m chatTUIModel) imageCmd(reply string) tea.Cmd {
 	req := chat.SceneRequest(m.sess)
 	return func() tea.Msg {
 		return imageMsg(img.generate(ctx, client, req, reply))
+	}
+}
+
+// voiceSpeakCmd speaks one reply, or nil when there is nothing to speak —
+// /voice off, no backend acquired yet, or a reply that never arrived.
+func (m chatTUIModel) voiceSpeakCmd(reply string) tea.Cmd {
+	if !m.voice.on() || strings.TrimSpace(reply) == "" {
+		return nil
+	}
+	v := *m.voice
+	return func() tea.Msg {
+		return voiceMsg{err: v.speak(m.ctx, reply)}
+	}
+}
+
+// voiceToggleCmd acquires the voice backend as a command rather than inline,
+// since the first acquisition in a session does real network and process I/O.
+// It closes over copies of whatever m.voice already has (nil the first time,
+// set from then on), and deliberately touches nothing on m.voice itself — only
+// the voiceReadyMsg case in Update does that, once this runs on its own
+// goroutine and reports back.
+func (m chatTUIModel) voiceToggleCmd() tea.Cmd {
+	ctx := m.ctx
+	comp, trusted, runtime, timeout := m.voice.comp, m.voice.trusted, m.voice.runtime, m.voice.startupTimeout
+	plan, backend := m.voice.plan, m.voice.backend
+	return func() tea.Msg {
+		var status []string
+		p, b, err := acquireVoiceBackend(ctx, comp, trusted, runtime, timeout, plan, backend, func(s string) { status = append(status, s) })
+		return voiceReadyMsg{plan: p, backend: b, status: status, err: err}
 	}
 }
 

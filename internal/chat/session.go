@@ -39,6 +39,9 @@ type Session struct {
 	// interprets them; it only keeps them durable, since the front-end that
 	// owns the setting has nowhere of its own to write.
 	imageInputs []string
+	// voiceOn is the /voice setting, stored the same way and for the same
+	// reason as imageInputs: so a resumed conversation picks up still speaking.
+	voiceOn bool
 }
 
 // NewSession creates a session seeded with the compiled system prompt.
@@ -79,6 +82,19 @@ func (s *Session) SetImageInputs(inputs []string) {
 // empty when the conversation had none.
 func (s *Session) ImageInputs() []string {
 	return s.imageInputs
+}
+
+// SetVoiceOn records the /voice setting. Like SetImageInputs, it takes effect
+// on the next Save rather than waiting for a turn to end, so toggling voice and
+// quitting immediately still keeps the choice.
+func (s *Session) SetVoiceOn(on bool) {
+	s.voiceOn = on
+}
+
+// VoiceOn returns the /voice setting restored with the transcript, false when
+// the conversation never turned it on.
+func (s *Session) VoiceOn() bool {
+	return s.voiceOn
 }
 
 // Reset clears the conversational turns while retaining the compiled system
@@ -295,9 +311,14 @@ type memoryFile struct {
 	// ImageInputs is omitted when unset, which is what keeps this readable by
 	// the version that predates it — a new optional field needs no version bump,
 	// and bumping would discard every stored conversation rather than migrate it.
-	ImageInputs []string  `json:"image_inputs,omitempty"`
-	Updated     time.Time `json:"updated"`
-	Turns       []Message `json:"turns"`
+	ImageInputs []string `json:"image_inputs,omitempty"`
+	// VoiceOn is omitted when false, for the same compatibility reason as
+	// ImageInputs: a field a prior version never wrote should read back as its
+	// zero value, not force a schema bump that would discard every stored
+	// conversation rather than migrate it.
+	VoiceOn bool      `json:"voice_on,omitempty"`
+	Updated time.Time `json:"updated"`
+	Turns   []Message `json:"turns"`
 }
 
 // Remember gives the session durable storage at path, so repeating a command
@@ -339,6 +360,7 @@ func (s *Session) Remember(path string, inputs []string, resume bool) error {
 	}
 	s.restore(f.Turns)
 	s.imageInputs = f.ImageInputs
+	s.voiceOn = f.VoiceOn
 	return nil
 }
 
@@ -358,6 +380,7 @@ func (s *Session) Save() error {
 		Version:     memoryVersion,
 		Inputs:      s.inputs,
 		ImageInputs: s.imageInputs,
+		VoiceOn:     s.voiceOn,
 		Updated:     time.Now().UTC(),
 		Turns:       s.turns,
 	}, "", "  ")

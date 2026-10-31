@@ -143,6 +143,9 @@ func TestValidate(t *testing.T) {
 		{name: "VOICE supports the negative channel", src: "!VOICE\n    shrill\n"},
 		{name: "VOICE supports defaults", src: "?VOICE\n    low alto\n"},
 		{name: "VOICE with argument is invalid", src: "VOICE narration\n    low alto\n", wantError: true},
+		{name: "AUDIO supports defaults", src: "?AUDIO\n    model = VoxCPM2-bf16\n"},
+		{name: "negative on AUDIO is invalid", src: "!AUDIO\n    model = VoxCPM2-bf16\n", wantError: true},
+		{name: "AUDIO with argument is invalid", src: "AUDIO narration\n    model = VoxCPM2-bf16\n", wantError: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -245,6 +248,20 @@ func TestMerge(t *testing.T) {
 				Positive: []string{"low alto", "slight rasp", "unhurried"},
 				Negative: []string{"shrill"},
 			}},
+		},
+		{
+			name: "AUDIO settings layer per key with the last writer winning",
+			docs: []*evoke.Document{
+				{Declarations: []*evoke.Declaration{{Name: "AUDIO", Default: true, Values: []string{
+					"model = mlx-community/VoxCPM2-bf16", "cfg_scale = 2.0",
+				}}}},
+				{Declarations: []*evoke.Declaration{{Name: "AUDIO", Values: []string{
+					"cfg_scale = 3.0", "speed = 0.9",
+				}}}},
+			},
+			want: evoke.Composition{Audio: &evoke.AudioConfig{Settings: map[string]string{
+				"model": "mlx-community/VoxCPM2-bf16", "cfg_scale": "3.0", "speed": "0.9",
+			}}},
 		},
 	}
 	for _, tt := range tests {

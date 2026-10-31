@@ -48,6 +48,8 @@ func run(args []string) int {
 		return cli.Paint(rest, verbose)
 	case "chat":
 		return cli.Chat(rest, verbose)
+	case "audio":
+		return cli.Audio(rest, verbose)
 	case "inspect":
 		return cli.Inspect(rest, verbose)
 	case "tag":
@@ -89,6 +91,9 @@ func usage() {
 Chat:
     evoke chat        Compose evoke files into a character and start an interactive chat
     evoke knowledge   Build a RAG knowledge database from markdown and .evoke files
+
+Audio:
+    evoke audio       Speak a line in a composition's voice
 
 Image:
     evoke image       Compose evoke files and submit to a generation pipeline

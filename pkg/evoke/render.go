@@ -109,5 +109,16 @@ func Render(c *Composition) string {
 		b.WriteString("\n")
 	}
 
+	if c.Audio != nil {
+		b.WriteString("AUDIO\n")
+		for _, k := range slices.Sorted(maps.Keys(c.Audio.Settings)) {
+			fmt.Fprintf(&b, "    %s = %s\n", k, c.Audio.Settings[k])
+		}
+		for _, line := range c.Audio.Instructions {
+			fmt.Fprintf(&b, "    %s\n", line)
+		}
+		b.WriteString("\n")
+	}
+
 	return strings.TrimRight(b.String(), "\n") + "\n"
 }

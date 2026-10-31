@@ -36,6 +36,7 @@ _evoke() {
         'edit:Redraw an existing image through a composition'
         'paint:Alter an existing image by instruction'
         'chat:Compose evoke files and chat with a local LLM'
+        'audio:Speak a line in a composed voice'
         'inspect:List files matching a tag or show what selected files compose into'
         'tag:Add, remove, or list local tags on a file'
         'knowledge:Build a RAG knowledge database from a directory of markdown'
@@ -62,6 +63,9 @@ _evoke() {
             ;;
         chat)
             _evoke_complete chat
+            ;;
+        audio)
+            _evoke_complete audio
             ;;
         inspect)
             _evoke_complete inspect
@@ -95,12 +99,12 @@ const bashCompletion = `_evoke() {
     _init_completion || return
 
     if [[ ${cword} -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "login image edit paint chat inspect tag knowledge push pull settings completion" -- "${cur}"))
+        COMPREPLY=($(compgen -W "login image edit paint chat audio inspect tag knowledge push pull settings completion" -- "${cur}"))
         return
     fi
 
     case "${words[1]}" in
-        image|edit|paint|chat|inspect|tag|knowledge|pull)
+        image|edit|paint|chat|audio|inspect|tag|knowledge|pull)
             local completions
             completions=$(evoke __complete "${words[1]}" "${words[@]:2:cword-2}" "${cur}" 2>/dev/null)
             COMPREPLY=($(compgen -W "${completions}" -- "${cur}"))
@@ -120,6 +124,7 @@ complete -c evoke -n '__fish_use_subcommand' -a image -d 'Compose evoke files an
 complete -c evoke -n '__fish_use_subcommand' -a edit -d 'Redraw an existing image through a composition'
 complete -c evoke -n '__fish_use_subcommand' -a paint -d 'Alter an existing image by instruction'
 complete -c evoke -n '__fish_use_subcommand' -a chat -d 'Compose evoke files and chat with a local LLM'
+complete -c evoke -n '__fish_use_subcommand' -a audio -d 'Speak a line in a composed voice'
 complete -c evoke -n '__fish_use_subcommand' -a inspect -d 'List files matching a tag or show what selected files compose into'
 complete -c evoke -n '__fish_use_subcommand' -a tag -d 'Add, remove, or list local tags on a file'
 complete -c evoke -n '__fish_use_subcommand' -a knowledge -d 'Build a RAG knowledge database from a directory of markdown'
@@ -139,6 +144,7 @@ complete -c evoke -n '__fish_seen_subcommand_from paint' -a '(evoke __complete p
 
 # Chat completions
 complete -c evoke -n '__fish_seen_subcommand_from chat' -a '(evoke __complete chat (commandline -cop)[3..] (commandline -ct) 2>/dev/null)'
+complete -c evoke -n '__fish_seen_subcommand_from audio' -a '(evoke __complete audio (commandline -cop)[3..] (commandline -ct) 2>/dev/null)'
 
 # Inspect completions
 complete -c evoke -n '__fish_seen_subcommand_from inspect' -a '(evoke __complete inspect (commandline -cop)[3..] (commandline -ct) 2>/dev/null)'

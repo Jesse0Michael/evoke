@@ -44,6 +44,15 @@ type ChatConfig struct {
 	Instructions []string
 }
 
+// AudioConfig holds the resolved configuration for the AUDIO declaration:
+// the runtime settings a speech target needs, plus any free text the block
+// carried. VOICE supplies what the speaker sounds like; this supplies what
+// renders it.
+type AudioConfig struct {
+	Settings     map[string]string
+	Instructions []string
+}
+
 // KnowledgeSource holds the resolved configuration for a KNOWLEDGE declaration.
 type KnowledgeSource struct {
 	Argument string            // the DB filename (e.g., "lore.db")
@@ -65,6 +74,7 @@ type Composition struct {
 	Loras       []LoraDefinition
 	Detailers   []DetailerConfig
 	Chat        *ChatConfig       // Resolved CHAT configuration, nil when no CHAT declaration contributes
+	Audio       *AudioConfig      // Resolved AUDIO configuration, nil when no AUDIO declaration contributes
 	Knowledge   []KnowledgeSource // Resolved KNOWLEDGE declarations
 	Sources     []string          // Source file paths of merged documents
 	Inputs      []string          // Original CLI input arguments
@@ -133,6 +143,7 @@ func Merge(docs []*Document) *Composition {
 	comp.Loras = resolveLoraDefinitions(contributions)
 	comp.Detailers = resolveDetailerConfigs(contributions)
 	comp.Chat = resolveChatConfig(contributions)
+	comp.Audio = resolveAudioConfig(contributions)
 	comp.Knowledge = resolveKnowledgeSources(contributions)
 
 	return comp
@@ -147,6 +158,17 @@ func resolveChatConfig(contributions map[channelKey][]contribution) *ChatConfig 
 	}
 	settings, _, text := resolveStructuredChannel(contribs)
 	return &ChatConfig{Settings: settings, Instructions: text}
+}
+
+// resolveAudioConfig resolves the singular AUDIO declaration into an AudioConfig.
+// It returns nil when no AUDIO declaration (explicit or default) contributes.
+func resolveAudioConfig(contributions map[channelKey][]contribution) *AudioConfig {
+	contribs := contributions[channelKey{name: "AUDIO"}]
+	if len(contribs) == 0 {
+		return nil
+	}
+	settings, _, text := resolveStructuredChannel(contribs)
+	return &AudioConfig{Settings: settings, Instructions: text}
 }
 
 // resolveKnowledgeSources resolves all KNOWLEDGE declarations into KnowledgeSource values.

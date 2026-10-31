@@ -52,6 +52,16 @@ var builtins = []Definition{
 	{Name: "DETAILER", Merge: MergeSingular, Negative: true, Default: true, AcceptsArgument: true, RequiresArgument: true, Structured: true, MixedContent: true, Order: 120},
 	{Name: "CHAT", Merge: MergeSingular, Default: true, Structured: true, MixedContent: true, Order: 130},
 	{Name: "KNOWLEDGE", Merge: MergeSingular, Default: true, AcceptsArgument: true, RequiresArgument: true, Structured: true, Order: 140},
+	// AUDIO is to VOICE what IMAGE is to APPEARANCE: the engine, model and
+	// sampling configuration a speech target needs, kept out of VOICE so that
+	// block stays a description of the character rather than of a runtime.
+	// Singular with no argument, because there is one synthesis pass; a staged
+	// form can grow an argument later without invalidating files.
+	//
+	// No negative channel. A description-conditioned speech model takes one
+	// positive instruction string and has nowhere to put a subtraction, so a
+	// !AUDIO would parse into a channel nothing could ever read.
+	{Name: "AUDIO", Merge: MergeSingular, Default: true, Structured: true, MixedContent: true, Order: 150},
 }
 
 var byName = func() map[string]Definition {

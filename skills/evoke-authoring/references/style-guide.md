@@ -8,7 +8,7 @@ Rules for writing the _content_ of `.evoke` files. Format mechanics live in [Fil
 | :---------------------------------------------------------------------------- | :------------------------------------------------ |
 | `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `PROMPT`, `IMAGE`, `LORA`, `DETAILER` | §2 and §3 — §3.12 first for `ENVIRONMENT`         |
 | `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `SCENARIO`, `CHAT` instructions      | §2 and §4                                         |
-| `VOICE`                                                                       | §2 and §1's `VOICE` note — no target reads it yet |
+| `VOICE`, `AUDIO`                                                              | §2 and §1's `VOICE` note                          |
 
 §3 and §4 give opposite advice on purpose. Applying §3's rules to a chat block, or §4's to an image block, produces confidently wrong output both times.
 
@@ -27,44 +27,48 @@ A declaration is written for the **output targets** that consume it. Rules are g
 
 ### Who reads what
 
-Ground truth from `internal/generate/comfyui/comfyui.go` and `internal/chat/prompt.go`. Keep accurate if those change. A dash costs nothing — that's what makes new targets cheap.
+Ground truth from `internal/generate/comfyui/comfyui.go`, `internal/chat/prompt.go`, and `internal/audio/plan.go`. Keep accurate if those change. A dash costs nothing — that's what makes new targets cheap.
 
-| Declaration                    | `image` (rendering)                         | `chat` (language)                       |
-| :----------------------------- | :------------------------------------------ | :-------------------------------------- |
-| `NAME`                         | output dir only — **never in the prompt**   | `"You are {name}."`                     |
-| `CHARACTER`                    | —                                           | identity                                |
-| `PERSONALITY` / `!PERSONALITY` | —                                           | `"Personality:"` / `"Traits to avoid:"` |
-| `BACKSTORY`                    | —                                           | `"Backstory:"`                          |
-| `SCENARIO`                     | —                                           | opening turn                            |
-| `VOICE`                        | — (see below)                               | — (see below)                           |
-| `APPEARANCE` / `!`             | positive / negative                         | —                                       |
-| `APPAREL` / `!`                | apparel conditioning                        | —                                       |
-| `ENVIRONMENT` / `!`            | environment conditioning                    | —                                       |
-| `PROMPT` / `!`                 | shot composition (positive / negative)      | —                                       |
-| `IMAGE` / `!`                  | sampler settings + text at prompt **front** | —                                       |
-| `LORA`                         | LoRA chain                                  | —                                       |
-| `DETAILER` / `!`               | per-region inpaint prompts                  | —                                       |
-| `CHAT`                         | —                                           | runtime, sampling, system instructions  |
-| `KNOWLEDGE`                    | —                                           | retrieval                               |
+| Declaration                    | `image` (rendering)                         | `chat` (language)                       | `audio` (speech)    |
+| :----------------------------- | :------------------------------------------ | :-------------------------------------- | :------------------ |
+| `NAME`                         | output dir only — **never in the prompt**   | `"You are {name}."`                     | output file name    |
+| `CHARACTER`                    | —                                           | identity                                | —                   |
+| `PERSONALITY` / `!PERSONALITY` | —                                           | `"Personality:"` / `"Traits to avoid:"` | —                   |
+| `BACKSTORY`                    | —                                           | `"Backstory:"`                          | —                   |
+| `SCENARIO`                     | —                                           | opening turn                            | —                   |
+| `VOICE`                        | —                                           | —                                       | speaker description |
+| `APPEARANCE` / `!`             | positive / negative                         | —                                       | —                   |
+| `APPAREL` / `!`                | apparel conditioning                        | —                                       | —                   |
+| `ENVIRONMENT` / `!`            | environment conditioning                    | —                                       | —                   |
+| `PROMPT` / `!`                 | shot composition (positive / negative)      | —                                       | —                   |
+| `IMAGE` / `!`                  | sampler settings + text at prompt **front** | —                                       | —                   |
+| `LORA`                         | LoRA chain                                  | —                                       | —                   |
+| `DETAILER` / `!`               | per-region inpaint prompts                  | —                                       | —                   |
+| `CHAT`                         | —                                           | runtime, sampling, system instructions  | —                   |
+| `KNOWLEDGE`                    | —                                           | retrieval                               | —                   |
+| `AUDIO`                        | —                                           | —                                       | model and sampling  |
 
 - **No declaration is read by more than one target.** Every block is written for exactly one class, so it never has to satisfy two sets of contradictory rules. Expect that to change eventually — a voice target would likely read `PERSONALITY` — and a declaration that gains a second reader must then satisfy the strictest class that reads it.
 - `CHARACTER`/`PERSONALITY`/`BACKSTORY`/`SCENARIO` cost the image prompt nothing. Write them as long as the character needs.
 - Chat can't see `APPEARANCE`/`APPAREL`/`ENVIRONMENT`/`PROMPT`. Anything the character should _know_ about itself goes in `CHARACTER` or `BACKSTORY`.
 - The image prompt has no "who" block. Everything drawable about a subject — species, build, apparent age, features — goes in `APPEARANCE`.
 
-### `VOICE` — a block with no target
+### `VOICE` — the speech target
 
-`VOICE` records what a character **sounds** like: timbre, pitch, pace, accent, vocal texture. No command reads it. It parses, merges, and appears in `evoke inspect`, and then nothing renders it — there is no audio target yet.
+`VOICE` records what a character **sounds** like: timbre, pitch, pace, accent, vocal texture. `evoke audio` joins its merged values into the speaker description a synthesis model is conditioned on, and no other command reads it.
 
-That does not make it scratch space. Three rules:
+It is the whole input to that model, so the rules are strict:
 
-- **Write it only when the user asks for a voice, or the source describes one.** §2 applies unchanged, and applies harder here: nothing renders `VOICE`, so an invented one is never caught by a bad output. It sits in the file looking sourced until someone builds the target and ships it.
-- **Sound, not speech.** How the character sounds is `VOICE`. What they say and how they word it is `PERSONALITY` and the `CHAT` instructions — and only those reach a model today. "Rarely uses contractions," "trails off mid-sentence," "answers questions with questions" are language traits; putting them in `VOICE` means no target reads them at all, which is the one genuinely silent failure in this format.
+- **Write it only when the user asks for a voice, or the source describes one.** §2 applies unchanged. An invented voice renders perfectly well, which is exactly the problem — it sounds like a decision someone made rather than one nobody did.
+- **Sound, not speech.** How the character sounds is `VOICE`. What they say and how they word it is `PERSONALITY` and the `CHAT` instructions. "Rarely uses contractions," "trails off mid-sentence," "answers questions with questions" are language traits; in `VOICE` they reach a model that can only act on them as sound, and the chat target that could use them never sees them.
 - **Character descriptors are conditioning, not leakage.** Prompt-to-voice models are conditioned on a description of the _speaker_, not on timbre words — `18 year old guy, comic relief, young, puberty, goofball, humorous, quickly delivered` is a real input to one, and every token in it shapes the output. When the source is itself a synthesis prompt, that prompt **is** the block: paste it, and strip only engine and quality configuration (`High-fidelity speech quality`, sample rate, provider, model name), which belongs to a settings block. Do not "clean it up" into `low alto, slight rasp` — translating a working synthesis prompt into pure timbre vocabulary discards the conditioning the model actually reads, and nothing downstream will ever tell you it happened. This bullet outranks the one above when the source came from a voice model.
-- **§3 form, phrases not prose.** `low alto, slight rasp, unhurried cadence`, one comma-joined line, no trailing period. The consumer is a synthesis target conditioned on a description, which reads phrases and not prose, and a language target reads phrases fine — so phrases are the form that survives either outcome. Skip weights: there is no model whose prior you are fighting.
+- **§3 form, phrases not prose.** `low alto, slight rasp, unhurried cadence`, one comma-joined line, no trailing period. The synthesis model is conditioned on a description and reads phrases, not prose. Skip weights — there is no weighting syntax in this channel.
+- **Stay inside the model's range.** A description fights the model's prior exactly the way an image prompt does, and loses the same way: ask a model whose prior is a mid-register female voice for an "unusually deep" one and it returns a mid-register voice, silently. Push on age, pace, rasp, accent, and resonance, which move; do not rely on a single adjective to carry a voice the model has little training data for.
 - **Positive only.** Describe the voice the character has. There is no exclusion list to write here — a voice has one description, and "not shrill" is not a thing to say about it.
 
-Engine configuration is not this block's job. A synthesis backend, model, and its settings belong in a structured declaration of their own when one exists — `VOICE` is to that what `APPEARANCE` is to `IMAGE`.
+Engine configuration is not this block's job. The backend, model, and sampling settings live in `AUDIO` — `VOICE` is to `AUDIO` what `APPEARANCE` is to `IMAGE`.
+
+A description casts a voice rather than fixing one: the same `VOICE` renders a recognisably different speaker on every run. When a particular take matters, keep the clip and name it with `AUDIO reference`.
 
 ### Render order
 
@@ -1005,8 +1009,9 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 **`VOICE` (§1)**
 
 - [ ] Written because a voice was asked for or described, not because the character felt unfinished without one?
+- [ ] Pushing on axes the model can actually move (age, pace, rasp, accent, resonance) rather than one adjective it will normalise away?
 - [ ] Source was a prompt-to-voice prompt — is it kept intact, with only engine/quality config stripped, rather than rewritten into timbre words?
-- [ ] Nothing about word choice or phrasing, which no target would then read?
+- [ ] Nothing about word choice or phrasing, which the speech target can only render as sound?
 - [ ] Comma-joined phrases, no prose, no weights?
 
 **Both**

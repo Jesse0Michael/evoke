@@ -21,37 +21,39 @@ Every declaration has a registered definition that fixes its **merge mode**, whe
 | `DETAILER`    | singular      | ✓ | ✓ | required | 120 |
 | `CHAT`        | singular      | — | ✓ | — | 130 |
 | `KNOWLEDGE`   | singular      | — | ✓ | required | 140 |
+| `AUDIO`       | singular      | — | ✓ | — | 150 |
 
-- **Merge** — how repeated contributions combine. See [Merge Modes](merge-modes.md). The structured declarations (`IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE`) are singular **per argument** but resolve by [field-level layering](merge-modes.md#structured-field-level-overlay), not all-or-nothing: a block only needs to name the settings it changes and inherits the rest, and for a key two files both set, the later argument wins.
+- **Merge** — how repeated contributions combine. See [Merge Modes](merge-modes.md). The structured declarations (`IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE`, `AUDIO`) are singular **per argument** but resolve by [field-level layering](merge-modes.md#structured-field-level-overlay), not all-or-nothing: a block only needs to name the settings it changes and inherits the rest, and for a key two files both set, the later argument wins.
 - **`!` negative** — whether values may be routed to the exclusion channel. See [Prefixes & Channels](prefixes.md).
 - **`?` default** — whether values may be marked as defaults used only when nothing more specific exists.
 - **Order** — the canonical, ascending order renderers use so output is deterministic rather than dependent on file order. This is not the order the image prompt is assembled in; see [the image command](../cli/image.md).
 
 ## Which command consumes which declaration
 
-A declaration is only meaningful to the commands that read it. `image` and `chat` consume overlapping but distinct subsets, and a declaration ignored by a command costs nothing there — it is simply not rendered.
+A declaration is only meaningful to the commands that read it. `image`, `chat`, and `audio` consume overlapping but distinct subsets, and a declaration ignored by a command costs nothing there — it is simply not rendered.
 
-| Declaration | `evoke image` | `evoke chat` |
-|:------------|:--------------|:-------------|
-| `NAME`        | output directory name (not part of the prompt) | the character's name |
-| `CHARACTER`   | — | identity |
-| `PERSONALITY` | — | personality, plus "traits to avoid" from the `!` channel |
-| `BACKSTORY`   | — | backstory |
-| `VOICE`       | — | — |
-| `APPEARANCE`  | positive / negative prompt | — |
-| `APPAREL`     | apparel conditioning | — |
-| `ENVIRONMENT` | environment conditioning | — |
-| `SCENARIO`    | — | the opening turn |
-| `PROMPT`      | shot composition (positive / negative) | — |
-| `IMAGE`       | sampler settings and prompt text | — |
-| `LORA`        | LoRA chain | — |
-| `DETAILER`    | per-region inpaint prompts | — |
-| `CHAT`        | — | runtime, sampling, and system instructions |
-| `KNOWLEDGE`   | — | retrieval sources |
+| Declaration | `evoke image` | `evoke chat` | `evoke audio` |
+|:------------|:--------------|:-------------|:--------------|
+| `NAME`        | output directory name (not part of the prompt) | the character's name | output file name |
+| `CHARACTER`   | — | identity | — |
+| `PERSONALITY` | — | personality, plus "traits to avoid" from the `!` channel | — |
+| `BACKSTORY`   | — | backstory | — |
+| `VOICE`       | — | — | the speaker description |
+| `APPEARANCE`  | positive / negative prompt | — | — |
+| `APPAREL`     | apparel conditioning | — | — |
+| `ENVIRONMENT` | environment conditioning | — | — |
+| `SCENARIO`    | — | the opening turn | — |
+| `PROMPT`      | shot composition (positive / negative) | — | — |
+| `IMAGE`       | sampler settings and prompt text | — | — |
+| `LORA`        | LoRA chain | — | — |
+| `DETAILER`    | per-region inpaint prompts | — | — |
+| `CHAT`        | — | runtime, sampling, and system instructions | — |
+| `KNOWLEDGE`   | — | retrieval sources | — |
+| `AUDIO`       | — | — | runtime, model, and sampling settings |
 
 `CHARACTER`, `PERSONALITY`, `BACKSTORY`, and `SCENARIO` are **chat-only**. They describe identity, disposition, history, and narrative situation — none of which a diffusion model can render — so the image pipeline does not put them in the prompt. This means a character file can carry a full identity and backstory without it competing for the image prompt's limited attention. Everything drawable about a subject belongs in `APPEARANCE`.
 
-`VOICE` is read by **no command yet** — see [VOICE](#voice). It parses, validates, merges, and shows up in `evoke inspect` like any other declaration, so a character file can carry its voice today; nothing renders it until an audio target exists. A declaration no command reads costs its composition nothing, which is exactly what makes adding a target cheap.
+`VOICE` and `AUDIO` are **audio-only**, and they split the same way `APPEARANCE` and `IMAGE` do: `VOICE` describes the speaker, `AUDIO` configures what renders that description. Neither reaches an image prompt or a chat system prompt.
 
 For guidance on writing the content of these blocks well, see the style guide at `skills/evoke-authoring/references/style-guide.md`.
 
@@ -108,14 +110,16 @@ VOICE
     low alto, slight rasp, unhurried cadence
 ```
 
-**No command consumes `VOICE` yet.** It is a place to record a character's voice alongside the rest of the character, so the information is captured, versioned, and pushed to the registry with the file rather than living in someone's notes until an audio target arrives. Until then it is inert: absent from image prompts, absent from the chat system prompt, and absent from `knowledge.db`.
+[`evoke audio`](../cli/audio.md) renders it: the merged positive values join into one description and become the speaker instruction a description-conditioned synthesis model reads. It stays out of image prompts, the chat system prompt, and `knowledge.db`.
 
-Two boundaries keep it that way when a target does appear:
+Two boundaries keep it coherent:
 
-- **`VOICE` describes the voice, not the words.** How the character sounds is `VOICE`; what they say and how they phrase it is `PERSONALITY` and the `CHAT` instructions. "Rarely uses contractions" is a language trait that a text model can act on today — it belongs there, not here.
-- **`VOICE` is content, not engine configuration.** A synthesis engine, model, and its sampling settings are to `VOICE` what `IMAGE` is to `APPEARANCE`: a separate structured declaration, added when there is a backend to configure. `VOICE` will not grow `key = value` settings.
+- **`VOICE` describes the voice, not the words.** How the character sounds is `VOICE`; what they say and how they phrase it is `PERSONALITY` and the `CHAT` instructions. "Rarely uses contractions" is a language trait a text model acts on — it belongs there, not here.
+- **`VOICE` is content, not engine configuration.** The model, backend, and sampling settings live in [`AUDIO`](#audio), which is to `VOICE` what `IMAGE` is to `APPEARANCE`. `VOICE` does not grow `key = value` settings.
 
-Write it as short comma-separated phrases, the way `APPEARANCE` is written. The plausible first consumer is a synthesis target conditioned on a voice description, which cannot read prose; a language target reads phrases perfectly well, so phrases are the form that survives either outcome.
+Write it as short comma-separated phrases, the way `APPEARANCE` is written — a synthesis model conditioned on a description reads phrases, and so does a language model, so phrases survive either consumer.
+
+A description is not a stable identity. A synthesis model given the same description twice produces a recognisably different speaker each time, so a `VOICE` block casts a voice rather than fixing one. To pin a particular rendering, keep the clip you liked and name it with `AUDIO reference`.
 
 ### APPEARANCE
 
@@ -310,6 +314,34 @@ KNOWLEDGE lore
 `db` is a SQLite file **name**, resolved against the same `chat.model_paths` directories as the `CHAT` `model` setting, so the file stays portable. The database holds pre-embedded text chunks; at each turn the user's message is embedded via an ollama-compatible endpoint and the closest `top_k` chunks are injected as reference material.
 
 Build the database from a directory of markdown and `.evoke` files with [`evoke knowledge`](../cli/knowledge.md). `embed_model` is optional and normally omitted: the database records the model it was built with, and chat adopts it. Set it only to override that — a conflict between the two is an error rather than a silent drop in retrieval quality.
+
+### AUDIO
+
+Runtime configuration for speech synthesis — the model that renders a `VOICE` and how it samples. **Singular**, structured, with `?` default support and no argument.
+
+```text
+AUDIO
+    model = mlx-community/VoxCPM2-bf16
+    reference = sumi.wav
+    speed = 0.95
+```
+
+| Setting | Meaning |
+|:--------|:--------|
+| `model` | the synthesis model: a repo id, or a directory name resolved against `chat.model_paths` |
+| `reference` | a clip to clone, resolved against the working directory then `chat.model_paths` |
+| `ref_text` | the transcript of `reference`; omitting it makes the runtime transcribe the clip itself |
+| `voice` | a named preset, for models that ship them |
+| `format` | output container (`wav` by default; anything else needs `ffmpeg`) |
+| `speed`, `cfg_scale`, `ddpm_steps`, `temperature`, `top_p`, `top_k`, `lang_code`, `max_tokens` | sampling and decoding controls passed to the runtime |
+
+Settings are a whitelist rather than a passthrough. A name not listed above is reported and ignored, because settings arrive from file content and forwarding an arbitrary one would let a file choose the runtime's arguments.
+
+`cfg_scale` and `ddpm_steps` reach [`evoke audio`](../cli/audio.md) only. The resident server behind [`evoke chat`'s `/voice`](../cli/chat.md#spoken-replies) has no field for either, and reports them rather than dropping them in silence.
+
+`reference` and `VOICE` are not alternatives. `VOICE` is always the description of the speaker; `reference` pins which rendering of that description you got, the way a seed pins a roll. When both are present the clip decides the identity.
+
+Like every structured declaration, settings layer per key: a file that sets only `speed` keeps the `model` another file named.
 
 ## Disabling a stage
 

@@ -292,10 +292,11 @@ func TestSessionMemory(t *testing.T) {
 		// empty means no file exists yet.
 		stored string
 		// resume is false for --new.
-		resume     bool
-		wantTurns  []Message
-		wantImages []string
-		wantErr    bool
+		resume      bool
+		wantTurns   []Message
+		wantImages  []string
+		wantVoiceOn bool
+		wantErr     bool
 	}{
 		{
 			name:      "a missing file is an empty session, not an error",
@@ -320,6 +321,21 @@ func TestSessionMemory(t *testing.T) {
 		{
 			name:      "not resuming ignores a stored scene-image setting",
 			stored:    `{"version":1,"image_inputs":["ill"],"turns":[]}`,
+			resume:    false,
+			wantTurns: nil,
+		},
+		{
+			// A file written before voice_on existed reads back fine, the same
+			// compatibility reason image_inputs needed no version bump for.
+			name:        "a stored voice setting is restored with the transcript",
+			stored:      `{"version":1,"voice_on":true,"turns":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"}]}`,
+			resume:      true,
+			wantTurns:   dialogue,
+			wantVoiceOn: true,
+		},
+		{
+			name:      "not resuming ignores a stored voice setting",
+			stored:    `{"version":1,"voice_on":true,"turns":[]}`,
 			resume:    false,
 			wantTurns: nil,
 		},
@@ -360,16 +376,19 @@ func TestSessionMemory(t *testing.T) {
 			require.Equal(t, tt.wantErr, err != nil)
 			require.Equal(t, tt.wantTurns, sess.Turns())
 			require.Equal(t, tt.wantImages, sess.ImageInputs())
+			require.Equal(t, tt.wantVoiceOn, sess.VoiceOn())
 
 			// Whatever was there, saving replaces it and reads back intact.
 			sess.AddUser("hi")
 			sess.AddAssistant("hello")
 			sess.SetImageInputs([]string{"ill", "solo, 1girl"})
+			sess.SetVoiceOn(true)
 			require.NoError(t, sess.Save())
 			reopened := NewSession(budgetPlan(8192, sys))
 			require.NoError(t, reopened.Remember(path, []string{"haley"}, true))
 			require.Equal(t, append(append([]Message{}, tt.wantTurns...), dialogue...), reopened.Turns())
 			require.Equal(t, []string{"ill", "solo, 1girl"}, reopened.ImageInputs())
+			require.True(t, reopened.VoiceOn())
 
 			// Staging files are renamed into place, never left behind.
 			entries, err := os.ReadDir(filepath.Dir(path))
