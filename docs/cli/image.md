@@ -109,6 +109,7 @@ IMAGE
 |:-----|:-------------|:------|
 | `sdxl` | SDXL / Illustrious, one checkpoint via `CheckpointLoaderSimple` | The default when no `base` is set. Reads `checkpoint`. `euler_ancestral`/`karras`, cfg 4, 40 steps, 1216x832. |
 | `anima` | [Anima](https://huggingface.co/circlestone-labs/Anima), a Qwen-Image derivative loaded as three files | Comfy-Org's `image_anima_base_v1` reference graph. Reads `unet`, `clip`, `clip_type`, `vae`, `weight_dtype`, and `shift` instead of `checkpoint`. `euler`/`simple`, cfg 4, 30 steps. |
+| `moss` | [MOSS-Image](https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT), a 5B DiT with a Qwen3.5 text encoder and the FLUX.2 VAE, loaded as three files | Comfy-Org's `image_moss_image_t2i` reference graph, minus the prompt enhancer. Reads `unet`, `clip`, `clip_type`, `vae`, `weight_dtype`, and `shift`. `er_sde`/`simple`, cfg 2.5, 25 steps (SFT); the undistilled Base wants 50 steps, cfg 3, `euler`. Width and height must be multiples of 16. |
 
 There is no flag for this. The pipeline file that supplies the checkpoint or the unet is what makes a composition SDXL or Anima, so switching architecture means composing a different pipeline file — and a flag could only ever contradict what that file already says:
 
@@ -122,7 +123,7 @@ A base no template implements is an error that lists what is available:
 
 ```console
 $ evoke image sumi flux-pipeline
-evoke image: unknown IMAGE base "flux" (available: anima, sdxl)
+evoke image: unknown IMAGE base "flux" (available: anima, krea2, moss, sdxl)
 ```
 
 Base names are matched without regard to case or surrounding whitespace.
@@ -166,6 +167,8 @@ IMAGE
 This matters only on the turbo path. At cfg 1 there is no classifier-free guidance, so the negative prompt is inert — NAG restores it through cross-attention. Above cfg ~2 it is redundant. `nag_alpha` and `nag_tau` default to 0.5 and 1.5.
 
 `anima` requires three model files that are not part of a stock ComfyUI install — `anima-base-v1.0.safetensors` in `models/diffusion_models`, `qwen_3_06b_base.safetensors` in `models/text_encoders`, and `qwen_image_vae.safetensors` in `models/vae`.
+
+`moss` requires `moss_image_sft_int8_convrot.safetensors` (or the Base equivalent) in `models/diffusion_models`, `qwen3.5_9b_int8_convrot.safetensors` in `models/text_encoders`, and `flux2-vae.safetensors` in `models/vae`, on ComfyUI 0.42.0 or later. The text encoder loads through `CLIPLoader` type `moss_image`. See [`examples/moss.evoke`](https://github.com/jesse0michael/evoke/blob/main/examples/moss.evoke).
 
 ## Batch mode
 

@@ -449,9 +449,10 @@ func fullComposition() *evoke.Composition {
 			{Argument: "test-lora-anima", Settings: map[string]string{"model": "test-lora-2.safetensors", "strength": "0.6", "clip": "0.5", "base": "anima"}},
 			{Argument: "test-lora-qwen", Settings: map[string]string{"model": "test-lora-3.safetensors", "strength": "1.0", "base": "qwen"}},
 			{Argument: "test-lora-krea2", Settings: map[string]string{"model": "test-lora-4.safetensors", "strength": "0.9", "base": "krea2"}},
+			{Argument: "test-lora-moss", Settings: map[string]string{"model": "test-lora-5.safetensors", "strength": "0.7", "base": "moss"}},
 		},
 		Images: []evoke.ImageStage{
-			{Loras: []string{"test-lora-sdxl", "test-lora-anima", "test-lora-krea2"}, Settings: map[string]string{
+			{Loras: []string{"test-lora-sdxl", "test-lora-anima", "test-lora-krea2", "test-lora-moss"}, Settings: map[string]string{
 				"shift": "3.1", "nag_scale": "5.0", "nag_alpha": "0.5", "nag_tau": "1.5",
 			}},
 			{Argument: "refine", Settings: map[string]string{

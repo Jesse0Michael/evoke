@@ -1014,6 +1014,26 @@ var architectureDefaults = map[string]promptData{
 			Height:      1024,
 		},
 	},
+	// Width and height must be multiples of 16; the model targets 1 to 2
+	// megapixels. These are the SFT reference settings — the undistilled Base
+	// wants 50 steps, cfg 3, and euler.
+	"moss": {
+		Upscale:     upscale{SeamFix: "None"},
+		Unet:        "moss_image_sft_int8_convrot.safetensors",
+		Clip:        "qwen3.5_9b_int8_convrot.safetensors",
+		ClipType:    "moss_image",
+		Vae:         "flux2-vae.safetensors",
+		WeightDtype: "default",
+		Sampler: sampler{
+			Steps:       25,
+			CFG:         2.5,
+			SamplerName: "er_sde",
+			Scheduler:   "simple",
+			Denoise:     1.0,
+			Width:       1216,
+			Height:      832,
+		},
+	},
 }
 
 // defaultsFor returns the fallbacks for a resolved base. An unknown name cannot

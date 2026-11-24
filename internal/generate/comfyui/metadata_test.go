@@ -54,6 +54,7 @@ var imageTemplatePasses = map[string]struct {
 }{
 	"sdxl":  {detailers: []string{"eye", "face", "hand", "lower_body", "upper_body"}},
 	"anima": {detailers: []string{"eye", "face", "hand", "lower_body", "upper_body"}},
+	"moss":  {detailers: []string{"eye", "face", "hand", "lower_body", "upper_body"}},
 	"krea2": {detailers: []string{"face"}, refine: true},
 }
 

@@ -1,0 +1,15 @@
+TAGS
+    pipeline, moss
+
+IMAGE
+    base = moss
+    unet = moss_image_sft_int8_convrot.safetensors
+    steps = 25
+    cfg = 2.5
+    sampler_name = er_sde
+    scheduler = simple
+    width = 1216
+    height = 832
+
+!IMAGE
+    worst quality, bad anatomy, watermark, jpeg artifact
