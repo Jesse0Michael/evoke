@@ -21,7 +21,7 @@ Rules:
 - **Blank lines do not end a block.** A block runs until the next column-1 header.
 - **Comments** are lines whose first non-whitespace character is `#`, at any indentation. There are no inline comments.
 - **UTF-8 only.** Invalid UTF-8 is rejected.
-- **Empty blocks are invalid.** Every header needs at least one value line.
+- **Empty value lists.** The parser accepts a header with no value lines for declarations that support `?`. A plain `APPAREL` or `ENVIRONMENT` header alone suppresses defaults in that positive channel and contributes no prompt text. Declarations without `?` support and `TAGS` require a value.
 - **A newline ends a value.** Never wrap one sentence across two lines; only trailing whitespace is trimmed, internal punctuation and spacing are preserved.
 - **Structured declarations** (`IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE`, `AUDIO`) take an optional or required argument on the header line and `key = value` settings as values. Every other declaration rejects text after the name — `NAME Sumi` is an error; the value belongs on an indented line.
 
@@ -38,7 +38,7 @@ The parser accumulates all of them with line numbers rather than stopping at the
 | `unexpected text "..." after declaration name; values belong on…`      | extra text on the header line, e.g. `NAME Sumi`  |
 | `invalid declaration name "..."`                                       | characters outside `A–Z a–z 0–9 _ -`             |
 | `indented value has no preceding declaration`                          | a value line before any header                   |
-| `declaration "..." has no values`                                      | an empty block                                   |
+| `declaration "..." has no values`                                      | a header that requires a value was left empty    |
 
 *Unknown declaration* and *unsupported prefix* are **validation** errors, raised after a file parses cleanly.
 
@@ -129,7 +129,7 @@ Notes on the non-obvious ones:
 - `CHARACTER` is **positive only**. An identity has no meaningful "not this"; contradictions go in `!PERSONALITY`. Drawable detail goes in `APPEARANCE`.
 - `VOICE` is read by `evoke audio` and nothing else — see [Style Guide](style-guide.md) §1. It describes the speaker; the model and sampling that render it live in `AUDIO`. Never use it to carry material that belongs in `PERSONALITY`.
 - `SCENARIO` is **singular** — only one file in a composition may supply it.
-- `PROMPT` is the **shot composition** channel — subject count, framing, and what the subject is doing. A character file carries it as a `?` default so it renders coherently alone; a shot file states it explicitly and replaces that default whole. See [Style Guide](style-guide.md) §3.10.
+- `PROMPT` is the **shot composition** channel. A character file supplies subject count and framing in `?PROMPT`. A shot or scene can specify poses, posture, and actions in an explicit `PROMPT`, which replaces the whole default. See [Style Guide](style-guide.md) §3.10.
 - `APPAREL` is deliberately broad (no `OUTFIT`/`FOOTWEAR`); `ENVIRONMENT` carries the whole scene/setting role (no `LOCATION`).
 
 ## Structured declarations

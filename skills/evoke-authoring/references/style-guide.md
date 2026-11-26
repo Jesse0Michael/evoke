@@ -85,7 +85,7 @@ Bloat early and you starve `APPAREL`/`ENVIRONMENT` at the tail.
 
 ## 2. Every target
 
-**Write only what the source supports, and only the blocks you were asked for.** This outranks every other rule here. Each value has to trace to something the user said or the source material states. A declaration you have no material for is left out — not filled from genre convention, not extrapolated from the material you do have, not written because the block exists and looks empty. Blocks are optional. A file with four declarations is a normal file.
+**Ground factual claims in the brief and its sources.** Include the blocks the task calls for and the character defaults in §5.1. When the brief leaves the setting open, a character's `?ENVIRONMENT` can supply a plausible backdrop. Keep that visual choice in the rendering block. Identity, personality, and backstory need source support.
 
 The failure is invisible on the page: invented prose reads exactly like sourced prose, so nobody catches it at review time, and once written it becomes canon the character then asserts as fact. Thin notes produce a short file. Say in your reply what you left out and why — that is the useful answer, not a fuller-looking file.
 
@@ -97,7 +97,7 @@ Rendering blocks are the one place some invention is unavoidable: notes never sp
 
 - **Where the lines fall is a convention, and one of its rules has teeth** — see §2.1.
 - **Each file stays in its lane.** Character files describe characters, style files describe medium. A file that asserts a camera lens sabotages every composition.
-- **Write for recombination.** Situational detail belongs in a separate file.
+- **Write for recombination.** Situational detail belongs in a separate file. Omit the source's poses, posture, and actions when converting a shot into a reusable character file (§3.10).
 - **Comments are optional, and the default is none.** A `#` line earns its place only by carrying what the declarations cannot — why a weight sits where it does, what a partner file has to supply, a value that looks like a mistake and isn't. A header that says what the file is, summarizes its own contents, notes where the material came from, or lists example invocations is noise: the declarations already say it, and the caller decides the invocation.
 - **A comment can never qualify a value.** The parser discards comment lines before building the `Document` (`pkg/evoke/parse.go`), so `# APPEARANCE is a starting guess` reaches nothing. The values ship; the caveat doesn't. It is absent from the image prompt, absent from the chat system prompt, and absent from `knowledge.db` — where an invented `CHARACTER` or `BACKSTORY` line is retrieved and read as established fact, the same failure the format already avoids by refusing to embed `!` channels. Never write a comment that licenses content you would otherwise not write. Uncertainty goes in your reply to the user, where someone can act on it.
 
@@ -158,15 +158,19 @@ It also defeats dedup, which is exact-match on the trimmed line: `warm damp air,
 
 ### 2.2 When the source is an image
 
-Most files are written from words — a brief, notes, a character sheet. Sometimes part of the source is a picture: concept art you were handed, an asset you are transcribing, or a render this file already produced. §2 does not change. Transcribe what the image shows, invent nothing it doesn't, and say what you read it from. What changes is that an image is a far denser source than a note, and denser sources make it easy to read out things that aren't there.
+Inspect any supplied art or render before drafting a block that depends on it. Describe what you can see and identify the source in your reply.
+
+**Characters from existing works.** Look up the requested version in reliable web references such as an official character profile, a publisher's guide, or a well-sourced wiki. Use those references for identity (`CHARACTER`), `PERSONALITY`, `BACKSTORY`, and any appearance or outfit details they document.
+
+Download a reference image for each character you recreate and keep it beside the corresponding `.evoke` file, for example `alphonse-elric.png` beside `alphonse-elric.evoke`. Prefer a full-body image in the default outfit over a headshot. Open and inspect **each downloaded image before writing `APPEARANCE` or `?APPAREL`**. Use persistent features and proportions for `APPEARANCE`, and garments, accessories, and footwear for `?APPAREL`.
 
 **An image is evidence for the rendering blocks and nothing else.** `APPEARANCE`, `APPAREL`, `ENVIRONMENT` are what a picture can establish. `CHARACTER`, `PERSONALITY`, and `BACKSTORY` are not: a subject scowling establishes a lowered brow and a set jaw, not that they are hostile, guarded, or grieving. Reading a disposition off a facial expression is §2 fabrication wearing the costume of observation — it feels sourced because you did look at something. If the only source is an image, the language blocks stay empty and you say so.
 
-**Where words and picture disagree, the picture governs the rendering blocks.** A prose description of an appearance is usually written from someone's memory of an image, and memory drifts — hair length, hair colour, and headwear are the usual casualties. So read the image before writing `APPEARANCE`, not after, and re-read the `!BLOCK` while you are there: a negative written from prose can end up suppressing a feature the reference plainly has, which costs you the trait in every render.
+**Resolve discrepancies using the requested version.** Differences in hair length, hair colour, or headwear can distinguish two adaptations or outfits. Use matching reference art for visible details and check that the exclusions in `!BLOCK` allow the features it shows.
 
-**Read shadow as light, not as pigment.** This is the transferable one. Artists shade skin with a cool cast — green, blue, violet along the jaw, the throat, the underside of an arm — and transcribing that cast as a skin tone gives you a green-skinned character nobody drew. Ask what colour the _lit_ side is; that is the pigment. The same trap runs the other way on your own output, where a warm key light reads as a tan you never wrote.
+**Source race, species, and skin tone.** For race or species, use the terms reliable written sources give for the character. Describe skin tone from a clear depiction or a reliable written description. When lighting, shadows, or colour grading make the tone uncertain, cross-check written sources and other reference images of the same version, preferably in neutral light. Omit a detail when the evidence remains inconclusive.
 
-**A crop is not a small version of the whole.** A headshot is silent about arms, hands, build, height, and everything below the collar — and silence is not neutral, because the model fills it with its default. Work from the widest reference available, and when only a crop exists, name in your reply what it left unsourced instead of quietly supplying it.
+**Work within the crop.** A headshot can establish facial features. Source build, lower garments, and footwear from another view or a documented description. Identify any remaining gaps in your reply.
 
 **One image is one sample.** When a single picture disagrees with the rest of the material on a major trait — build, hair, species — that is a signal to look wider, not a fact to transcribe. The outlier is the one you notice precisely because it is unusual.
 
@@ -321,7 +325,7 @@ And resist the mirror instinct on the _other_ symptom. When the environment rend
 | `gazing seductively`              | narrative             | `chin tilted down, eyes looking up` |
 | `exuding confidence`              | unrenderable          | `shoulders back, straight posture`  |
 
-Describe **where things are**, **what shape they make**, **what they look like**.
+Describe **where things are**, **what shape they make**, **what they look like**. Use the posture and gesture examples only in a shot or scene (§3.10).
 
 ### 3.4 Don't over-explain known concepts
 
@@ -377,7 +381,9 @@ When the target checkpoint is unknown, use phrases. They degrade gracefully on T
 
 SDXL — Illustrious especially — averages distinctive subjects toward generic: unusual skin tones normalize, non-human features soften, atypical proportions regress, and an unusual place resolves toward the commonest version of its noun (§3.13). Position doesn't fix this; position controls _when_ a token is attended to, not whether it beats a prior. Weight is the right tool. Use it.
 
-**Test: does the trait survive unweighted?** Not "is it important" — everything in a character file feels important, and weight is relative, so weighting everything is weighting nothing. Generate flat once, weight what came back wrong. `blue eyes` renders fine alone; `violet skin` doesn't.
+**Weight a recognizable character's name on its own.** If the target image model is likely to recognize a character from an existing work, give the name its own weighted line in that character's `APPEARANCE` from the first render, for example `(Alphonse Elric:1.2)`. This is how the name reaches the image prompt. Keep `NAME` plain and write the visual descriptors outside the parentheses. The name counts toward the subject's weight budget. For an unfamiliar character, rely on sourced visual features.
+
+**Test visual traits unweighted.** Render once with physical traits unweighted, then weight the ones the model loses. A common trait like `blue eyes` usually renders as written, while `violet skin` often needs emphasis.
 
 The predictor, before you've tested, is **rarity, not centrality**. The prior fights a trait exactly when the training data rarely paired it with the rest of the description — species, non-human skin and eye colors, atypical proportions, extra or missing limbs. A trait can be the single most defining thing about a character and still need no weight: `very tall broad build` is common, renders flat, and weighting it only steals relative strength from the traits that needed it. Same trait, different character: `blue-grey skin` earns a weight, `tan skin` never does.
 
@@ -484,7 +490,7 @@ A `LORA` is the one place a base is a property of the asset rather than a choice
 
 The rule is about the **channel**, not the file. `APPEARANCE` accumulates, so a count written there is permanent: it argues with every shot you ask the character for, contradicts the first two-character composition, fights `from behind` and `back turned`, pins the subject count in a crowd scene, and nothing downstream can retract it. `PROMPT` is retractable — one explicit `PROMPT` anywhere in the composition drops every `?PROMPT` line — which is exactly what makes it the right home for a claim that is only true until a caller says otherwise.
 
-So a character file **does** get to state its default shot, as `?PROMPT`. It is the only file that knows whether the subject is a girl, a boy, or a non-human, so it is the only file that can write the count at all — a pipeline file can't, and the vague genderless composition it would have to write instead is worth nothing.
+A character's `?PROMPT` supplies subject count and framing only. Omit poses, posture, and actions throughout the character file, even when a reference image shows them. A shot or scene can specify them in its explicit `PROMPT`.
 
 ```text
 # wrong — the count is in APPEARANCE, where nothing can retract it
@@ -689,6 +695,7 @@ The two failures are one observation from opposite ends: the prior is never neut
 | a named tag renders a different shape than you meant             | replace the name with its geometry, and negate the name (§3.2c)                                                                                                                                       |
 | the trait is right but goes too far                              | the overshoot half of the bracket (§3.2c)                                                                                                                                                             |
 | the subject is lost, small, or shoved off-centre                 | the environment's selection and depth staging (§3.12) — not the subject                                                                                                                               |
+| the character repeats against an unspecified background          | check the character's default setting in `?ENVIRONMENT` (§5.1)                                                                                                                                        |
 | the environment renders with nobody in it, or the subject floats | the block reserved no standing position — a vantage was named, or an object described instead of a place, and no ground at the viewer's level (§3.12). Nothing to negate; the fix is positive (§3.2d) |
 | one element renders enormous, or becomes the subject             | give it a position in depth, or move it to its own file (§3.12)                                                                                                                                       |
 | the scene is right but the era, class or condition isn't         | a register anchor on the positive noun (§3.13)                                                                                                                                                        |
@@ -907,15 +914,15 @@ CHAT
 
 ## 5. File design
 
-- **`NAME` and `CHARACTER` exist to define a character — write neither unless that's what the file is.** `NAME` sets the output directory and the chat greeting (`You are {NAME}`); `CHARACTER` states what a persistent identity fundamentally is. A one-off scene, a themed shot, an apparel file, an environment, a style/pipeline file — none of these are a character, however much the brief reads like one ("a woman getting ready", "a knight in the rain"). Describe an anonymous subject in `APPEARANCE`/`PROMPT` instead; a render doesn't need a name. Both declarations are also singular ([File Format](file-format.md)), so a `NAME` or `CHARACTER` on a file that was never meant to be a character conflicts with the real character it gets composed with.
-- **One concern per file** — the smallest thing you'd select alone. Never selected alone? Fold it in. Routinely swap half of it? Split it.
+- **Reserve `NAME` and `CHARACTER` for files that define a persistent character.** `NAME` sets the output directory and chat greeting. `CHARACTER` contributes identity facts to the composition. A one-off scene can describe its anonymous subject in `APPEARANCE` and `PROMPT`. A reusable theme takes its subject from the selected character (§5.2).
+- **One concern per file.** Keep together the elements callers select as a unit, such as a theme's outfit and setting. Split parts that callers routinely swap independently.
 - **Name the thing, not the type** — `winter-coat.evoke`, not `apparel-winter.evoke`.
 - **The filename is already a tag.** The index carries every file's base name as an implicit tag, so `leotorin.evoke` answers `evoke image leotorin` with no `TAGS` block at all. Never tag a file with its own name.
 - **Tags name the sets you'd draw from at random**, because that is literally what they do: a selector resolves to _one_ matching file, picked at random when several match, and re-picked per image in a batch. A tag earns its place when you'd accept any file carrying it — a role (`character`, `apparel`, `style`, `environment`) and the collections the file is drawn from alongside siblings (`npc`, `party`, `crew`). A tag only one file carries is its filename spelled longer.
 - **A tag is an axis of that draw, so make the axes cut across each other.** `a+b` requires both, which means a file's tags multiply into the sets it can be rolled from — and the useful ones are independent questions about the file rather than a hierarchy. `character, crew, female` gives you a roll for any character, any crew member, any woman, and any intersection of those; `character, crew, crew-member, ship-crew` gives you one axis spelled four times. Decide the axes for a group of files before writing the group: adding one later means touching every file, and it is free at the start.
 - **`TAGS` is one comma-separated line.** `TAGS\n    apparel, winter`. The parser splits on commas and newlines alike, so a stacked block is extra lines for an identical result — and since one or two tags is the whole expected budget, a multi-line `TAGS` block is a visual claim that the file has more discovery surface than it does.
 - **Content is not tags.** `firbolg`, `druid`, `farmer`, `balance` restate declarations in a namespace that exists to pick substitutes. A descriptor tag is worth writing only when several files share it and you'd ask for any of them (`winter` across coats). Lowercase kebab-case; one or two tags is normal and none is fine.
-- **`?` is the default value** — a real statement about the subject that yields. `?APPAREL` is what the character wears when nobody dressed them; `?ENVIRONMENT` is where they are when nobody placed them. Not "optional," not scaffolding to make a file render alone: it is the file's answer, offered until a caller supplies a different one. On declarations with `key = value` settings it yields per key, so `?IMAGE` keeps the `checkpoint` a later file never mentioned while giving up the `steps` it did. See §5.1.
+- **`?` supplies a default.** `?APPAREL` gives the character a usual outfit and `?ENVIRONMENT` a fitting setting. An explicit contribution to the same channel replaces the default. On declarations with `key = value` settings it yields per key, so `?IMAGE` keeps the `checkpoint` a later file never mentioned while giving up the `steps` it did. See §5.1.
 - **Keep singular declarations out of shared files.** `NAME`, `SCENARIO`, `IMAGE`, `LORA`, `DETAILER`, `CHAT`, `KNOWLEDGE` conflict when two files provide one (warns, takes the first). `IMAGE` in a character file breaks the first two-character composition.
 - **Structured blocks layer per setting, later argument winning.** `IMAGE`, `LORA`, `DETAILER`, `CHAT`, and `KNOWLEDGE` merge setting by setting, so a shot file writes `DETAILER face` with only `max_detection = 2` and inherits the character's detector, sizes, and text. Put the tuning in the shot or pipeline file that owns that concern, and remember the override has to come _later_ in the composition than what it overrides.
 - **A conditional trait is a separate file, never a line in `APPEARANCE`.** Wings that appear only when a character activates his armour, a scar he acquires halfway through, a form he takes sometimes — `APPEARANCE` accumulates, so anything written there is true of the character in every composition forever, and nothing downstream can retract it. This is §3.10's argument about subject count generalised: the channel has no way to say "sometimes." Put it in its own file the caller selects when they want it.
@@ -930,7 +937,8 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 
 | File kind                                      | Explicit                                                                                        | `?` default                                                                                                            |
 | :--------------------------------------------- | :---------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------- |
-| Character                                      | `NAME`, `APPEARANCE`/`!`, `CHARACTER`, `PERSONALITY`/`!`, `BACKSTORY`, `VOICE` when asked for   | `?PROMPT` — its default composition; `?APPAREL`; `?ENVIRONMENT` only when the source establishes a home, shop, or city |
+| Character                                      | `NAME`, `APPEARANCE`/`!`, `CHARACTER`, `PERSONALITY`/`!`, `BACKSTORY`, `VOICE` when asked for   | `?PROMPT` for count and framing, `?APPAREL` for the usual outfit, `?ENVIRONMENT` for a fitting setting                 |
+| Theme applied to a character                   | `APPAREL`, `ENVIRONMENT`, plus `APPEARANCE` for theme-specific effects (§5.2)                    | —                                                                                                                      |
 | Scene / one-off render (no `NAME`/`CHARACTER`) | `PROMPT`/`!`, `APPEARANCE`/`!`, `APPAREL`/`!`, `ENVIRONMENT`/`!` — whatever the brief describes | —                                                                                                                      |
 | Shot / view                                    | `PROMPT`/`!`                                                                                    | —                                                                                                                      |
 | Apparel                                        | `APPAREL`/`!`                                                                                   | —                                                                                                                      |
@@ -942,9 +950,33 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 - **`PROMPT` in a character file is always `?`; in a shot file it is never `?`.** The character's composition is a claim about the picture that holds only until a caller asks for a different picture, so it yields. A shot file exists to assert that shot, so it doesn't. This is the same test as `winter-coat` and its `APPAREL` — the block the file exists for is explicit (§3.10).
 - **A pipeline file carries no `PROMPT` at all.** It is the one file that cannot know whether the subject is a girl, a boy, or a non-human, so any composition it writes is either wrong or too vague to be worth the tokens. Camera, lighting, and quality anchors go in its `IMAGE` text (§3.9); composition belongs to the character and the shot.
 - **A location file never defaults its own `ENVIRONMENT`.** Its whole purpose is to assert that place; `?ENVIRONMENT` there yields to anything and asserts nothing.
-- **`?ENVIRONMENT` in a character file needs a source.** A farm, a shop, a home city the notes actually establish. Adding one so the file renders alone is §2 fabrication with a `?` in front of it.
+- **Include `?ENVIRONMENT` by default when creating a character.** Some models repeat the character when a render has no background. Prefer a familiar location the source establishes. If none is documented, choose a simple setting consistent with the character's world or role. Describe a surface underfoot and a nearby object for scale (§3.12).
 - **Override is whole-channel, not per line.** One explicit `APPAREL` anywhere in the composition drops _every_ `?APPAREL` line — you get the coat file's outfit, not the coat plus the character's trousers. That is what makes a default easy to displace, and it is why a `?` block should be complete on its own: a default outfit missing trousers is never completed by the thing that replaces it.
 - **A file's own explicit block suppresses its own default.** Declaration and channel together are the unit (`channelKey{name, argument, negative}`), so `?APPAREL` and `APPAREL` in one file means the default never fires. The flip side is that the unit is _narrow_: an explicit `APPEARANCE` leaves `?APPAREL` alone, and an explicit `!APPAREL` doesn't suppress a positive `?APPAREL`.
+
+### 5.2 Themes for characters
+
+A theme supplies a look for whichever character the caller selects. Keep `NAME` and `CHARACTER` in the character file. The `theme` tag lets `evoke image sumi theme` draw a look from the theme collection for Sumi.
+
+Always include explicit **`APPAREL` and `ENVIRONMENT`**. Put the theme's clothing and setting in their respective blocks, even when a source prompt describes both in `APPEARANCE`. If the theme supplies nothing for one of them, leave that header bare. The header alone suppresses the matching `?APPAREL` or `?ENVIRONMENT` in either file order. Other explicit values in those channels still accumulate. Default exclusions such as `?!APPAREL` yield to their matching negative header, such as `!APPAREL`.
+
+Add `APPEARANCE` for visible changes the theme makes to the character. Its phrases accumulate with the character's own appearance. Omit the reference subject's name and incidental traits, including eye colour, hair colour, and features such as elf ears, from both positive and negative prompts. Include a specific trait only when the requested theme depends on it, such as pointed ears for an elven transformation.
+
+For example, selecting `muddy-trail.evoke` with a character adds mud to the face and replaces the default outfit and setting.
+
+```text
+TAGS
+    theme
+
+APPEARANCE
+    flecks of wet mud across the cheeks
+
+APPAREL
+    canvas work jacket, heavy trousers, mud-caked boots
+
+ENVIRONMENT
+    farm track, churned mud underfoot, wooden gate beside the path, fields in the distance
+```
 
 ---
 
@@ -952,17 +984,17 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 
 **Before anything else (§2)**
 
-- [ ] Can every value be pointed at something in the prompt or the source material?
-- [ ] Any block written because it was empty rather than because there was material for it?
-- [ ] Any declaration present that nobody asked for?
+- [ ] Does each factual claim have a source, and does the reply identify any visual choices supplied for rendering?
+- [ ] Does each bare header intentionally suppress a default?
+- [ ] Does each declaration serve the request or a default appropriate to the file (§5.1)?
 - [ ] Does `NAME`/`CHARACTER` trace to a fact list that actually found a persisting identity (SKILL.md, "Authoring a new file" step 2) — and does every `?` sit on a block that has something more specific to yield to (§5, §5.1)?
 - [ ] Any `IMAGE`, `LORA`, or `DETAILER` block present without the task explicitly calling for generator/pipeline configuration or an override of one — none of the three is populated from the brief's descriptive facts (§3.9)?
-- [ ] Does every line in `APPEARANCE`/`APPAREL`/`ENVIRONMENT`/`PROMPT` trace to one entry on the fact list, with synonyms for the same idea collapsed to one rather than stacked (SKILL.md step 1)?
+- [ ] Does each rendering phrase contribute a distinct fact or visual default, with synonyms for the same idea collapsed to one (SKILL.md step 1)?
 - [ ] Converting existing material — is every token in the source either placed in some block or named in your reply as dropped, with a reason?
-- [ ] Anything dropped that would have fit `IMAGE`, `PERSONALITY`, `?PROMPT`, `?APPAREL`, `?ENVIRONMENT`, or a `!BLOCK` if you had looked there?
+- [ ] Anything dropped that would have fit `IMAGE`, `PERSONALITY`, `PROMPT`, `APPAREL`, `ENVIRONMENT`, or a `!BLOCK` appropriate to this file?
 - [ ] Any fact lost while changing the form of a block, or any source fragment pasted verbatim into a prose block?
-- [ ] Part of the source an image — did you read it before writing `APPEARANCE` rather than after, and is every language block still sourced from words rather than from a facial expression (§2.2)?
-- [ ] Any colour taken from a shaded side of a reference instead of a lit one (§2.2)?
+- [ ] For a character from an existing work, did you use reliable web references for the requested version and inspect each downloaded image beside its `.evoke` file before writing `APPEARANCE` or `?APPAREL` (§2.2)?
+- [ ] Do reliable references support the stated race, species, or skin tone? If lighting or colour made skin tone uncertain, did you check written sources and other images (§2.2)?
 
 **Rendering blocks (§3)**
 
@@ -975,13 +1007,15 @@ Selecting `leotorin` asks for the character — his face is the thing you asked 
 - [ ] Any `it`, `its`, or `there` expected to bind to a noun (§3.5)?
 - [ ] Subject count or framing (`1boy`, `solo`, `upper body`, `from below`) sitting in `APPEARANCE` instead of `PROMPT`?
 - [ ] Character file's `PROMPT` marked `?`, complete on its own, and its gender also stated count-free in `APPEARANCE` so a shot file replacing the channel can't degender it?
+- [ ] Does a new character have a fitting `?ENVIRONMENT` by default, with poses, posture, and actions left to a shot or scene (§3.10, §5.1)?
+- [ ] Paired with a character, does the theme suppress both the default outfit and setting while adding only the appearance changes the theme requires (§5.2)?
 - [ ] Negation words in a positive block — including cancelling `un-` prefixes and hedges, not just `no`/`without` (§3.1)?
 - [ ] Any negation word inside a `!BLOCK`, where it means the reverse of what it says (§3.1)?
 - [ ] Any negative that shares its geometry with something the positive asserts (§3.2d)?
 - [ ] A build described by adjective only, with the waist, shoulders and hips left to the prior (§3.2c)?
 - [ ] Every negative adjacent to something the positive states — observed, or a named overshoot — rather than a token nothing you wrote invites (§3.2b)?
 - [ ] Short phrases, no grammar words, no trailing periods?
-- [ ] Weights: numeric only, ≤1.3, 1–3 per subject, on the block the file exists to assert, and only on traits that actually failed flat?
+- [ ] For a recognizable character's own file, does `APPEARANCE` weight the name alone? Are trait weights reserved for details that failed unweighted, within the numeric range and per-subject budget (§3.6)?
 - [ ] Any weighted span long enough to spend its weight on its own filler, or holding more than one trait (§3.6)?
 - [ ] More than about three weighted negatives stacked against one concept (§3.6)?
 - [ ] A species or non-human trait named but not glossed from the species' own description (§3.13)?

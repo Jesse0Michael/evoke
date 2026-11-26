@@ -1,6 +1,6 @@
 ---
 name: evoke-authoring
-description: Write, fix, and review `.evoke` files — the declarative source format for AI characters and generative assets. Use for any work on a `.evoke` file, or when authoring content for the declarations it holds (NAME, CHARACTER, PERSONALITY, BACKSTORY, VOICE, APPEARANCE, APPAREL, ENVIRONMENT, SCENARIO, PROMPT, IMAGE, LORA, DETAILER, CHAT, KNOWLEDGE, AUDIO) — characters, apparel, environments, styles, or collections consumed by `evoke image`, `evoke chat`, and `evoke audio`.
+description: Write, fix, and review `.evoke` files — the declarative source format for AI characters and generative assets. Use for any work on a `.evoke` file, or when authoring content for the declarations it holds (NAME, CHARACTER, PERSONALITY, BACKSTORY, VOICE, APPEARANCE, APPAREL, ENVIRONMENT, SCENARIO, PROMPT, IMAGE, LORA, DETAILER, CHAT, KNOWLEDGE, AUDIO) — characters, themes, apparel, environments, styles, or collections consumed by `evoke image`, `evoke chat`, and `evoke audio`.
 ---
 
 # Authoring `.evoke` files
@@ -33,23 +33,27 @@ If `evoke` isn't on `PATH`, say so rather than skipping verification silently, a
 
 ## Authoring a new file
 
-A file is built by extracting the facts a brief or source actually gives you and placing each one in the single declaration it belongs to. Nothing enters the file that isn't a placed fact — not a template's worth of blocks, not a richer-sounding synonym, not a category of detail the source never mentioned.
+Build the file from the brief and its references. Distinguish facts about the character from visual defaults chosen for a render.
 
 ### 1. List the facts, one entry per idea
 
-Write the brief's facts as a flat list, one clause per idea. Collapse synonyms into the idea they share — "glamorous, elegant, sophisticated" describing one mood is **one** fact, however many words the brief spent on it, and it gets one entry in whichever word is clearest. This list is the file's ceiling: a declaration only ever contains an entry from it, phrased per the rules in `references/style-guide.md`. When the list is exhausted, the file is finished. A four-declaration file that placed every fact from a short brief did not fail to try hard enough — it is a correctly finished file.
+When recreating a character from an existing work, use reliable web references for that version's identity, personality, backstory, and documented appearance. Download a reference image for each character and save it beside their `.evoke` file. Prefer a full-body view in the default outfit. Inspect every downloaded image before drafting `APPEARANCE` or `?APPAREL`. See [§2.2 for sourcing race, species, and skin tone](references/style-guide.md#22-when-the-source-is-an-image).
+
+List one fact per idea from the brief and its sources. Collapse synonyms into the idea they share — "glamorous, elegant, sophisticated" describing one mood is **one** fact. A short brief can yield a short file.
 
 ### 2. Decide what the file is
 
-Look at the fact list, not the subject matter, and ask: **does any fact establish an identity meant to outlive this one moment** — a name, or a trait the caller would still expect to be true in a different scene, outfit, or mood?
+If the brief asks for a **theme** to apply to a selected character, the character supplies the identity. Omit `NAME` and `CHARACTER`. Always include plain `APPAREL` and `ENVIRONMENT` to suppress the character's `?APPAREL` and `?ENVIRONMENT`. Give each block the theme's outfit or setting, or leave its header bare to clear that default. Add `APPEARANCE` when the theme contributes a visible effect. Omit specific eye colours, hair colours, and character traits such as pointed elf ears unless the theme requires that exact feature. See [the worked theme example in §5.2](references/style-guide.md#52-themes-for-characters).
 
-- **Yes** → it's a character. `NAME` carries the name, `CHARACTER` carries the identity facts, and the facts that merely *come along* with the character — a default outfit, a default shot — become `?` (`references/style-guide.md` §5.1 says exactly which blocks that applies to).
+For other briefs, look for an identity meant to outlive this one moment. Does the brief establish a name or a trait the caller would still expect to be true in a different scene, outfit, or mood?
+
+- **Yes** → it's a character. `NAME` carries the name and `CHARACTER` carries the identity facts. Use `?APPAREL` for the usual outfit and `?PROMPT` for subject count and framing. Include a fitting `?ENVIRONMENT` by default. Some models repeat the character when the background is unspecified. Omit poses, posture, and actions throughout the character file, even when the reference shows them. A shot or scene can supply them in `PROMPT`.
 - **No** → every fact is scoped to this one render. There is no identity to name, so `NAME` and `CHARACTER` get no entry at all, and nothing in the file is `?` either — a default exists to yield to something more specific, and a one-off has no more-specific version still to come. Every populated block is written plain.
 - **The fact list is only an outfit, only a place, or only camera/pipeline settings, with no subject at all** → it's an apparel, environment, or style file. It never carries `NAME`/`CHARACTER`, regardless of how the subject who eventually wears or stands in it happens to be described elsewhere.
 
 Run the test on two different briefs and it sorts them without needing to know anything else about them: "Mara Vess, a courier-turned-investigator who lost the use of her left hand" carries a name and traits true of Mara in every scene she appears in — `NAME`, `CHARACTER`. "A courier pausing under an awning to read a message in the rain" carries a role, a pose, and a setting, none tied to a name or expected to outlive the frame — no `NAME`, no `CHARACTER`; the courier, the awning, and the rain go straight into `APPEARANCE`/`PROMPT`/`ENVIRONMENT`, written plain.
 
-### 3. Place each fact in exactly one declaration
+### 3. Place each fact in the declaration that uses it
 
 | A fact describes...                                                                       | Goes in...             |
 | :------------------------------------------------------------------------------------------ | :---------------------- |
@@ -57,7 +61,7 @@ Run the test on two different briefs and it sorts them without needing to know a
 | something drawable about the subject — species, build, expression, features                | `APPEARANCE`            |
 | what the subject wears                                                                      | `APPAREL`               |
 | where the scene takes place                                                                 | `ENVIRONMENT`           |
-| how many subjects, and the shot or action                                                   | `PROMPT`                |
+| subject count and framing, plus any action specified for a shot or scene file               | `PROMPT`                |
 | a recurring behavior or disposition (chat only)                                             | `PERSONALITY`           |
 | past events that still explain the present (chat only)                                      | `BACKSTORY`             |
 
@@ -67,7 +71,7 @@ A fact with nowhere on this list to go is a fact this format doesn't render — 
 
 ### 4. Stop, then apply the phrasing rules
 
-Once every fact has a home, write each populated block using the rules for its target class (`references/style-guide.md` §3 for rendering blocks, §4 for language blocks) and run the §6 checklist. Nothing is added at this stage either — §3/§4 govern *how* a placed fact is phrased, never license adding a new one.
+Once the facts and visual defaults have a home, write each populated block using the rules for its target class (`references/style-guide.md` §3 for rendering blocks, §4 for language blocks) and run the §6 checklist.
 
 ## Which rules apply
 
@@ -77,7 +81,7 @@ Route by the declaration you are writing, not by the file:
 | :------------------------------------------------------------------------------- | :------------------------------------------------ |
 | `APPEARANCE`, `APPAREL`, `ENVIRONMENT`, `PROMPT`, `IMAGE`/`DETAILER` prompt text | `references/style-guide.md` §2 and **§3**         |
 | `ENVIRONMENT`, or any block transcribed from a map, floor plan, or setting bible | `references/style-guide.md` §2, §3, and **§3.12** |
-| Any block sourced from a picture — reference art, an asset you are transcribing, a render you are correcting | `references/style-guide.md` **§2.2**, then §3 |
+| Recreating a character from an existing work, or using a picture as a source     | `references/style-guide.md` **§2.2**, then §3 for visual blocks |
 | `CHARACTER`, `PERSONALITY`, `BACKSTORY`, `SCENARIO`, `CHAT` instructions         | `references/style-guide.md` §2 and **§4**         |
 | `VOICE`, `AUDIO` — read by `evoke audio`                                         | `references/style-guide.md` §2 and **§1**         |
 | Both kinds in one file                                                           | §2, §3, and §4 — apply each only to its own block |
@@ -89,7 +93,7 @@ Route by the declaration you are writing, not by the file:
 
 The one-line version of each, which is _not_ a substitute for reading them:
 
-- **§3 rendering** — short comma-separated Danbooru-style phrases, never prose. Nothing negated, abstract, instructional, or emotional. Exclusions go in the matching `!BLOCK`, and each one has to be adjacent to something the positive states. Numeric weights only, 1.1–1.3, 1–3 per subject, on the block the file exists to assert, and only on traits that failed unweighted. A block describes one frame, not everything a place contains.
+- **§3 rendering** — short comma-separated Danbooru-style phrases, never prose. Nothing negated, abstract, instructional, or emotional. Exclusions go in the matching `!BLOCK`, and each one has to be adjacent to something the positive states. Use numeric weights of 1.1–1.3, up to three per subject, on the block the file exists to assert. When defining a character the target image model is likely to recognize, weight the name alone in `APPEARANCE`. Reserve trait weights for details that failed unweighted. Describe one frame.
 - **§4 language** — prose. Negation and abstraction are necessary. Name the behavior, never the impression. Third person for `CHARACTER`/`PERSONALITY`/`BACKSTORY`/`SCENARIO`; second person only for `CHAT` instructions.
 - **`VOICE`** — what the character _sounds_ like, in §3's comma-joined phrase form, and only when a voice was asked for or described. `evoke audio` renders it as the speaker description; the model and sampling that render it go in `AUDIO`. Speech habits and word choice are `PERSONALITY`/`CHAT`, not `VOICE`. When the source is itself a prompt-to-voice prompt, that prompt **is** the block — keep its character descriptors, strip only engine config, and never rewrite it into timbre words.
 
@@ -97,17 +101,17 @@ The one-line version of each, which is _not_ a substitute for reading them:
 
 These are not style preferences — violating them breaks composition:
 
-- **Write only what the source supports, and only the blocks you were asked for.** Every value traces to something the user said or the material states. No block gets filled in because it looks empty, and no declaration appears because a "character file" seems to want one — `APPEARANCE` is the sole place invention is forced for characters. `ENVIRONMENT` is the sole place invention is forced for locations (nothing renders an unspecified nose) — keep those choices plain and meaningless, and list them in your reply. Full rule: `references/style-guide.md` §2.
+- **Ground factual claims in the brief and its references.** Write the requested blocks and the applicable character defaults. Prefer a documented setting for `?ENVIRONMENT`. If none is established, choose a simple backdrop that fits the character's world or role. Mention it with any other unsourced visual choices in your reply. See `references/style-guide.md` §2 and §5.1.
 - **`NAME` and `CHARACTER` are for defining a character, and only that.** `NAME` sets the output directory and the chat greeting, `CHARACTER` states what a persistent identity fundamentally is — so neither gets an entry unless the fact-list test in "Authoring a new file" step 2 finds an identity meant to outlive one render. Full rule: `references/style-guide.md` §5.
 - **`LORA` and `DETAILER` are only relevant when the task explicitly asks for generator/pipeline tuning.** They're not descriptive flavor to add for realism, and a brief describing a subject or scene — however detailed — never asks for either on its own. When one genuinely is called for: `LORA`'s `model` setting is the filename of a trained LoRA you know is part of the project's assets — a name that merely sounds thematic (`beauty`, `makeup`) is not one, and if you don't know a matching file exists, leave the block out and say so. `DETAILER` configures a per-region inpaint pass whose canonical settings belong to the pipeline/style file; write one in a character or shot file only to override a setting an existing `DETAILER` for that region already established, never to introduce the region from nothing — and always with its required argument and `key = value` settings, never a bare comma list of region names. Full rule: `references/style-guide.md` §3.9.
-- **Converting existing material? Relocate before you drop.** Every token in a source prompt was put there deliberately. Before discarding one, check whether it belongs in another block — drawable (`APPEARANCE`), worn (`?APPAREL`), a place (`?ENVIRONMENT`), a medium or art style (`IMAGE`), a behavior or narrative role (`PERSONALITY`), or something to suppress (`!BLOCK`). Whatever genuinely doesn't fit goes in your reply as an explicit list with reasons, never silently. Changing a block's _form_ — terse fragments into the prose §4.3 requires — is not invention; losing a _fact_ while doing it is. Full rule: `references/style-guide.md` §2.
+- **Converting existing material? Relocate before you drop.** Every token in a source prompt was put there deliberately. Before discarding one, check whether it belongs in another block — drawable (`APPEARANCE`), worn (`APPAREL`), a place (`ENVIRONMENT`), a medium or art style (`IMAGE`), a behavior or narrative role (`PERSONALITY`), or something to suppress (`!BLOCK`). Choose the prefixes for the file's role (§5.1). Whatever genuinely doesn't fit goes in your reply as an explicit list with reasons, never silently. Changing a block's _form_ — terse fragments into the prose §4.3 requires — is not invention; losing a _fact_ while doing it is. Full rule: `references/style-guide.md` §2.
 - **Subject count and framing go in `PROMPT`, never in `APPEARANCE`.** `1boy`, `solo`, `upper body`, `from below` describe the picture, not the character, and `APPEARANCE` accumulates so a count written there can never be retracted. A character file states its default shot as `?PROMPT` — it is the only file that knows whether the subject is a girl, a boy, or a non-human — and any shot file's explicit `PROMPT` replaces that whole channel. Gender is also a character trait, so keep the count-free tag (`male focus` / `female focus`, or `man` / `woman`) in `APPEARANCE` as well: it is what survives a shot file that replaces `PROMPT` without knowing the subject's gender. Full rule: `references/style-guide.md` §3.10.
 - **`ENVIRONMENT` describes one frame with somewhere for a character to stand — never a place with no ground.** A character is going to be composited into this block, every time, even when nothing in the source material shows one: a floating city, an orbiting station, a chamber of hovering platforms, a wide establishing shot handed to you by the source are not exceptions, they are the cases this rule exists for. Every noun bids for space in a single image, and a block transcribed from a map, floor plan, setting bible, or an aerial/establishing shot describes a location from no viewpoint at all — the model then centres whichever element is most photogenic and pushes the subject out, or floats them in open air, or renders them the size of a building. Ask whether someone standing in one spot could see all of it; if not, it is more than one file. Place what survives in depth, and say what encloses an interior. Then **reserve the near ground for the subject, with no exceptions**, which is two separate things, both mandatory: (1) a described standing surface at the viewer's own level in the lower foreground — a platform, a floor, a deck, sand, mud, whatever the scene is — a named vantage (`seen from above`, `floating`, `in orbit`) is a camera position, not a floor, and without real ground the subject is omitted from the render entirely, not merely small; (2) a scale anchor beside it — one object whose height in feet a reader already knows (a door, a gate, a fence, a railing, a cart) — never vegetation, terrain, water, cloud, or a stated measurement, or the subject renders as a giant or a doll. A floating city still gets a landing platform and a rail; an orbiting station still gets a docking arm or observation deck; everything sweeping about the place then stages in the middle distance and background, dropping nothing, just no longer standing in for the whole block. Full rule: `references/style-guide.md` §3.12.
 - **Name a thing the model has no prior for, and gloss what it looks like.** Proper nouns, invented species and in-world objects render as nothing you meant, and a generic noun (`shop interior`, `cabin`, `village square`) renders with a contemporary, tidy default. Both are settled at the moment of naming: add a silhouette gloss to the first, a register adjective to the second. For a species, the gloss comes from the description of the **species**, not of the individual — a character's own description assumes the ears, the nose and the fur that are the only reason the word reads at all, which is why non-human characters come back as their nearest human neighbour. The gloss describes your reference and invents nothing — it is the least speculative work in the format and the most often skipped. Full rule: `references/style-guide.md` §3.13.
 - **An accumulating channel has no way to say "sometimes."** `APPEARANCE`, `APPAREL` and `ENVIRONMENT` combine and nothing downstream retracts them, so a trait that is only true under some condition — wings that appear when the armour activates, a form taken occasionally, a scar acquired partway through — is a separate file the caller selects, never a line in the character's own block. Same argument as the subject count above. Full rule: `references/style-guide.md` §5.
-- **A file must read correctly alone and in every combination it will be selected with.** It cannot assume a partner.
+- **Inspect a file alone and with its intended partners.** For a theme, pair it with a character that has a default outfit and setting so both replacements are visible.
 - **No file types, no imports.** Never invent `TYPE`, `FROM`, `IMPORT`, or a reference to another file. A file's meaning emerges from the declarations it contains.
-- **One concern per file** — the smallest thing you would select on its own. If it is never selected alone, fold it into its parent; if you routinely swap half of it, split it.
+- **One concern per file.** Group elements the caller chooses together. A theme's outfit, setting, and visual effects form one selectable look across characters. Split parts that callers routinely swap independently.
 - **Keep singular declarations out of shared files.** `NAME`, `SCENARIO`, `IMAGE`, `LORA`, `DETAILER`, `CHAT`, and `KNOWLEDGE` conflict when two files in a composition each supply one. An `IMAGE` block in a character file breaks the first two-character composition.
 - **A line break is a value boundary — break only where a comma would go.** A newline ends a value, so a phrase or sentence split across two lines silently becomes two unrelated values. Everything else about layout is convention; this one is correctness.
 - **Layout: a blank line between every declaration, no line ending in a comma, long blocks broken at phrase boundaries to about 100 characters.** Comma-joined blocks compile identically however the lines fall, so group them by what each line describes. Short lists — `TAGS`, exclusion blocks, a two- or three-item `APPAREL` outfit — stay on one line. Weighted identity traits and `PERSONALITY` clauses take a line each regardless. Full rule: `references/style-guide.md` §2.1.
@@ -116,7 +120,7 @@ These are not style preferences — violating them breaks composition:
 
 ## Shape of a file
 
-The fact list found a name and a persisting identity (step 2), so this is a character — its `PROMPT` and `APPAREL` are `?` defaults that yield to whatever the caller pairs it with:
+For Sumi, an octopus humanoid, a harbor pier makes a plausible default backdrop.
 
 ```text
 TAGS
@@ -140,16 +144,19 @@ APPEARANCE
 
 ?APPAREL
     green shirt, blue jeans
+
+?ENVIRONMENT
+    harbor pier, wooden planks underfoot, a railing beside the walkway, open water in the distance
 ```
 
 The fact list found no name and nothing meant to outlive this render (step 2), so this is a scene — no `NAME`, no `CHARACTER`, and nothing is `?` because nothing more specific is coming:
 
 ```text
 PROMPT
-    solo, 1girl, female focus
+    solo, 1girl, applying makeup at a mirror
 
 APPEARANCE
-    applying makeup at a mirror, glamorous, confident expression
+    female focus, glamorous, confident expression
 
 APPAREL
     loose open shirt, thong panties
@@ -162,7 +169,7 @@ Blocks may appear in any order — nothing in the parser or the merge reads it �
 
 `TAGS` is metadata for selector matching, not a declaration. The index already tags every file with its own filename, and a selector resolves to _one_ match chosen at random, so `TAGS` names only the sets a file can be drawn from interchangeably: a role (`character`, `apparel`, `style`, `environment`) and any collection it shares with siblings (`npc`, `crew`). Never tag a file with its own name, never tag its content, and expect one or two tags — none is fine. See §5.
 
-`?` is the file's **default value** — what the subject wears, where it is, or how it is framed when nobody said otherwise. It's a real statement that yields, not scaffolding. Decide it by asking why someone selected the file: a character file's `APPEARANCE` is explicit while its `PROMPT` and `APPAREL` are `?` (nobody selects a character to get their trousers, or to be told the shot is a solo), and a location file's `ENVIRONMENT` is explicit and never `?`. A scene file — no character behind it — has nothing to yield to at all, so every block in it is explicit, same as the location file's reasoning applied everywhere at once. See §5.1.
+`?` marks a **default value**. Selecting the character example alone uses the harbor pier. Pair it with an explicit `ENVIRONMENT` and the selected location replaces the entire pier setting. The same rule applies independently to `?PROMPT` and `?APPAREL`. A scene or location file states its setting in an explicit `ENVIRONMENT`. See §5.1.
 
 Comments are optional and default to none — see §2. Never open a file with a header restating what it is, what it contains, or how to invoke it.
 
